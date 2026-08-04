@@ -1,42 +1,51 @@
 import Link from "next/link";
 import Image from "next/image";
+import { IconWhatsApp } from "./Icons";
 
 export default function Footer() {
   return (
     <footer className="bg-navy text-slate-300 mt-24">
-      <div className="max-w-6xl mx-auto px-6 py-14 grid gap-10 md:grid-cols-4">
-        <div>
+      <div className="max-w-7xl mx-auto px-6 py-14 grid gap-10 md:grid-cols-5">
+        <div className="md:col-span-2">
           <Image src="/logo-transparent.png" alt="Bizzux" width={120} height={49} className="h-8 w-auto mb-4" />
-          <p className="text-sm text-slate-400">
-            Cloud-based POS, inventory, expense and profit management software.
+          <p className="text-sm text-slate-400 max-w-xs">
+            Cloud software and AI solutions for growing businesses — a ready-to-use business platform, plus custom
+            cloud, AI and business solutions.
           </p>
         </div>
         <div>
-          <div className="font-semibold text-white mb-3 text-sm">Navigate</div>
+          <div className="font-semibold text-white mb-3 text-sm">Bizzux</div>
           <ul className="space-y-2 text-sm">
-            <li><Link href="/product" className="hover:text-brand-teal transition-colors">Product</Link></li>
+            <li><Link href="/platform" className="hover:text-brand-teal transition-colors">Platform</Link></li>
+            <li><Link href="/custom-solutions" className="hover:text-brand-teal transition-colors">Custom Solutions</Link></li>
+            <li><Link href="/microsoft-365" className="hover:text-brand-teal transition-colors">Microsoft 365</Link></li>
             <li><Link href="/solutions" className="hover:text-brand-teal transition-colors">Solutions</Link></li>
             <li><Link href="/pricing" className="hover:text-brand-teal transition-colors">Pricing</Link></li>
+          </ul>
+        </div>
+        <div>
+          <div className="font-semibold text-white mb-3 text-sm">Company</div>
+          <ul className="space-y-2 text-sm">
             <li><Link href="/about" className="hover:text-brand-teal transition-colors">About</Link></li>
+            <li><Link href="/careers" className="hover:text-brand-teal transition-colors">Careers</Link></li>
             <li><Link href="/contact" className="hover:text-brand-teal transition-colors">Contact</Link></li>
           </ul>
         </div>
         <div>
-          <div className="font-semibold text-white mb-3 text-sm">Contact</div>
-          <ul className="space-y-2 text-sm text-slate-400">
-            <li>Phone: 9591222422</li>
-            <li>Email: sales@bizzux.com</li>
+          <div className="font-semibold text-white mb-3 text-sm">Get in touch</div>
+          <ul className="space-y-2 text-sm text-slate-400 mb-4">
+            <li>sales@bizzux.com</li>
             <li>www.bizzux.com</li>
           </ul>
-        </div>
-        <div>
-          <div className="font-semibold text-white mb-3 text-sm">Get started</div>
-          <Link
-            href="/contact"
-            className="inline-flex rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-white text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity"
+          <a
+            href="https://wa.me/919591222422"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-full bg-green-600 text-white text-sm font-semibold px-5 py-2.5 hover:bg-green-700 transition-colors"
           >
-            Request a demo
-          </Link>
+            <IconWhatsApp className="w-4 h-4" />
+            Chat on WhatsApp
+          </a>
         </div>
       </div>
       <div className="border-t border-white/10 py-6 text-center text-xs text-slate-500">

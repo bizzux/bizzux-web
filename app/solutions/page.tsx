@@ -1,34 +1,47 @@
+import Link from "next/link";
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
-import { IconJuice, IconBakery, IconRestaurant, IconStore } from "@/components/Icons";
+import { IconJuice, IconBakery, IconRestaurant, IconStore, IconLayers, IconSpark, IconBox, IconCloud, IconDatabase, IconTeam, IconMail } from "@/components/Icons";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Solutions — Bizzux",
-  description: "Bizzux adapts to your business — juice and beverage shops, cafés, restaurants, and retail stores.",
+  description: "Bizzux Platform solutions by business type, plus custom technology solutions for growing businesses.",
 };
 
-const solutions = [
-  {
-    icon: IconJuice,
-    title: "For juice and beverage shops",
-    desc: "Manage fresh juices, tea, coffee, shakes, add-ons, stock and self-orders.",
-  },
-  {
-    icon: IconBakery,
-    title: "For cafés, bakeries and snack shops",
-    desc: "Run counter billing, menu management, ingredient purchases, stock alerts and daily sales reporting.",
-  },
-  {
-    icon: IconRestaurant,
-    title: "For restaurants and fast-food outlets",
-    desc: "Create a digital menu, receive self-orders, track payments and understand your top-performing items.",
-  },
-  {
-    icon: IconStore,
-    title: "For retail and provision stores",
-    desc: "Manage products, inventory, purchases, expenses, customers and vendor records from one system.",
-  },
+const platformSolutions = [
+  { icon: IconJuice, title: "For juice and beverage shops", href: "/platform" },
+  { icon: IconBakery, title: "For tea shops and cafés", href: "/platform" },
+  { icon: IconRestaurant, title: "For restaurants and fast-food outlets", href: "/platform" },
+  { icon: IconBakery, title: "For bakeries and snack shops", href: "/platform" },
+  { icon: IconStore, title: "For retail and provision stores", href: "/platform" },
+  { icon: IconLayers, title: "For multi-branch businesses", href: "/platform" },
 ];
+
+const customSolutions = [
+  { icon: IconLayers, title: "Custom business applications", href: "/custom-solutions" },
+  { icon: IconSpark, title: "AI-enabled workflow automation", href: "/custom-solutions" },
+  { icon: IconSpark, title: "Agentic AI solutions", href: "/custom-solutions" },
+  { icon: IconBox, title: "E-commerce websites", href: "/custom-solutions" },
+  { icon: IconCloud, title: "Cloud migration and hosting", href: "/custom-solutions" },
+  { icon: IconDatabase, title: "On-premise and self-hosted solutions", href: "/custom-solutions" },
+  { icon: IconMail, title: "Microsoft 365 setup and integration", href: "/microsoft-365" },
+  { icon: IconTeam, title: "Teams, SharePoint and OneDrive solutions", href: "/microsoft-365" },
+  { icon: IconDatabase, title: "API and business-system integrations", href: "/custom-solutions" },
+];
+
+function SolutionCard({ icon: Icon, title, href }: { icon: any; title: string; href: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-4 rounded-xl border border-slate-100 bg-white p-5 shadow-sm hover:shadow-md hover:border-brand-blue/30 transition-all"
+    >
+      <div className="w-11 h-11 shrink-0 rounded-lg bg-gradient-to-br from-brand-teal to-brand-blue text-white flex items-center justify-center">
+        <Icon className="w-5 h-5" />
+      </div>
+      <span className="font-medium text-sm text-ink">{title}</span>
+    </Link>
+  );
+}
 
 export default function SolutionsPage() {
   return (
@@ -50,24 +63,22 @@ export default function SolutionsPage() {
 
       <section className="py-20">
         <Container>
-          <div className="grid md:grid-cols-2 gap-6">
-            {solutions.map((s) => (
-              <div key={s.title} className="rounded-2xl p-8 border border-slate-100 bg-white shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-teal to-brand-blue text-white flex items-center justify-center mb-5">
-                  <s.icon className="w-7 h-7" />
-                </div>
-                <h3 className="font-semibold text-lg mb-2">{s.title}</h3>
-                <p className="text-slate-600">{s.desc}</p>
-              </div>
-            ))}
+          <h2 className="text-2xl font-bold mb-8">Bizzux Platform Solutions</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-20">
+            {platformSolutions.map((s) => <SolutionCard key={s.title} {...s} />)}
+          </div>
+
+          <h2 className="text-2xl font-bold mb-8">Custom Technology Solutions</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {customSolutions.map((s) => <SolutionCard key={s.title} {...s} />)}
           </div>
         </Container>
       </section>
 
       <section className="py-20 bg-slate-50 text-center">
         <Container>
-          <h2 className="text-3xl font-bold mb-4">Not sure which fits your shop?</h2>
-          <p className="text-slate-600 mb-8">Tell us about your business and we&apos;ll configure Bizzux around it.</p>
+          <h2 className="text-3xl font-bold mb-4">Not sure which fits your business?</h2>
+          <p className="text-slate-600 mb-8">Tell us about your business and we&apos;ll configure the right solution.</p>
           <CTAButton href="/contact">Book a demo</CTAButton>
         </Container>
       </section>
