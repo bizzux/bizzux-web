@@ -1,156 +1,155 @@
-import { Container, Eyebrow, CTAButton } from "@/components/Section";
-import Link from "next/link";
+import Image from "next/image";
+import { Container, Eyebrow, CTAButton, Pill } from "@/components/Section";
+import { IconPOS, IconMenu, IconBox, IconWallet, IconUsers, IconChart } from "@/components/Icons";
 
-const platformFeatures = [
-  { title: "Sales & CRM", desc: "Track leads, manage your pipeline, and keep every customer conversation in one place." },
-  { title: "Invoicing & Billing", desc: "Create, send, and track professional invoices in seconds. Get paid faster." },
-  { title: "Scheduling & Operations", desc: "Manage appointments, projects, and team schedules without the back-and-forth." },
-  { title: "Inventory Management", desc: "Know what you have, what's low, and what's on order — automatically." },
-  { title: "HR & Team Management", desc: "Onboard staff, track time, and manage basic HR needs in one system." },
-  { title: "Reporting & Dashboards", desc: "Real-time revenue, profit, and performance — no more end-of-month guesswork." },
+const pillars = [
+  {
+    title: "Sell better",
+    desc: "POS, digital menu, self-orders, cash, UPI and online payments",
+  },
+  {
+    title: "Control stock",
+    desc: "Purchases, stock, expiry and low-stock alerts",
+  },
+  {
+    title: "Track money",
+    desc: "OpEx, CapEx, customer dues and vendor balances",
+  },
+  {
+    title: "Grow with clarity",
+    desc: "Reports, top-selling items, busy hours and multi-shop view",
+  },
 ];
+
+const features = [
+  {
+    icon: IconPOS,
+    title: "Sales and Point of Sale",
+    desc: "Record counter sales quickly. Accept cash, UPI and online payments. Track every sale by date, item and payment type.",
+  },
+  {
+    icon: IconMenu,
+    title: "Digital Menu and Self-Ordering",
+    desc: "Show your products or menu online. Let customers browse, place self-orders and pay through your preferred method.",
+  },
+  {
+    icon: IconBox,
+    title: "Inventory and Purchases",
+    desc: "Record purchases, track stock by quantity, receive low-stock alerts and manage expiry dates before they become a loss.",
+  },
+  {
+    icon: IconWallet,
+    title: "Expenses and Profit Tracking",
+    desc: "Separate purchases from expenses. Track operating costs and capital investments. See the numbers that matter for your business.",
+  },
+  {
+    icon: IconUsers,
+    title: "Customers and Vendors",
+    desc: "Keep customer and supplier details in one place. Track outstanding amounts, credit periods, purchase history and quick-contact details.",
+  },
+  {
+    icon: IconChart,
+    title: "Business Analytics",
+    desc: "Know your best-selling items, busiest hours, payment split, sales trend and performance across one or more shops.",
+  },
+];
+
+const useCases = ["Juice shops", "Tea shops", "Cafés", "Restaurants", "Bakeries", "Retail stores", "Local businesses"];
 
 export default function Home() {
   return (
     <>
       {/* Hero */}
-      <section className="pt-20 pb-24 bg-gradient-to-b from-teal-50/60 to-white">
-        <Container className="text-center">
-          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight leading-tight max-w-3xl mx-auto">
-            Run Your Business. Build What&apos;s Next.
-            <span className="text-brand"> All Under One Roof.</span>
+      <section className="relative overflow-hidden bg-navy">
+        <div className="absolute inset-0 opacity-40" style={{
+          background: "radial-gradient(60% 50% at 20% 20%, rgba(20,184,166,0.35) 0%, transparent 60%), radial-gradient(50% 50% at 85% 30%, rgba(37,99,235,0.35) 0%, transparent 60%)"
+        }} />
+        <Container className="relative pt-20 pb-16 text-center">
+          <div className="flex justify-center mb-8">
+            <Image src="/logo-transparent.png" alt="Bizzux" width={220} height={90} priority className="h-14 w-auto" />
+          </div>
+          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight leading-tight max-w-3xl mx-auto text-white">
+            Run your business smarter, every day.
           </h1>
-          <p className="mt-6 text-lg text-slate-600 max-w-2xl mx-auto">
-            Bizzux gives growing businesses two ways to win: an all-in-one business
-            management platform ready to use today, and custom software built for the
-            workflows off-the-shelf tools can&apos;t handle.
+          <p className="mt-6 text-lg text-slate-300 max-w-2xl mx-auto">
+            Bizzux is cloud-based POS, inventory, expense and profit management software for small and growing businesses.
+          </p>
+          <p className="mt-3 text-slate-400 max-w-2xl mx-auto">
+            Manage sales, payments, stock, purchases, expenses, customers and business insights in one simple system.
           </p>
           <div className="mt-10 flex flex-wrap gap-4 justify-center">
-            <CTAButton href="/contact">Start Free with Bizzux</CTAButton>
-            <CTAButton href="/custom-software" variant="secondary">Talk to Us About a Custom Build</CTAButton>
+            <CTAButton href="/contact">Book a demo</CTAButton>
+            <CTAButton href="/contact" variant="ghost-light">Start free</CTAButton>
           </div>
         </Container>
-      </section>
-
-      {/* Problem/solution teaser */}
-      <section className="py-20 border-t border-slate-100">
-        <Container className="grid md:grid-cols-2 gap-12 items-center">
-          <div>
-            <Eyebrow>The Problem</Eyebrow>
-            <h2 className="text-3xl font-bold mb-4">
-              You started a business. Nobody handed you a manual.
-            </h2>
-            <p className="text-slate-600 mb-4">
-              Most small business owners don&apos;t start with an accounting degree. They
-              start with an idea, some savings, and a notebook for sales. It works —
-              until they realize a notebook can tell you what you sold today, but not
-              whether you actually made money.
-            </p>
-            <p className="text-slate-600">
-              No tracked revenue and expenses means no net profit, no break-even
-              analysis, and no idea what&apos;s CapEx versus OpEx. Bizzux replaces the
-              notebook and the cash tin with software that does the thinking for you.
-            </p>
-          </div>
-          <div className="bg-slate-50 rounded-2xl p-8 border border-slate-100">
-            <div className="text-sm font-semibold text-slate-500 mb-4">WITHOUT BIZZUX → WITH BIZZUX</div>
-            <ul className="space-y-4">
-              {[
-                ["Guessing at profit", "Real-time net profit, every day"],
-                ["No break-even visibility", "Automatic break-even analysis"],
-                ["CapEx & OpEx lumped together", "Automatically separated and tracked"],
-                ["Manual notebook & cash tin", "One-tap point of sale"],
-                ["No idea what's selling best", "Business intelligence dashboards"],
-              ].map(([before, after]) => (
-                <li key={before} className="flex items-start gap-3 text-sm">
-                  <span className="text-slate-400 line-through w-1/2">{before}</span>
-                  <span className="text-brand font-medium w-1/2">{after}</span>
-                </li>
+        <div className="relative border-t border-white/10 bg-black/20">
+          <Container className="py-6">
+            <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-slate-300">
+              {useCases.map((u, i) => (
+                <span key={u} className="flex items-center gap-8">
+                  <span>{u}</span>
+                  {i < useCases.length - 1 && <span className="text-brand-lime">•</span>}
+                </span>
               ))}
-            </ul>
-          </div>
-        </Container>
+            </div>
+          </Container>
+        </div>
       </section>
 
-      {/* Platform features */}
-      <section className="py-20 bg-slate-50 border-t border-slate-100">
+      {/* One system section */}
+      <section className="py-20 border-b border-slate-100">
         <Container>
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <Eyebrow>Bizzux Platform</Eyebrow>
-            <h2 className="text-3xl font-bold mb-4">Everything your business runs on. In one app.</h2>
+            <Eyebrow>Why Bizzux</Eyebrow>
+            <h2 className="text-3xl font-bold mb-4">One system. Clearer business decisions.</h2>
             <p className="text-slate-600">
-              Invoicing, CRM, scheduling, inventory, HR, and reporting — one login,
-              one source of truth, no more duplicate data entry.
+              Stop switching between notebooks, WhatsApp, spreadsheets and separate billing apps. With Bizzux, every
+              sale, purchase and expense is connected — so you can understand stock, cash flow and profit with
+              confidence.
             </p>
           </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {pillars.map((p) => (
+              <div key={p.title} className="rounded-2xl p-6 bg-brand-gradient-soft border border-slate-100">
+                <h3 className="font-semibold mb-2">{p.title}</h3>
+                <p className="text-sm text-slate-600">{p.desc}</p>
+              </div>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* Feature grid */}
+      <section className="py-20 bg-slate-50">
+        <Container>
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <Eyebrow>Platform</Eyebrow>
+            <h2 className="text-3xl font-bold mb-4">Everything your business needs</h2>
+          </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {platformFeatures.map((f) => (
+            {features.map((f) => (
               <div key={f.title} className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm">
+                <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-brand-teal to-brand-blue text-white flex items-center justify-center mb-4">
+                  <f.icon className="w-5 h-5" />
+                </div>
                 <h3 className="font-semibold mb-2">{f.title}</h3>
                 <p className="text-sm text-slate-600">{f.desc}</p>
               </div>
             ))}
           </div>
-          <div className="text-center mt-12">
-            <CTAButton href="/platform">See the Full Platform</CTAButton>
-          </div>
         </Container>
       </section>
 
-      {/* Custom software teaser */}
-      <section className="py-20 border-t border-slate-100">
-        <Container className="grid md:grid-cols-2 gap-12 items-center">
-          <div className="order-2 md:order-1 bg-slate-50 rounded-2xl p-8 border border-slate-100">
-            <ol className="space-y-5">
-              {[
-                ["Discovery", "We learn your business and where existing tools fall short."],
-                ["Design & Scope", "A clear, fixed project plan — no surprises."],
-                ["Build & Iterate", "Staged development with regular check-ins."],
-                ["Launch & Support", "We deploy, train your team, and stay on for support."],
-              ].map(([title, desc], i) => (
-                <li key={title} className="flex gap-4">
-                  <span className="flex-shrink-0 w-8 h-8 rounded-full bg-brand text-white text-sm font-bold flex items-center justify-center">
-                    {i + 1}
-                  </span>
-                  <div>
-                    <div className="font-semibold">{title}</div>
-                    <div className="text-sm text-slate-600">{desc}</div>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </div>
-          <div className="order-1 md:order-2">
-            <Eyebrow>Custom Software Development</Eyebrow>
-            <h2 className="text-3xl font-bold mb-4">
-              When off-the-shelf isn&apos;t enough, we build it.
-            </h2>
-            <p className="text-slate-600 mb-6">
-              Some businesses run on processes no template can cover. Our custom
-              software team designs and builds bespoke applications, internal tools,
-              and integrations tailored to exactly how your business operates.
-            </p>
-            <CTAButton href="/custom-software">Explore Custom Software</CTAButton>
-          </div>
-        </Container>
-      </section>
-
-      {/* Why Bizzux */}
-      <section className="py-20 bg-brand text-white">
-        <Container className="text-center">
-          <h2 className="text-3xl font-bold mb-4">One team, two ways to solve your software problem.</h2>
-          <p className="text-teal-50 max-w-2xl mx-auto mb-10">
-            Whether you need a business management platform you can start using today,
-            or custom software built around a process no one else has, Bizzux has a
-            path for you.
+      {/* CTA */}
+      <section className="py-20 bg-navy text-white text-center">
+        <Container>
+          <h2 className="text-3xl font-bold mb-4">See Bizzux running your business.</h2>
+          <p className="text-slate-300 max-w-xl mx-auto mb-10">
+            Book a free demo and we&apos;ll show you how Bizzux fits your shop, menu and daily workflow.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <Link href="/contact" className="rounded-full bg-white text-brand font-semibold px-6 py-3 text-sm hover:bg-teal-50 transition-colors">
-              Start Free with Bizzux
-            </Link>
-            <Link href="/custom-software" className="rounded-full border border-white/60 text-white font-semibold px-6 py-3 text-sm hover:bg-white/10 transition-colors">
-              Request a Custom Build
-            </Link>
+            <CTAButton href="/contact">Book a demo</CTAButton>
+            <CTAButton href="/pricing" variant="ghost-light">See pricing</CTAButton>
           </div>
         </Container>
       </section>

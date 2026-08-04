@@ -2,6 +2,14 @@
 
 import { useState } from "react";
 
+const businessTypes = [
+  "Juice / beverage shop",
+  "Café / bakery / snack shop",
+  "Restaurant / fast food",
+  "Retail / provision store",
+  "Other",
+];
+
 export default function ContactForm() {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -29,9 +37,9 @@ export default function ContactForm() {
 
   if (status === "success") {
     return (
-      <div className="rounded-xl border border-brand/30 bg-teal-50 p-8 text-center">
+      <div className="rounded-xl border border-brand-teal/30 bg-teal-50 p-8 text-center">
         <h3 className="font-semibold text-lg mb-2">Thanks — we&apos;ve got it.</h3>
-        <p className="text-sm text-slate-600">We&apos;ll get back to you shortly.</p>
+        <p className="text-sm text-slate-600">Our team will reach out to schedule your demo shortly.</p>
       </div>
     );
   }
@@ -41,38 +49,46 @@ export default function ContactForm() {
       <div className="grid sm:grid-cols-2 gap-5">
         <div>
           <label className="block text-sm font-medium mb-1.5" htmlFor="name">Name</label>
-          <input required id="name" name="name" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <input required id="name" name="name" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal" />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1.5" htmlFor="email">Email</label>
-          <input required type="email" id="email" name="email" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <label className="block text-sm font-medium mb-1.5" htmlFor="business">Business name</label>
+          <input required id="business" name="business" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal" />
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-5">
+        <div>
+          <label className="block text-sm font-medium mb-1.5" htmlFor="mobile">Mobile number</label>
+          <input required type="tel" id="mobile" name="mobile" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1.5" htmlFor="businessType">Business type</label>
+          <select id="businessType" name="businessType" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal">
+            {businessTypes.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1.5" htmlFor="business">Business name (optional)</label>
-        <input id="business" name="business" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        <label className="block text-sm font-medium mb-1.5" htmlFor="shops">Number of shops</label>
+        <input id="shops" name="shops" type="number" min={1} defaultValue={1} className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal" />
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1.5" htmlFor="interest">I&apos;m interested in</label>
-        <select id="interest" name="interest" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand">
-          <option value="platform">Bizzux Platform (free trial)</option>
-          <option value="custom">Custom Software Development</option>
-          <option value="other">Something else</option>
-        </select>
+        <label className="block text-sm font-medium mb-1.5" htmlFor="challenge">Current challenge</label>
+        <textarea id="challenge" name="challenge" rows={3} placeholder="e.g. tracking daily profit, managing stock, too many separate apps" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal" />
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1.5" htmlFor="message">Message</label>
-        <textarea id="message" name="message" rows={4} className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        <label className="block text-sm font-medium mb-1.5" htmlFor="preferredTime">Preferred demo time</label>
+        <input id="preferredTime" name="preferredTime" placeholder="e.g. weekday evenings" className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal" />
       </div>
-      {status === "error" && (
-        <p className="text-sm text-red-600">{errorMsg}</p>
-      )}
+      {status === "error" && <p className="text-sm text-red-600">{errorMsg}</p>}
       <button
         type="submit"
         disabled={status === "loading"}
-        className="w-full rounded-full bg-brand text-white font-semibold px-6 py-3 text-sm hover:bg-brand-dark transition-colors disabled:opacity-60"
+        className="w-full rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-white font-semibold px-6 py-3 text-sm hover:opacity-90 transition-opacity disabled:opacity-60"
       >
-        {status === "loading" ? "Sending…" : "Send"}
+        {status === "loading" ? "Sending…" : "Request a demo"}
       </button>
     </form>
   );

@@ -4,14 +4,15 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "Bizzux — Run Your Business. Build What's Next.",
+  title: "Bizzux — Run your business smarter, every day.",
   description:
-    "Bizzux is an all-in-one business management platform with CRM, invoicing, scheduling, inventory, and HR — plus custom software development for businesses with unique needs.",
+    "Bizzux is cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
   metadataBase: new URL("https://bizzux.com"),
+  icons: { icon: "/logo-transparent.png" },
   openGraph: {
-    title: "Bizzux — Run Your Business. Build What's Next.",
+    title: "Bizzux — Run your business smarter, every day.",
     description:
-      "The all-in-one business management platform, plus custom software development.",
+      "Cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
     url: "https://bizzux.com",
     siteName: "Bizzux",
     type: "website",
