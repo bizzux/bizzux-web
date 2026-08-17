@@ -4,6 +4,10 @@
 
 html {
   scroll-behavior: smooth;
+  /* Defines the variable tailwind.config.ts's `sans` font stack expects.
+     Font files themselves come from @fontsource/inter, imported in
+     app/layout.tsx (self-hosted, no Google Fonts network dependency). */
+  --font-inter: "Inter", system-ui, sans-serif;
 }
 
 body {

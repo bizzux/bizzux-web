@@ -7,7 +7,6 @@ const links = [
   { href: "/custom-solutions", label: "Custom Solutions" },
   { href: "/solutions", label: "Solutions" },
   { href: "/microsoft-365", label: "Microsoft 365" },
-  { href: "/pricing", label: "Pricing" },
   { href: "/about", label: "About" },
   { href: "/careers", label: "Careers" },
 ];
@@ -27,21 +26,33 @@ export default function Nav() {
           ))}
         </nav>
         <div className="flex items-center gap-3 shrink-0">
+          <Link href="/apps" className="hidden sm:block text-sm font-medium text-slate-600 hover:text-brand-blue transition-colors">
+            All apps
+          </Link>
           <Link href="/sign-in" className="hidden sm:block text-sm font-medium text-slate-600 hover:text-brand-blue transition-colors">
             Sign in
+          </Link>
+          <Link
+            href="/sign-in?mode=signup"
+            className="hidden sm:inline-flex rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
+            style={{ color: "#ffffff" }}
+          >
+            Start free trial
           </Link>
           <a
             href="https://wa.me/919591222422"
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-green-500 text-green-600 text-sm font-semibold px-4 py-2.5 hover:bg-green-50 transition-colors"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-green-500 text-sm font-semibold px-4 py-2.5 hover:bg-green-50 transition-colors"
+            style={{ color: "#16a34a" }}
           >
             <IconWhatsApp className="w-4 h-4" />
             WhatsApp
           </a>
           <Link
             href="/contact"
-            className="rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-white text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
+            className="rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
+            style={{ color: "#ffffff" }}
           >
             Book a demo
           </Link>

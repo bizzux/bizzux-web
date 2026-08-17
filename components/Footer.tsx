@@ -4,7 +4,7 @@ import { IconWhatsApp } from "./Icons";
 
 export default function Footer() {
   return (
-    <footer className="bg-navy text-slate-300 mt-24">
+    <footer className="bg-navy text-slate-300">
       <div className="max-w-7xl mx-auto px-6 py-14 grid gap-10 md:grid-cols-5">
         <div className="md:col-span-2">
           <Image src="/logo-transparent.png" alt="Bizzux" width={120} height={49} className="h-8 w-auto mb-4" />
