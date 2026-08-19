@@ -191,7 +191,9 @@ function PlansManager() {
         description: form.description, popular: !!form.popular, active: !!form.active,
         sortOrder: Number(form.sortOrder) || 0,
         features: form.features.split(",").map((s) => s.trim()).filter(Boolean),
-        razorpayPlanId: form.razorpayPlanId.trim(), stripePriceId: form.stripePriceId.trim(),
+        // No razorpayPlanId/stripePriceId here on purpose — the API
+        // auto-creates (or reuses) both from name/price/billingPeriod. See
+        // app/api/admin/plans/route.js's resolveGatewayIds().
       };
       if (editingId) {
         await api("/api/admin/plans", "POST", { action: "update", id: editingId, ...payload });
@@ -247,12 +249,20 @@ function PlansManager() {
           </div>
           <div className="row" style={{ marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
-              <label className="label">Razorpay Plan ID</label>
-              <input className="input" value={form.razorpayPlanId} onChange={(e) => setForm({ ...form, razorpayPlanId: e.target.value })} placeholder="plan_xxxxxxxxxxxxx" />
+              <label className="label">Razorpay Plan</label>
+              <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                {form.razorpayPlanId
+                  ? `Created: ${form.razorpayPlanId}`
+                  : "Created automatically when you save, from the price above."}
+              </p>
             </div>
             <div style={{ flex: 1 }}>
-              <label className="label">Stripe Price ID</label>
-              <input className="input" value={form.stripePriceId} onChange={(e) => setForm({ ...form, stripePriceId: e.target.value })} placeholder="price_xxxxxxxxxxxxx" />
+              <label className="label">Stripe Price</label>
+              <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                {form.stripePriceId
+                  ? `Created: ${form.stripePriceId}`
+                  : "Created automatically when you save, from the price above."}
+              </p>
             </div>
           </div>
           <div className="row" style={{ marginBottom: 16 }}>
@@ -279,6 +289,14 @@ function PlansManager() {
             <div className="row" style={{ justifyContent: "space-between" }}>
               <strong>{p.name} (₹{p.price}/{p.billingPeriod})</strong>
               {p.active === false && <span className="muted" style={{ fontSize: 12 }}>hidden</span>}
+            </div>
+            <div className="row" style={{ marginTop: 4, gap: 12 }}>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Razorpay {p.razorpayPlanId ? "✓" : "not set up yet"}
+              </span>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Stripe {p.stripePriceId ? "✓" : "not set up yet"}
+              </span>
             </div>
             <div className="row" style={{ marginTop: 6 }}>
               <button className="link-btn" onClick={() => edit(p)}>Edit</button>

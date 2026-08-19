@@ -21,7 +21,7 @@ const links = [
   { href: "/custom-solutions", label: "Custom Solutions" },
   { href: "/solutions", label: "Solutions" },
   { href: "/microsoft-365", label: "Microsoft 365" },
-  { href: "/about", label: "About" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/careers", label: "Careers" },
 ];
 
