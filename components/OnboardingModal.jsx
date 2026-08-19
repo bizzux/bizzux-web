@@ -5,10 +5,10 @@ import { useState } from "react";
 // Zoho-style "Getting Started" wizard, shown once on an account owner's
 // first visit to the dashboard (customers/{uid}.onboarded !== true).
 const CURRENCIES = [
-  { code: "INR", label: "India — ₹ INR" },
-  { code: "USD", label: "United States — $ USD" },
-  { code: "GBP", label: "United Kingdom — £ GBP" },
-  { code: "AED", label: "UAE — د.إ AED" },
+  { code: "INR", label: "India (₹ INR)" },
+  { code: "USD", label: "United States ($ USD)" },
+  { code: "GBP", label: "United Kingdom (£ GBP)" },
+  { code: "AED", label: "UAE (د.إ AED)" },
 ];
 
 const TIMEZONES = ["Asia/Kolkata", "Asia/Dubai", "Asia/Singapore", "Europe/London", "America/New_York"];

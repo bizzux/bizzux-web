@@ -38,7 +38,7 @@ export default function ContactForm() {
   if (status === "success") {
     return (
       <div className="rounded-xl border border-brand-teal/30 bg-teal-50 p-8 text-center">
-        <h3 className="font-semibold text-lg mb-2">Thanks — we&apos;ve got it.</h3>
+        <h3 className="font-semibold text-lg mb-2">Thanks, we&apos;ve got it.</h3>
         <p className="text-sm text-slate-600">Our team will reach out to schedule your demo shortly.</p>
       </div>
     );

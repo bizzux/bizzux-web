@@ -2,8 +2,8 @@ import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Resources — Bizzux",
-  description: "Guides and updates from Bizzux — coming soon.",
+  title: "Resources | Bizzux",
+  description: "Guides and updates from Bizzux, coming soon.",
 };
 
 export default function ResourcesPage() {

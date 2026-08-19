@@ -3,7 +3,7 @@ import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "About — Bizzux",
+  title: "About | Bizzux",
   description: "We build cloud and AI-enabled solutions for growing businesses.",
 };
 

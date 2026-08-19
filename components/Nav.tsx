@@ -1,8 +1,18 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { IconWhatsApp } from "./Icons";
 
+// "All apps" sits first, right next to the logo, on every page. The rest
+// are the marketing tabs — always shown, signed in or not, so the menu bar
+// never changes shape as someone moves between bizzux.com and the signed-in
+// app (dashboard/team/profile/apps) — one consistent nav for the whole site.
 const links = [
+  { href: "/apps", label: "All apps" },
   { href: "/platform", label: "Platform" },
   { href: "/custom-solutions", label: "Custom Solutions" },
   { href: "/solutions", label: "Solutions" },
@@ -11,34 +21,68 @@ const links = [
   { href: "/careers", label: "Careers" },
 ];
 
-export default function Nav() {
+type ExtraLink = { href: string; label: string };
+
+// `extraLinks` lets signed-in pages (dashboard/team/profile) add their own
+// account-specific tabs (Dashboard, Team, Admin, Profile) onto this same
+// bar instead of showing a different header once you're signed in.
+export default function Nav({ extraLinks = [] as ExtraLink[] }: { extraLinks?: ExtraLink[] }) {
+  const [user, setUser] = useState<User | null | undefined>(undefined);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    return unsub;
+  }, []);
+
+  const signedIn = !!user;
+
   return (
     <header className="border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-50">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
         <Link href="/" className="flex items-center gap-2 shrink-0">
           <Image src="/logo-transparent.png" alt="Bizzux" width={132} height={54} priority className="h-9 w-auto" />
         </Link>
-        <nav className="hidden xl:flex items-center gap-6 text-sm font-medium text-slate-600">
+        <nav className="hidden xl:flex items-center gap-6 text-sm font-medium" style={{ color: "#000000" }}>
           {links.map((l) => (
             <Link key={l.href} href={l.href} className="hover:text-brand-blue transition-colors whitespace-nowrap">
               {l.label}
             </Link>
           ))}
+          {signedIn &&
+            extraLinks.map((l) => (
+              <Link key={l.href} href={l.href} className="hover:text-brand-blue transition-colors whitespace-nowrap">
+                {l.label}
+              </Link>
+            ))}
         </nav>
         <div className="flex items-center gap-3 shrink-0">
-          <Link href="/apps" className="hidden sm:block text-sm font-medium text-slate-600 hover:text-brand-blue transition-colors">
-            All apps
-          </Link>
-          <Link href="/sign-in" className="hidden sm:block text-sm font-medium text-slate-600 hover:text-brand-blue transition-colors">
-            Sign in
-          </Link>
-          <Link
-            href="/sign-in?mode=signup"
-            className="hidden sm:inline-flex rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
-            style={{ color: "#ffffff" }}
-          >
-            Start free trial
-          </Link>
+          {signedIn ? (
+            <>
+              <Link href="/dashboard" className="hidden sm:block text-sm font-medium hover:text-brand-blue transition-colors" style={{ color: "#000000" }}>
+                Dashboard
+              </Link>
+              <button
+                onClick={() => signOut(auth)}
+                className="hidden sm:inline-flex rounded-full border border-slate-200 text-sm font-semibold px-4 py-2 hover:bg-slate-50 transition-colors"
+                style={{ color: "#000000" }}
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/sign-in" className="hidden sm:block text-sm font-medium hover:text-brand-blue transition-colors" style={{ color: "#000000" }}>
+                Sign in
+              </Link>
+              <Link
+                href="/sign-in?mode=signup"
+                className="hidden sm:inline-flex rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
+                style={{ color: "#ffffff" }}
+              >
+                Start free trial
+              </Link>
+            </>
+          )}
           <a
             href="https://wa.me/919591222422"
             target="_blank"

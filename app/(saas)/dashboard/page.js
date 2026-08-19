@@ -7,7 +7,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import Link from "next/link";
 import OnboardingModal from "@/components/OnboardingModal";
-import AppTopbar from "@/components/AppTopbar";
+import Nav from "@/components/Nav";
 
 const APPS = [
   // `sso: true` means clicking this tile goes through /api/shop-sso instead
@@ -188,7 +188,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <AppTopbar links={topbarLinks} />
+      <Nav extraLinks={topbarLinks} />
 
       {status === "trial" && !expired && remaining !== null && (
         <div className="trial-banner">

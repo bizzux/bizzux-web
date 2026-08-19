@@ -86,18 +86,18 @@ export default function AdminTabs({
                   {apps.map((a) => (
                     <tr key={a.id} className="border-t border-slate-100 align-top">
                       <td className="px-4 py-3 whitespace-nowrap text-slate-500">
-                        {a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "—"}
+                        {a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "N/A"}
                       </td>
                       <td className="px-4 py-3">
                         <div className="font-medium">{a.fullName}</div>
-                        <div className="text-slate-500">{a.course || "—"}</div>
+                        <div className="text-slate-500">{a.course || "N/A"}</div>
                       </td>
                       <td className="px-4 py-3">
                         <div>{a.email}</div>
                         <div className="text-slate-500">{a.mobile}</div>
                       </td>
-                      <td className="px-4 py-3">{a.college || "—"}</td>
-                      <td className="px-4 py-3">{a.area || "—"}</td>
+                      <td className="px-4 py-3">{a.college || "N/A"}</td>
+                      <td className="px-4 py-3">{a.area || "N/A"}</td>
                       <td className="px-4 py-3 space-x-2 whitespace-nowrap">
                         {a.linkedin && (
                           <a href={a.linkedin} target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">

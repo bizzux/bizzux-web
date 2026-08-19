@@ -151,7 +151,7 @@ function TrialSettings() {
   );
 }
 
-const emptyPlan = { name: "", price: "", billingPeriod: "month", description: "", features: "", popular: false, active: true, sortOrder: 0 };
+const emptyPlan = { name: "", price: "", billingPeriod: "month", description: "", features: "", popular: false, active: true, sortOrder: 0, razorpayPlanId: "", stripePriceId: "" };
 
 function PlansManager() {
   const [plans, setPlans] = useState(null);
@@ -176,6 +176,7 @@ function PlansManager() {
       name: p.name || "", price: p.price ?? "", billingPeriod: p.billingPeriod || "month",
       description: p.description || "", features: (p.features || []).join(", "),
       popular: !!p.popular, active: p.active !== false, sortOrder: p.sortOrder ?? 0,
+      razorpayPlanId: p.razorpayPlanId || "", stripePriceId: p.stripePriceId || "",
     });
   }
   function resetForm() { setEditingId(null); setForm(emptyPlan); }
@@ -190,6 +191,7 @@ function PlansManager() {
         description: form.description, popular: !!form.popular, active: !!form.active,
         sortOrder: Number(form.sortOrder) || 0,
         features: form.features.split(",").map((s) => s.trim()).filter(Boolean),
+        razorpayPlanId: form.razorpayPlanId.trim(), stripePriceId: form.stripePriceId.trim(),
       };
       if (editingId) {
         await api("/api/admin/plans", "POST", { action: "update", id: editingId, ...payload });
@@ -242,6 +244,16 @@ function PlansManager() {
           <div style={{ marginBottom: 12 }}>
             <label className="label">Features (comma-separated)</label>
             <input className="input" value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} placeholder="Up to 3 users, Email support" />
+          </div>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label className="label">Razorpay Plan ID</label>
+              <input className="input" value={form.razorpayPlanId} onChange={(e) => setForm({ ...form, razorpayPlanId: e.target.value })} placeholder="plan_xxxxxxxxxxxxx" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="label">Stripe Price ID</label>
+              <input className="input" value={form.stripePriceId} onChange={(e) => setForm({ ...form, stripePriceId: e.target.value })} placeholder="price_xxxxxxxxxxxxx" />
+            </div>
           </div>
           <div className="row" style={{ marginBottom: 16 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
@@ -395,7 +407,7 @@ function PlanLimitsManager() {
       <div className="card" style={{ marginBottom: 16 }}>
         <p className="section-title" style={{ marginTop: 0 }}>Plan tiers</p>
         <p className="muted" style={{ marginTop: 0 }}>
-          Set usage limits per plan — staff logins, shop locations, menu items, and monthly self-orders.
+          Set usage limits per plan: staff logins, shop locations, menu items, and monthly self-orders.
           Leave a field blank for <b>Unlimited</b>. These numbers are for reference and billing conversations
           for now; they aren&apos;t automatically enforced inside Bizzux Shop yet.
         </p>
@@ -407,7 +419,7 @@ function PlanLimitsManager() {
         {err && <p className="error" style={{ marginTop: 10 }}>{err}</p>}
       </div>
 
-      {plans.length === 0 && <p className="muted">No plans yet — add one from the Plans tab, or use the button above.</p>}
+      {plans.length === 0 && <p className="muted">No plans yet. Add one from the Plans tab, or use the button above.</p>}
 
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
         {plans.map((p) => {
@@ -481,10 +493,10 @@ function CustomersList() {
             {customers.map((c) => (
               <tr key={c.id}>
                 <td>{c.email}</td>
-                <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}</td>
+                <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}</td>
                 <td><span className={"status-pill " + (c.status || "trial")}>{c.status || "trial"}</span></td>
-                <td>{c.planName || "—"}</td>
-                <td>{c.trialEndDate ? new Date(c.trialEndDate).toLocaleDateString() : "—"}</td>
+                <td>{c.planName || "N/A"}</td>
+                <td>{c.trialEndDate ? new Date(c.trialEndDate).toLocaleDateString() : "N/A"}</td>
               </tr>
             ))}
           </tbody>

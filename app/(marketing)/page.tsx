@@ -1,7 +1,7 @@
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import {
   IconPOS, IconMenu, IconBox, IconWallet, IconUsers, IconChart,
-  IconLayers, IconSpark, IconCloud, IconShield, IconWhatsApp, IconCheck,
+  IconLayers, IconSpark, IconCloud, IconShield, IconCheck,
   IconStore, IconArrowRight,
 } from "@/components/Icons";
 
@@ -60,20 +60,16 @@ export default function Home() {
         <div className="absolute inset-0 opacity-40" style={{
           background: "radial-gradient(60% 50% at 20% 20%, rgba(20,184,166,0.35) 0%, transparent 60%), radial-gradient(50% 50% at 85% 30%, rgba(37,99,235,0.35) 0%, transparent 60%)"
         }} />
-        <Container className="relative pt-14 pb-12 md:pt-16 md:pb-14 text-center">
-          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight leading-tight max-w-3xl mx-auto text-white">
+        <Container className="relative pt-8 pb-6 md:pt-10 md:pb-8 text-center">
+          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight max-w-3xl mx-auto text-white">
             Run Your Business. Build What&apos;s Next. All Under One Roof.
           </h1>
-          <p className="mt-5 text-lg text-slate-300 max-w-2xl mx-auto">
-            Bizzux gives growing businesses two ways to win: a ready-to-use business management platform for today,
-            and custom AI-enabled software for the workflows off-the-shelf tools cannot handle.
-          </p>
-          <p className="mt-3 text-slate-400 max-w-2xl mx-auto">
+          <p className="mt-4 text-slate-400 max-w-2xl mx-auto">
             Manage sales, inventory, expenses and profit with Bizzux. Build custom cloud, AI and business solutions
             when your business needs something more.
           </p>
-          <div className="mt-8 flex flex-wrap gap-4 justify-center">
-            <CTAButton href="/platform">Explore Bizzux Platform</CTAButton>
+          <div className="mt-6 flex flex-wrap gap-4 justify-center">
+            <CTAButton href="/apps">Explore Bizzux Platform</CTAButton>
             <CTAButton href="/custom-solutions" variant="ghost-light">Build a Custom Solution</CTAButton>
           </div>
         </Container>
@@ -83,44 +79,44 @@ export default function Home() {
           "featured products" panel pattern from bizzux-apps' own launcher
           (icons, layout style) but with Bizzux's own apps and branding. */}
       <div className="px-6 mt-8 md:mt-10 relative z-10">
-        <Container className="!px-0">
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-900/5 p-6 md:p-8 grid md:grid-cols-[300px_1fr] gap-6 md:gap-8">
-            <div className="rounded-xl bg-gradient-to-br from-brand-teal via-brand-cyan to-brand-blue text-white p-6 flex flex-col justify-between">
+        <Container className="!px-0 !max-w-7xl">
+          <div className="rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-900/5 p-8 md:p-12 grid md:grid-cols-[340px_1fr] gap-8 md:gap-12">
+            <div className="rounded-xl bg-gradient-to-br from-brand-teal via-brand-cyan to-brand-blue text-white p-8 flex flex-col justify-between">
               <div>
-                <div className="w-11 h-11 rounded-lg bg-white/15 flex items-center justify-center mb-4">
-                  <IconStore className="w-6 h-6" />
+                <div className="w-14 h-14 rounded-lg bg-white/15 flex items-center justify-center mb-5">
+                  <IconStore className="w-7 h-7" />
                 </div>
-                <h3 className="text-lg font-bold mb-2">Bizzux Shop is live</h3>
-                <p className="text-sm text-white/80">
-                  POS, digital menu, inventory and shop management — start running your counter on Bizzux today, free for 14 days.
+                <h3 className="text-2xl font-bold mb-3">Bizzux Shop is live</h3>
+                <p className="text-base text-white/80">
+                  POS, digital menu, inventory and shop management. Start running your counter on Bizzux today, free for 14 days.
                 </p>
               </div>
               <CTAButton href="/sign-in?mode=signup" variant="ghost-light">Start free trial</CTAButton>
             </div>
 
             <div>
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-5">
-                <span className="text-xs font-bold tracking-wide uppercase text-slate-500">Featured apps</span>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-7">
+                <span className="text-sm font-bold tracking-wide uppercase text-slate-500">Featured apps</span>
                 <a
                   href="/apps"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-xs font-semibold px-4 py-2 hover:opacity-90 transition-opacity whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
                   style={{ color: "#ffffff" }}
                 >
-                  Explore all apps <IconArrowRight className="w-3.5 h-3.5" />
+                  Explore all apps <IconArrowRight className="w-4 h-4" />
                 </a>
               </div>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-8">
                 {featuredApps.map((a) => (
-                  <div key={a.name} className="flex gap-3">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${a.live ? "bg-gradient-to-br from-brand-teal to-brand-blue text-white" : "bg-slate-100 text-slate-400"}`}>
-                      <a.icon className="w-4 h-4" />
+                  <div key={a.name} className="flex gap-4">
+                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center shrink-0 ${a.live ? "bg-gradient-to-br from-brand-teal to-brand-blue text-white" : "bg-slate-100 text-slate-400"}`}>
+                      <a.icon className="w-5 h-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm">{a.name}</span>
+                        <span className="font-semibold text-base">{a.name}</span>
                         {!a.live && <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">Soon</span>}
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{a.desc}</p>
+                      <p className="text-sm text-slate-500 mt-1 leading-relaxed">{a.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -155,7 +151,7 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-              <CTAButton href="/platform">Explore Bizzux Platform</CTAButton>
+              <CTAButton href="/apps">Explore Bizzux Platform</CTAButton>
             </div>
 
             <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-8 flex flex-col">
@@ -232,27 +228,13 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section className="py-16 md:py-20 bg-gradient-to-r from-brand-teal to-brand-blue text-white text-center">
+      <section className="py-10 md:py-12 bg-gradient-to-r from-brand-teal to-brand-blue text-white text-center">
         <Container>
-          <h2 className="text-3xl font-bold mb-4">Let&apos;s build what your business needs.</h2>
-          <p className="text-teal-50 max-w-xl mx-auto mb-8 md:mb-10">
+          <h2 className="text-3xl font-bold mb-3">Let&apos;s build what your business needs.</h2>
+          <p className="text-teal-50 max-w-xl mx-auto">
             Whether it&apos;s daily business management, a custom AI-enabled application, or a professional
-            Microsoft 365 setup — our team can help.
+            Microsoft 365 setup, our team can help.
           </p>
-          <div className="flex flex-wrap gap-4 justify-center">
-            <a
-              href="https://wa.me/919591222422"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full bg-white text-brand-blue font-semibold px-6 py-3 text-sm hover:bg-teal-50 transition-colors"
-            >
-              <IconWhatsApp className="w-4 h-4" />
-              Chat on WhatsApp
-            </a>
-            <a href="/contact" className="inline-flex rounded-full border border-white/60 text-white font-semibold px-6 py-3 text-sm hover:bg-white/10 transition-colors">
-              Contact us
-            </a>
-          </div>
         </Container>
       </section>
     </>

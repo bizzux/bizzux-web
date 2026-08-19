@@ -16,13 +16,13 @@ import "./bzx-app.css";
 // and applies it site-wide, including the (saas) app section — see the
 // `font-family: inherit` change in app/bzx-app.css.
 export const metadata: Metadata = {
-  title: "Bizzux — Run your business smarter, every day.",
+  title: "Bizzux: Run your business smarter, every day.",
   description:
     "Bizzux is cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
   metadataBase: new URL("https://bizzux.com"),
   icons: { icon: "/logo-transparent.png" },
   openGraph: {
-    title: "Bizzux — Run your business smarter, every day.",
+    title: "Bizzux: Run your business smarter, every day.",
     description:
       "Cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
     url: "https://bizzux.com",

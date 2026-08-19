@@ -37,7 +37,7 @@ export default function CareersForm() {
     return (
       <div className="rounded-xl border border-brand-teal/30 bg-teal-50 p-8 text-center">
         <h3 className="font-semibold text-lg mb-2">Application received.</h3>
-        <p className="text-sm text-slate-600">Thanks for your interest in Bizzux — our team will review and reach out.</p>
+        <p className="text-sm text-slate-600">Thanks for your interest in Bizzux. Our team will review and reach out.</p>
       </div>
     );
   }
@@ -91,7 +91,7 @@ export default function CareersForm() {
         <textarea id="why" name="why" rows={4} className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal" />
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1.5" htmlFor="resume">Upload resume — PDF or DOCX</label>
+        <label className="block text-sm font-medium mb-1.5" htmlFor="resume">Upload resume (PDF or DOCX)</label>
         <input
           id="resume"
           name="resume"

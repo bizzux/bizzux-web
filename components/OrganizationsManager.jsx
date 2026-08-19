@@ -95,7 +95,7 @@ export default function OrganizationsManager() {
       <div className="card">
         <h3 style={{ marginBottom: 6 }}>Add Organization</h3>
         <p className="muted" style={{ marginTop: 0, marginBottom: 14 }}>
-          Provisions a placeholder organization record — this is separate from a real signed-up customer
+          Provisions a placeholder organization record. This is separate from a real signed-up customer
           account. No login is created here; inviting an actual person still happens from that
           organization&apos;s own <code>/team</code> once it has an account.
         </p>
@@ -193,7 +193,7 @@ export default function OrganizationsManager() {
               </select>
               {plans.length === 0 && (
                 <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
-                  No plans configured yet — add Essential/Business/Premium (or your own) from the Plans tab first.
+                  No plans configured yet. Add Essential/Business/Premium (or your own) from the Plans tab first.
                 </p>
               )}
             </div>

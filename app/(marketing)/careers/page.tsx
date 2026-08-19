@@ -4,7 +4,7 @@ import CareersForm from "./CareersForm";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Careers & Internships — Bizzux",
+  title: "Careers & Internships | Bizzux",
   description: "Build the future of business software with Bizzux. Internship opportunities across engineering, design, AI and business.",
 };
 

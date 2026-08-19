@@ -75,7 +75,7 @@ export async function POST(req) {
     const planId = String(body.planId || "").trim();
     if (!planId) throw { status: 400, message: "Profile (plan) is required" };
     const planSnap = await adminDb().doc("plans/" + planId).get();
-    if (!planSnap.exists) throw { status: 400, message: "That plan no longer exists — refresh and try again" };
+    if (!planSnap.exists) throw { status: 400, message: "That plan no longer exists. Refresh and try again." };
     const planName = planSnap.data().name || "";
 
     const ref = await adminDb().collection("organizations").add({

@@ -4,23 +4,23 @@ import PricingPlans from "./PricingPlans";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Pricing — Bizzux",
+  title: "Pricing | Bizzux",
   description: "Simple plans that grow with your business. Starter, Growth and Multi-Shop plans from Bizzux.",
 };
 
 export default function PricingPage() {
   return (
     <>
-      <section className="pt-20 pb-16 text-center bg-gradient-to-b from-teal-50/60 to-white">
+      <section className="pt-14 pb-8 md:pt-16 md:pb-10 text-center bg-gradient-to-b from-teal-50/60 to-white">
         <Container>
           <Eyebrow>Pricing</Eyebrow>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-0">
             Simple plans that grow with your business.
           </h1>
         </Container>
       </section>
 
-      <section className="py-16 border-t border-slate-100">
+      <section className="pt-6 pb-16 md:pt-8 border-t border-slate-100">
         <Container>
           <PricingPlans />
           <div className="mt-12 text-center text-sm text-slate-500 space-y-1 max-w-xl mx-auto">

@@ -5,11 +5,11 @@ import { IconWhatsApp } from "./Icons";
 export default function Footer() {
   return (
     <footer className="bg-navy text-slate-300">
-      <div className="max-w-7xl mx-auto px-6 py-14 grid gap-10 md:grid-cols-5">
-        <div className="md:col-span-2">
+      <div className="max-w-7xl mx-auto px-6 py-10 grid gap-6 md:grid-cols-4">
+        <div>
           <Image src="/logo-transparent.png" alt="Bizzux" width={120} height={49} className="h-8 w-auto mb-4" />
-          <p className="text-sm text-slate-400 max-w-xs">
-            Cloud software and AI solutions for growing businesses — a ready-to-use business platform, plus custom
+          <p className="text-sm text-slate-400">
+            Cloud software and AI solutions for growing businesses: a ready-to-use business platform, plus custom
             cloud, AI and business solutions.
           </p>
         </div>
@@ -48,7 +48,7 @@ export default function Footer() {
           </a>
         </div>
       </div>
-      <div className="border-t border-white/10 py-6 text-center text-xs text-slate-500">
+      <div className="border-t border-white/10 py-4 text-center text-xs text-slate-500">
         © {new Date().getFullYear()} Bizzux. All rights reserved.
       </div>
     </footer>

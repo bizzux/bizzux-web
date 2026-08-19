@@ -6,7 +6,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import OrganizationsManager from "@/components/OrganizationsManager";
-import AppTopbar from "@/components/AppTopbar";
+import Nav from "@/components/Nav";
 
 // Anyone can reach their own profile; only the fields below decide what's
 // visible on it. "canManageOrgs" mirrors requireOrgManager() server-side
@@ -59,7 +59,7 @@ export default function ProfilePage() {
 
   return (
     <div>
-      <AppTopbar links={topbarLinks} />
+      <Nav extraLinks={topbarLinks} />
 
       <div className="admin-shell">
         <h1 className="dash-heading">My Profile</h1>
@@ -90,7 +90,7 @@ export default function ProfilePage() {
               <div className="row" style={{ gap: 32, flexWrap: "wrap" }}>
                 <div>
                   <div className="label">Name</div>
-                  <div style={{ fontWeight: 700 }}>{customer.companyName || "—"}</div>
+                  <div style={{ fontWeight: 700 }}>{customer.companyName || "N/A"}</div>
                 </div>
                 {customer.status && (
                   <div>
@@ -115,7 +115,7 @@ export default function ProfilePage() {
           <>
             <h2 style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>Add Organization</h2>
             <p className="muted" style={{ marginTop: 0, marginBottom: 16, fontSize: 13.5 }}>
-              Available to Global Admin and Admin — provision a new organization record.
+              Available to Global Admin and Admin, provision a new organization record.
             </p>
             <OrganizationsManager />
           </>

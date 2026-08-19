@@ -147,7 +147,7 @@ function AcceptInviteInner() {
         <div className="login-card">
           {logo}
           <h1>Welcome back</h1>
-          <p className="sub">Your password is already set for <strong>{email}</strong> — sign in to finish joining the team.</p>
+          <p className="sub">Your password is already set for <strong>{email}</strong>. Sign in to finish joining the team.</p>
 
           <form onSubmit={submitSignIn} noValidate>
             <div>

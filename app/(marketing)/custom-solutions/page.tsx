@@ -3,7 +3,7 @@ import { IconLayers, IconSpark, IconCloud, IconChart, IconDatabase, IconBox, Ico
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Custom Cloud & AI Solutions — Bizzux",
+  title: "Custom Cloud & AI Solutions | Bizzux",
   description:
     "Custom web applications, e-commerce platforms, AI-enabled workflows and secure cloud solutions built around the way your business works.",
 };

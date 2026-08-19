@@ -20,7 +20,27 @@ type Plan = {
   popular?: boolean;
   active?: boolean;
   sortOrder?: number;
+  razorpayPlanId?: string;
+  stripePriceId?: string;
 };
+
+declare global {
+  interface Window {
+    Razorpay?: any;
+  }
+}
+
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(false);
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 function formatPrice(priceINR: number, currency: "INR" | "USD") {
   if (currency === "INR") return `₹${priceINR.toLocaleString("en-IN")}`;
@@ -38,6 +58,7 @@ export default function PricingPlans() {
   const [plans, setPlans] = useState<Plan[] | null>(null); // null = loading
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [pickingId, setPickingId] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
@@ -59,21 +80,72 @@ export default function PricingPlans() {
     })();
   }, []);
 
+  // Starts a real recurring-subscription checkout: INR plans go through
+  // Razorpay Checkout.js (opened inline, right here), USD plans redirect to
+  // a hosted Stripe Checkout page. Both hit the same /api/checkout route,
+  // which picks the gateway based on the `gateway` param below. See
+  // app/api/checkout/route.js for the server side of this.
   async function choosePlan(planId: string) {
     if (!user) {
       router.push("/sign-in?mode=signup");
       return;
     }
+    setCheckoutError(null);
     setPickingId(planId);
+    const gateway = currency === "INR" ? "razorpay" : "stripe";
     try {
       const token = await user.getIdToken();
-      await fetch("/api/select-plan", {
+      const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, gateway }),
       });
-      router.push("/dashboard");
-    } catch {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't start checkout. Please try again.");
+
+      if (data.gateway === "stripe") {
+        window.location.href = data.url;
+        return;
+      }
+
+      // Razorpay: open Checkout.js inline instead of redirecting away.
+      const loaded = await loadRazorpayScript();
+      if (!loaded || !window.Razorpay) {
+        throw new Error("Couldn't load Razorpay checkout. Please check your connection and try again.");
+      }
+
+      const rzp = new window.Razorpay({
+        key: data.keyId,
+        subscription_id: data.subscriptionId,
+        name: "Bizzux",
+        description: data.planName ? `${data.planName} plan subscription` : "Subscription",
+        theme: { color: "#0f766e" },
+        handler: async (response: {
+          razorpay_payment_id: string;
+          razorpay_subscription_id: string;
+          razorpay_signature: string;
+        }) => {
+          try {
+            await fetch("/api/checkout/verify", {
+              method: "POST",
+              headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+              body: JSON.stringify(response),
+            });
+          } finally {
+            router.push("/dashboard?checkout=success");
+          }
+        },
+        modal: {
+          ondismiss: () => setPickingId(null),
+        },
+      });
+      rzp.on("payment.failed", () => {
+        setCheckoutError("Payment failed. Please try again or use a different card.");
+        setPickingId(null);
+      });
+      rzp.open();
+    } catch (e) {
+      setCheckoutError(e instanceof Error ? e.message : "Couldn't start checkout. Please try again.");
       setPickingId(null);
     }
   }
@@ -92,7 +164,7 @@ export default function PricingPlans() {
 
   return (
     <div>
-      <div className="flex justify-center mb-12">
+      <div className="flex justify-center mb-8">
         <div className="inline-flex rounded-full border border-slate-200 p-1 bg-white">
           {(["INR", "USD"] as const).map((c) => (
             <button
@@ -151,6 +223,10 @@ export default function PricingPlans() {
           </div>
         ))}
       </div>
+
+      {checkoutError && (
+        <p className="text-center text-sm text-red-600 mt-6">{checkoutError}</p>
+      )}
 
       {currency === "USD" && (
         <p className="text-center text-xs text-slate-400 mt-6">

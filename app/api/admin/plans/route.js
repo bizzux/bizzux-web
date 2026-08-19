@@ -27,13 +27,14 @@ export async function POST(req) {
     const { action, id } = body;
 
     if (action === "create") {
-      const { name, price, billingPeriod, description, features, popular, active, sortOrder, limits } = body;
+      const { name, price, billingPeriod, description, features, popular, active, sortOrder, limits, razorpayPlanId, stripePriceId } = body;
       if (!name || price === undefined) throw { status: 400, message: "Name and price are required" };
       const ref = await adminDb().collection("plans").add({
         name, price: Number(price), billingPeriod: billingPeriod || "month",
         description: description || "", features: Array.isArray(features) ? features : [],
         popular: !!popular, active: active !== false, sortOrder: Number(sortOrder) || 0,
         limits: limits && typeof limits === "object" ? limits : {},
+        razorpayPlanId: razorpayPlanId || "", stripePriceId: stripePriceId || "",
         createdAt: FieldValue.serverTimestamp(),
       });
       return NextResponse.json({ ok: true, id: ref.id });
@@ -41,11 +42,12 @@ export async function POST(req) {
 
     if (action === "update") {
       if (!id) throw { status: 400, message: "Plan id required" };
-      const { name, price, billingPeriod, description, features, popular, active, sortOrder } = body;
+      const { name, price, billingPeriod, description, features, popular, active, sortOrder, razorpayPlanId, stripePriceId } = body;
       await adminDb().doc("plans/" + id).set({
         name, price: Number(price), billingPeriod: billingPeriod || "month",
         description: description || "", features: Array.isArray(features) ? features : [],
         popular: !!popular, active: active !== false, sortOrder: Number(sortOrder) || 0,
+        razorpayPlanId: razorpayPlanId || "", stripePriceId: stripePriceId || "",
       }, { merge: true });
       return NextResponse.json({ ok: true });
     }

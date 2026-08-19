@@ -139,7 +139,7 @@ export default function LoginPage() {
       <div className="login-shell">
       <div className="login-aside">
         <h2>Run your business smarter, every day.</h2>
-        <p>One account for POS, inventory, expenses and profit — start free, no card required.</p>
+        <p>One account for POS, inventory, expenses and profit. Start free, no card required.</p>
         <ul>
           <li>Sales, inventory and expenses in one place</li>
           <li>Multi-branch visibility as you grow</li>

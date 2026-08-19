@@ -6,7 +6,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { PROFILES } from "@/lib/roles";
 import Link from "next/link";
-import AppTopbar from "@/components/AppTopbar";
+import Nav from "@/components/Nav";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -71,13 +71,21 @@ export default function TeamPage() {
   }, [user]);
 
   if (!user || isAdmin === null) {
-    return <div className="admin-shell"><p className="muted">Loading…</p></div>;
+    return (
+      <div>
+        <Nav extraLinks={[{ href: "/dashboard", label: "Dashboard" }, { href: "/profile", label: "Profile" }]} />
+        <div className="admin-shell"><p className="muted">Loading…</p></div>
+      </div>
+    );
   }
   if (!isAdmin) {
     return (
-      <div className="admin-shell">
-        <p>You don&apos;t have access to this page.</p>
-        <Link href="/dashboard" className="btn-primary-sm">Back to dashboard</Link>
+      <div>
+        <Nav extraLinks={[{ href: "/dashboard", label: "Dashboard" }, { href: "/profile", label: "Profile" }]} />
+        <div className="admin-shell">
+          <p>You don&apos;t have access to this page.</p>
+          <Link href="/dashboard" className="btn-primary-sm">Back to dashboard</Link>
+        </div>
       </div>
     );
   }
@@ -104,7 +112,7 @@ export default function TeamPage() {
 
   return (
     <div>
-      <AppTopbar links={[{ href: "/dashboard", label: "Dashboard" }, { href: "/profile", label: "Profile" }]} />
+      <Nav extraLinks={[{ href: "/dashboard", label: "Dashboard" }, { href: "/profile", label: "Profile" }]} />
 
       <div className="admin-shell">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
@@ -130,9 +138,9 @@ export default function TeamPage() {
               <tbody>
                 {members.map((m) => (
                   <tr key={m.id}>
-                    <td>{[m.firstName, m.lastName].filter(Boolean).join(" ") || "—"}</td>
+                    <td>{[m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A"}</td>
                     <td>{m.email}</td>
-                    <td>{m.role || "—"}</td>
+                    <td>{m.role || "N/A"}</td>
                     <td>{m.profile}</td>
                     <td>
                       <span className={"status-pill " + (m.status === "active" ? "active" : "trial")}>

@@ -4,7 +4,7 @@ import { IconJuice, IconBakery, IconRestaurant, IconStore, IconLayers, IconSpark
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Solutions — Bizzux",
+  title: "Solutions | Bizzux",
   description: "Bizzux Platform solutions by business type, plus custom technology solutions for growing businesses.",
 };
 

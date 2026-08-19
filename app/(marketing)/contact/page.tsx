@@ -4,8 +4,8 @@ import ContactForm from "./ContactForm";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Contact — Bizzux",
-  description: "Let's build what your business needs — Bizzux platform, custom AI solutions, or Microsoft 365 setup.",
+  title: "Contact | Bizzux",
+  description: "Let's build what your business needs: Bizzux platform, custom AI solutions, or Microsoft 365 setup.",
 };
 
 export default function ContactPage() {
@@ -56,7 +56,7 @@ export default function ContactPage() {
             </div>
             <p className="text-sm text-slate-500 mt-8">
               Or fill out the form and tell us about your business, products, number of shops and current
-              challenges — we&apos;ll show you how Bizzux can be configured around the way you work.
+              challenges. We&apos;ll show you how Bizzux can be configured around the way you work.
             </p>
           </div>
           <div className="lg:col-span-3">

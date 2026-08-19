@@ -3,7 +3,7 @@ import { IconPOS, IconWallet, IconBox, IconChart } from "@/components/Icons";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Product — Bizzux",
+  title: "Product | Bizzux",
   description: "From sale to insight, automatically. See how Bizzux connects every part of your daily business.",
 };
 
@@ -21,7 +21,7 @@ export default function ProductPage() {
         <Container>
           <Eyebrow>Product</Eyebrow>
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
-            From sale to insight — automatically.
+            From sale to insight, automatically.
           </h1>
         </Container>
       </section>

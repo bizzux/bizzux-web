@@ -2,7 +2,7 @@ import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Custom Software Development — Bizzux",
+  title: "Custom Software Development | Bizzux",
   description:
     "Custom software development for businesses that have outgrown off-the-shelf tools. From internal tools to full platforms, Bizzux builds software around how you actually work.",
 };
@@ -33,7 +33,7 @@ export default function CustomSoftwarePage() {
           <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-10">
             Some businesses run on processes no template can cover. We design and
             build bespoke applications, internal tools, and integrations tailored to
-            exactly how your business operates — not the other way around.
+            exactly how your business operates, not the other way around.
           </p>
           <CTAButton href="/contact">Request a Consultation</CTAButton>
         </Container>
@@ -55,8 +55,8 @@ export default function CustomSoftwarePage() {
           <div>
             <h2 className="text-2xl font-bold mb-6">Who it&apos;s for</h2>
             <p className="text-slate-700">
-              Growing SMBs and agencies whose workflows are too specific — or too
-              critical — to force into a generic tool. If you&apos;ve ever said
+              Growing SMBs and agencies whose workflows are too specific, or too
+              critical, to force into a generic tool. If you&apos;ve ever said
               &ldquo;we need software that does exactly X, and nothing on the market
               does that,&rdquo; this is for you.
             </p>

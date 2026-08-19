@@ -359,7 +359,7 @@
 }
 .bzx-app .app-card2:hover { box-shadow: 0 12px 28px rgba(15,23,42,0.08); transform: translateY(-2px); }
 .bzx-app .app-card2 .apps-panel-icon { width: 36px; height: 36px; font-size: 15px; border-radius: 9px; }
-.bzx-app .app-card2 h4 { font-size: 15px; display: flex; align-items: center; gap: 8px; margin: 0; }
+.bzx-app .app-card2 h4 { font-size: 15px; font-weight: 700; color: #000000; display: flex; align-items: center; gap: 8px; margin: 0; }
 .bzx-app .app-card2 p { font-size: 13px; color: var(--muted); line-height: 1.5; flex: 1; margin: 0; }
 .bzx-app .app-card2 .btn-primary { align-self: flex-start; padding: 8px 16px; font-size: 12.5px; box-shadow: none; }
 .bzx-app .app-card2 .btn-outline-dark { align-self: flex-start; padding: 8px 16px; font-size: 12.5px; }

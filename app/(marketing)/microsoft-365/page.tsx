@@ -3,7 +3,7 @@ import { IconMail, IconTeam, IconDatabase, IconLayers } from "@/components/Icons
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Microsoft 365 Setup — Bizzux",
+  title: "Microsoft 365 Setup | Bizzux",
   description:
     "Get a professional business identity with your own domain email, Microsoft Teams, OneDrive and SharePoint, set up by Bizzux.",
 };

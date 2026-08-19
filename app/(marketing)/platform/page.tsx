@@ -3,7 +3,7 @@ import { IconPOS, IconMenu, IconBox, IconWallet, IconUsers, IconChart, IconLayer
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Bizzux Platform — Cloud POS, Inventory, Expense & Profit Software",
+  title: "Bizzux Platform | Cloud POS, Inventory, Expense & Profit Software",
   description:
     "Cloud-based POS, Inventory, Expense & Profit Management Software for shops, cafés, restaurants, bakeries, retail stores and growing local businesses.",
 };
