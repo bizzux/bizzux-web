@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import LogoutButton from "./LogoutButton";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { onAuthStateChanged, type User } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import SuperAdminPanel from "@/components/SuperAdminPanel";
+import Nav from "@/components/Nav";
+import AccountTabs from "@/components/AccountTabs";
 
 type Application = {
   id: string;
@@ -20,21 +24,84 @@ type Application = {
 
 // Combines bizzux.com's existing Career Applications tool with
 // apps.bizzux.com's Super Admin panel under one /admin route (they used to
-// collide on the same path in the two separate codebases). Each tab keeps
-// its own, separate auth: Career Applications is gated by the page-level
-// cookie session (middleware.ts, unchanged); Super Admin is gated inside
-// SuperAdminPanel by Firebase Auth + SUPER_ADMIN_EMAIL.
-export default function AdminTabs({
-  apps,
-  loadError,
-}: {
-  apps: Application[];
-  loadError: string | null;
-}) {
+// collide on the same path in the two separate codebases). /admin used to
+// have its own separate cookie/ADMIN_PASSWORD password gate on top of this
+// (middleware.ts) — that's been removed, so this page is now gated the
+// same way every other admin surface is: signed-in Firebase user +
+// Super Admin (SUPER_ADMIN_EMAIL), same isSuper flag AccountTabs uses to
+// decide whether to show the "Admin" tab at all.
+export default function AdminTabs() {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = checking auth
+  const [isSuper, setIsSuper] = useState<boolean | null>(null); // null = checking role
   const [tab, setTab] = useState<"career" | "saas">("career");
+  const [apps, setApps] = useState<Application[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) {
+        router.push("/sign-in");
+        return;
+      }
+      setUser(u);
+    });
+    return unsub;
+  }, [router]);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const t = await user.getIdToken();
+        const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + t } });
+        const d = await r.json();
+        setIsSuper(d.superAdmin === true);
+      } catch {
+        setIsSuper(false);
+      }
+    })();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || isSuper !== true) return;
+    (async () => {
+      try {
+        const t = await user.getIdToken();
+        const r = await fetch("/api/admin/career-applications", { headers: { Authorization: "Bearer " + t } });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Could not load applications.");
+        setApps(d.apps || []);
+      } catch (e: any) {
+        setLoadError(e?.message || "Could not load applications.");
+      }
+    })();
+  }, [user, isSuper]);
+
+  if (user === undefined || isSuper === null) {
+    return (
+      <div>
+        <Nav />
+        <div className="py-12 text-center text-slate-400">Loading…</div>
+      </div>
+    );
+  }
+
+  if (!isSuper) {
+    return (
+      <div>
+        <Nav />
+        <AccountTabs active="admin" isSuper={false} />
+        <div className="py-12 text-center text-slate-500">You don&apos;t have access to this page.</div>
+      </div>
+    );
+  }
 
   return (
-    <section className="py-12 bg-slate-50 min-h-[70vh]">
+    <>
+      <Nav />
+      <AccountTabs active="admin" isSuper={true} />
+      <section className="py-12 bg-slate-50 min-h-[70vh]">
       <div className="max-w-6xl mx-auto px-6">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -43,7 +110,6 @@ export default function AdminTabs({
               {tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` : "Bizzux SaaS platform"}
             </p>
           </div>
-          <LogoutButton />
         </div>
 
         <div className="flex gap-1 mb-8 bg-slate-100 p-1 rounded-lg w-fit">
@@ -140,6 +206,7 @@ export default function AdminTabs({
           </div>
         )}
       </div>
-    </section>
+      </section>
+    </>
   );
 }
