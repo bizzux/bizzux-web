@@ -6,4 +6,7 @@ node_modules
 *.log
 scripts/migrate.env
 
-.vercel
+# Files Claude moves here instead of deleting outright (it can't delete on
+# your machine) when cleaning up old code — safe to permanently delete this
+# folder any time; nothing in the app references it.
+_to_delete
