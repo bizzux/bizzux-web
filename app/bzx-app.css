@@ -296,8 +296,8 @@
 .bzx-app .status-pill.active { background: #f0fdf4; color: #15803d; }
 .bzx-app .status-pill.expired { background: #fef2f2; color: #991b1b; }
 .bzx-app .admin-shell { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
-.bzx-app .admin-tabs { display: flex; gap: 6px; margin-bottom: 28px; background: #eef2f7; padding: 4px; border-radius: 10px; width: fit-content; }
-.bzx-app .admin-tab { background: transparent; border: none; border-radius: 8px; padding: 9px 18px; font-weight: 700; font-size: 13.5px; color: var(--muted); }
+.bzx-app .admin-tabs { display: flex; gap: 6px; margin-bottom: 18px; background: #eef2f7; padding: 4px; border-radius: 10px; width: fit-content; }
+.bzx-app .admin-tab { background: transparent; border: none; border-radius: 8px; padding: 7px 16px; font-weight: 700; font-size: 13.5px; color: var(--muted); }
 .bzx-app .admin-tab.active { background: #fff; color: var(--blue); box-shadow: 0 1px 3px rgba(15,23,42,0.12); }
 .bzx-app .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
 .bzx-app .table { width: 100%; border-collapse: collapse; font-size: 13.5px; }

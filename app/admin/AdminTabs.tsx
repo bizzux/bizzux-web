@@ -101,18 +101,17 @@ export default function AdminTabs() {
     <>
       <Nav />
       <AccountTabs active="admin" isSuper={true} />
-      <section className="py-12 bg-slate-50 min-h-[70vh]">
+      <section className="pt-5 pb-10 bg-slate-50 min-h-[70vh]">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold">Admin</h1>
             <p className="text-sm text-slate-500">
               {tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` : "Bizzux SaaS platform"}
             </p>
           </div>
-        </div>
 
-        <div className="flex gap-1 mb-8 bg-slate-100 p-1 rounded-lg w-fit">
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
           <button
             className={`px-4 py-2 rounded-md text-sm font-semibold ${tab === "career" ? "bg-white text-brand-blue shadow-sm" : "text-slate-500"}`}
             onClick={() => setTab("career")}
@@ -125,6 +124,7 @@ export default function AdminTabs() {
           >
             Super Admin (SaaS)
           </button>
+          </div>
         </div>
 
         {tab === "career" && (

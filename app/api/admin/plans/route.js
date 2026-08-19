@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSuperAdmin, requireOrgManager, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
-import { razorpay } from "@/lib/razorpay";
-import { stripe } from "@/lib/stripe";
+import { createRazorpayPlan, createStripePrice } from "@/lib/gatewayPlans";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,58 +17,9 @@ export const dynamic = "force-dynamic";
 // gateway's API keys (RAZORPAY_KEY_ID/SECRET, STRIPE_SECRET_KEY) aren't
 // configured yet, that gateway is silently skipped — nothing blocks saving
 // the plan itself, and the ID just stays empty until keys are added.
-function razorpayPeriod(billingPeriod) {
-  const p = (billingPeriod || "month").toLowerCase();
-  if (p.startsWith("year")) return "yearly";
-  if (p.startsWith("week")) return "weekly";
-  if (p.startsWith("day")) return "daily";
-  return "monthly";
-}
-function stripeInterval(billingPeriod) {
-  const p = (billingPeriod || "month").toLowerCase();
-  if (p.startsWith("year")) return "year";
-  if (p.startsWith("week")) return "week";
-  if (p.startsWith("day")) return "day";
-  return "month";
-}
-
-// Rough INR -> USD conversion for the Stripe (USD) side — same estimated
-// rate the pricing page shows customers (PricingPlans.tsx's USD_RATE).
-const USD_RATE = 83;
-
-async function createRazorpayPlan({ name, price, billingPeriod }) {
-  try {
-    const plan = await razorpay().plans.create({
-      period: razorpayPeriod(billingPeriod),
-      interval: 1,
-      item: {
-        name: `Bizzux ${name}`,
-        amount: Math.round(Number(price) * 100), // paise
-        currency: "INR",
-      },
-    });
-    return plan.id;
-  } catch (e) {
-    console.error("Auto-create Razorpay plan failed:", e?.message || e);
-    return null;
-  }
-}
-
-async function createStripePrice({ name, price, billingPeriod }) {
-  try {
-    const unitAmount = Math.round((Number(price) / USD_RATE) * 100); // USD cents
-    const p = await stripe().prices.create({
-      currency: "usd",
-      unit_amount: unitAmount,
-      recurring: { interval: stripeInterval(billingPeriod) },
-      product_data: { name: `Bizzux ${name}` },
-    });
-    return p.id;
-  } catch (e) {
-    console.error("Auto-create Stripe price failed:", e?.message || e);
-    return null;
-  }
-}
+// (Discounted variants of these plans, created when an offer code is
+// redeemed, reuse the same createRazorpayPlan/createStripePrice helpers —
+// see lib/gatewayPlans.js and app/api/admin/offers/route.js.)
 
 // Picks the razorpayPlanId/stripePriceId to save. An explicit value on the
 // request wins (manual override still works if ever needed); otherwise a

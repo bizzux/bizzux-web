@@ -17,6 +17,7 @@ const TABS = [
   { id: "trial", label: "Trial settings" },
   { id: "plans", label: "Plans" },
   { id: "planlimits", label: "Plan Limits" },
+  { id: "offers", label: "Offers" },
   { id: "customers", label: "Customers" },
   { id: "organizations", label: "Add Organization" },
 ];
@@ -95,6 +96,7 @@ export default function SuperAdminPanel() {
       {tab === "trial" && <TrialSettings />}
       {tab === "plans" && <PlansManager />}
       {tab === "planlimits" && <PlanLimitsManager />}
+      {tab === "offers" && <OffersManager />}
       {tab === "customers" && <CustomersList />}
       {tab === "organizations" && <OrganizationsManager />}
     </div>
@@ -236,7 +238,12 @@ function PlansManager() {
             </div>
             <div style={{ flex: 1 }}>
               <label className="label">Billing period</label>
-              <input className="input" value={form.billingPeriod} onChange={(e) => setForm({ ...form, billingPeriod: e.target.value })} placeholder="month" />
+              <select className="input" value={form.billingPeriod} onChange={(e) => setForm({ ...form, billingPeriod: e.target.value })}>
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+                <option value="year">Year</option>
+              </select>
             </div>
           </div>
           <div style={{ marginBottom: 12 }}>
@@ -304,6 +311,204 @@ function PlansManager() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+const emptyOffer = {
+  code: "", planId: "", discountType: "percent", discountValue: "",
+  duration: "forever", cyclesCount: "", expiresAt: "", maxRedemptions: "", active: true,
+};
+
+function discountLabel(o) {
+  return o.discountType === "flat" ? `₹${o.discountValue} off` : `${o.discountValue}% off`;
+}
+function durationLabel(o) {
+  if (o.duration === "once") return "first payment only";
+  if (o.duration === "cycles") return `first ${o.cyclesCount} billing cycle${o.cyclesCount === 1 ? "" : "s"}`;
+  return "for the life of the subscription";
+}
+
+// Not implemented via Razorpay's native "Offers" or Stripe's native
+// "Coupons" — see app/api/checkout/route.js's comment for why (Razorpay
+// Offers can only be created from their Dashboard, not via API). Redeeming
+// a code instead auto-creates a discounted-price Plan/Price behind the
+// scenes, same as the Plans tab above.
+function OffersManager() {
+  const [offers, setOffers] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [form, setForm] = useState(emptyOffer);
+  const [editingId, setEditingId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function load() {
+    try {
+      const [o, p] = await Promise.all([
+        api("/api/admin/offers", "GET"),
+        api("/api/admin/plans", "GET"),
+      ]);
+      setOffers(o.offers || []);
+      setPlans(p.plans || []);
+    } catch {
+      setOffers([]);
+    }
+  }
+  useEffect(() => { load(); }, []);
+
+  function edit(o) {
+    setEditingId(o.id);
+    setForm({
+      code: o.id, planId: o.planId || "", discountType: o.discountType || "percent",
+      discountValue: o.discountValue ?? "", duration: o.duration || "forever",
+      cyclesCount: o.cyclesCount ?? "", expiresAt: o.expiresAt ? o.expiresAt.slice(0, 10) : "",
+      maxRedemptions: o.maxRedemptions ?? "", active: o.active !== false,
+    });
+  }
+  function resetForm() { setEditingId(null); setForm(emptyOffer); }
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setErr("");
+    try {
+      const payload = {
+        code: form.code, planId: form.planId, discountType: form.discountType,
+        discountValue: Number(form.discountValue), duration: form.duration,
+        cyclesCount: form.duration === "cycles" ? Number(form.cyclesCount) : undefined,
+        expiresAt: form.expiresAt || null,
+        maxRedemptions: form.maxRedemptions === "" ? null : Number(form.maxRedemptions),
+        active: !!form.active,
+      };
+      if (editingId) {
+        await api("/api/admin/offers", "POST", { action: "update", id: editingId, ...payload });
+      } else {
+        await api("/api/admin/offers", "POST", { action: "create", ...payload });
+      }
+      resetForm();
+      await load();
+    } catch (e2) {
+      setErr(e2.message);
+    }
+    setBusy(false);
+  }
+
+  async function remove(id) {
+    if (!confirm(`Delete offer code "${id}"?`)) return;
+    try {
+      await api("/api/admin/offers", "POST", { action: "delete", id });
+      await load();
+    } catch (e2) {
+      setErr(e2.message);
+    }
+  }
+
+  if (offers === null) return <p className="muted">Loading…</p>;
+
+  return (
+    <div style={{ display: "grid", gap: 24, gridTemplateColumns: "1.1fr 1fr" }}>
+      <div className="card">
+        <h3 style={{ marginBottom: 14 }}>{editingId ? `Edit offer "${editingId}"` : "Add an offer"}</h3>
+        <form onSubmit={submit}>
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">Code</label>
+            <input
+              className="input" value={form.code} disabled={!!editingId}
+              onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+              placeholder="LAUNCH20" required
+            />
+            {editingId && <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>The code itself can&apos;t be changed once created — delete and re-add if you need a different one.</p>}
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">Plan</label>
+            <select className="input" value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} required>
+              <option value="" disabled>Select a plan</option>
+              {plans.map((p) => <option key={p.id} value={p.id}>{p.name} (₹{p.price}/{p.billingPeriod})</option>)}
+            </select>
+          </div>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label className="label">Discount type</label>
+              <select className="input" value={form.discountType} onChange={(e) => setForm({ ...form, discountType: e.target.value })}>
+                <option value="percent">Percent off</option>
+                <option value="flat">Flat amount off (₹)</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="label">{form.discountType === "flat" ? "Amount (₹)" : "Percent"}</label>
+              <input
+                className="input" type="number" min="0" max={form.discountType === "percent" ? 100 : undefined}
+                value={form.discountValue} onChange={(e) => setForm({ ...form, discountValue: e.target.value })} required
+              />
+            </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">Duration</label>
+            <select className="input" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })}>
+              <option value="forever">Forever (lifetime of the subscription)</option>
+              <option value="cycles">For a number of billing cycles</option>
+              <option value="once">One-time — first payment only</option>
+            </select>
+          </div>
+          {form.duration === "cycles" && (
+            <div style={{ marginBottom: 12 }}>
+              <label className="label">Number of billing cycles</label>
+              <input className="input" type="number" min="1" value={form.cyclesCount} onChange={(e) => setForm({ ...form, cyclesCount: e.target.value })} required />
+            </div>
+          )}
+          <div className="row" style={{ marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label className="label">Expires on (optional)</label>
+              <input className="input" type="date" value={form.expiresAt} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="label">Max redemptions (optional)</label>
+              <input className="input" type="number" min="1" placeholder="Unlimited" value={form.maxRedemptions} onChange={(e) => setForm({ ...form, maxRedemptions: e.target.value })} />
+            </div>
+          </div>
+          <div className="row" style={{ marginBottom: 16 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
+              <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Active (redeemable at checkout)
+            </label>
+          </div>
+          <div className="row">
+            <button className="btn-primary" disabled={busy}>{busy ? "Saving…" : editingId ? "Save changes" : "Add offer"}</button>
+            {editingId && <button type="button" className="btn-outline-dark" onClick={resetForm}>Cancel</button>}
+          </div>
+          {err && <p className="error">{err}</p>}
+        </form>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginBottom: 14 }}>Existing offers</h3>
+        {offers.length === 0 && <p className="muted">No offers yet.</p>}
+        {offers.map((o) => {
+          const plan = plans.find((p) => p.id === o.planId);
+          return (
+            <div key={o.id} style={{ borderBottom: "1px solid var(--line)", padding: "12px 0" }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <strong>{o.id}</strong>
+                {o.active === false && <span className="muted" style={{ fontSize: 12 }}>inactive</span>}
+              </div>
+              <p className="muted" style={{ margin: "4px 0", fontSize: 13 }}>
+                {discountLabel(o)} on {plan ? plan.name : "(deleted plan)"}, {durationLabel(o)}
+              </p>
+              <div className="row" style={{ gap: 12 }}>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  Used {o.redemptionCount || 0}{o.maxRedemptions ? ` / ${o.maxRedemptions}` : ""}
+                </span>
+                {o.expiresAt && (
+                  <span className="muted" style={{ fontSize: 12 }}>Expires {new Date(o.expiresAt).toLocaleDateString()}</span>
+                )}
+              </div>
+              <div className="row" style={{ marginTop: 6 }}>
+                <button className="link-btn" onClick={() => edit(o)}>Edit</button>
+                <button className="link-btn danger" onClick={() => remove(o.id)}>Delete</button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
