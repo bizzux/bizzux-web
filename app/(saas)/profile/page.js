@@ -7,6 +7,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import OrganizationsManager from "@/components/OrganizationsManager";
 import Nav from "@/components/Nav";
+import AccountTabs from "@/components/AccountTabs";
 
 // Anyone can reach their own profile; only the fields below decide what's
 // visible on it. "canManageOrgs" mirrors requireOrgManager() server-side
@@ -51,15 +52,10 @@ export default function ProfilePage() {
 
   const roleLabel = me.isOwner ? "Owner" : (me.profile || "Team member");
 
-  const topbarLinks = [
-    { href: "/dashboard", label: "Dashboard" },
-    ...(me.superAdmin ? [{ href: "/admin", label: "Admin" }] : []),
-    ...(me.isAccountAdmin ? [{ href: "/team", label: "Team" }] : []),
-  ];
-
   return (
     <div>
-      <Nav extraLinks={topbarLinks} />
+      <Nav />
+      <AccountTabs active="profile" isAccountAdmin={!!me.isAccountAdmin} isSuper={!!me.superAdmin} />
 
       <div className="admin-shell">
         <h1 className="dash-heading">My Profile</h1>

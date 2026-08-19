@@ -7,6 +7,7 @@ import { auth } from "@/lib/firebase";
 import { PROFILES } from "@/lib/roles";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import AccountTabs from "@/components/AccountTabs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -29,6 +30,7 @@ export default function TeamPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(null); // null = checking
+  const [isSuper, setIsSuper] = useState(false);
   const [members, setMembers] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [err, setErr] = useState("");
@@ -62,6 +64,7 @@ export default function TeamPage() {
         const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + t } });
         const d = await r.json();
         setIsAdmin(d.isAccountAdmin === true);
+        setIsSuper(d.superAdmin === true);
         if (d.isAccountAdmin) await load();
       } catch {
         setIsAdmin(false);
@@ -73,7 +76,8 @@ export default function TeamPage() {
   if (!user || isAdmin === null) {
     return (
       <div>
-        <Nav extraLinks={[{ href: "/dashboard", label: "Dashboard" }, { href: "/profile", label: "Profile" }]} />
+        <Nav />
+        <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} />
         <div className="admin-shell"><p className="muted">Loading…</p></div>
       </div>
     );
@@ -81,7 +85,8 @@ export default function TeamPage() {
   if (!isAdmin) {
     return (
       <div>
-        <Nav extraLinks={[{ href: "/dashboard", label: "Dashboard" }, { href: "/profile", label: "Profile" }]} />
+        <Nav />
+        <AccountTabs active="team" isAccountAdmin={false} isSuper={isSuper} />
         <div className="admin-shell">
           <p>You don&apos;t have access to this page.</p>
           <Link href="/dashboard" className="btn-primary-sm">Back to dashboard</Link>
@@ -112,7 +117,8 @@ export default function TeamPage() {
 
   return (
     <div>
-      <Nav extraLinks={[{ href: "/dashboard", label: "Dashboard" }, { href: "/profile", label: "Profile" }]} />
+      <Nav />
+      <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} />
 
       <div className="admin-shell">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>

@@ -3,14 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { IconWhatsApp } from "./Icons";
 
 // "All apps" sits first, right next to the logo, on every page. The rest
 // are the marketing tabs — always shown, signed in or not, so the menu bar
 // never changes shape as someone moves between bizzux.com and the signed-in
-// app (dashboard/team/profile/apps) — one consistent nav for the whole site.
+// app (dashboard/team/profile/apps) — one consistent nav for the whole
+// site. Account-specific destinations (Dashboard/Team/Admin/Sign out) live
+// in AccountTabs, a secondary strip rendered under this one on the
+// signed-in pages — Nav only ever shows a single "Profile" link for those,
+// styled exactly like every other tab here.
 const links = [
   { href: "/apps", label: "All apps" },
   { href: "/platform", label: "Platform" },
@@ -21,12 +25,7 @@ const links = [
   { href: "/careers", label: "Careers" },
 ];
 
-type ExtraLink = { href: string; label: string };
-
-// `extraLinks` lets signed-in pages (dashboard/team/profile) add their own
-// account-specific tabs (Dashboard, Team, Admin, Profile) onto this same
-// bar instead of showing a different header once you're signed in.
-export default function Nav({ extraLinks = [] as ExtraLink[] }: { extraLinks?: ExtraLink[] }) {
+export default function Nav() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
 
   useEffect(() => {
@@ -48,27 +47,12 @@ export default function Nav({ extraLinks = [] as ExtraLink[] }: { extraLinks?: E
               {l.label}
             </Link>
           ))}
-          {signedIn &&
-            extraLinks.map((l) => (
-              <Link key={l.href} href={l.href} className="hover:text-brand-blue transition-colors whitespace-nowrap">
-                {l.label}
-              </Link>
-            ))}
         </nav>
         <div className="flex items-center gap-3 shrink-0">
           {signedIn ? (
-            <>
-              <Link href="/dashboard" className="hidden sm:block text-sm font-medium hover:text-brand-blue transition-colors" style={{ color: "#000000" }}>
-                Dashboard
-              </Link>
-              <button
-                onClick={() => signOut(auth)}
-                className="hidden sm:inline-flex rounded-full border border-slate-200 text-sm font-semibold px-4 py-2 hover:bg-slate-50 transition-colors"
-                style={{ color: "#000000" }}
-              >
-                Sign out
-              </button>
-            </>
+            <Link href="/dashboard" className="hidden sm:block text-sm font-medium hover:text-brand-blue transition-colors" style={{ color: "#000000" }}>
+              Profile
+            </Link>
           ) : (
             <>
               <Link href="/sign-in" className="hidden sm:block text-sm font-medium hover:text-brand-blue transition-colors" style={{ color: "#000000" }}>

@@ -70,7 +70,7 @@ function AppCard({ a }) {
       </h4>
       <p>{a.desc}</p>
       {a.live ? (
-        <Link href={`/login?mode=signup&app=${a.key}`} className="btn-primary">Try now</Link>
+        <Link href={`/sign-in?mode=signup&app=${a.key}`} className="btn-primary">Try now</Link>
       ) : (
         <span className="btn-outline-dark" style={{ opacity: 0.6, cursor: "default" }}>Coming soon</span>
       )}

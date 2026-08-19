@@ -8,6 +8,7 @@ import { auth, db } from "@/lib/firebase";
 import Link from "next/link";
 import OnboardingModal from "@/components/OnboardingModal";
 import Nav from "@/components/Nav";
+import AccountTabs from "@/components/AccountTabs";
 
 const APPS = [
   // `sso: true` means clicking this tile goes through /api/shop-sso instead
@@ -180,15 +181,10 @@ export default function DashboardPage() {
     }
   }
 
-  const topbarLinks = [
-    ...(isSuper ? [{ href: "/admin", label: "Admin" }] : []),
-    ...(isAccountAdmin ? [{ href: "/team", label: "Team" }] : []),
-    { href: "/profile", label: "Profile" },
-  ];
-
   return (
     <div>
-      <Nav extraLinks={topbarLinks} />
+      <Nav />
+      <AccountTabs active="dashboard" isAccountAdmin={isAccountAdmin} isSuper={isSuper} />
 
       {status === "trial" && !expired && remaining !== null && (
         <div className="trial-banner">
