@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { onAuthStateChanged, signOut, sendEmailVerification } from "firebase/auth";
+import { signOut, sendEmailVerification } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import Link from "next/link";
@@ -13,6 +13,7 @@ import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
 import { IconClock } from "@/components/Icons";
 import { daysLeft, canAccessApps } from "@/lib/trial";
+import { useMe } from "@/lib/useMe";
 
 const APPS = [
   // `sso: true` means clicking this tile goes through /api/shop-sso instead
@@ -93,11 +94,15 @@ function VerifyEmailGate({ user }) {
 function DashboardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [user, setUser] = useState(null);
+  // useMe() (lib/useMe.js) shares this /api/me lookup with Nav (rendered
+  // just below) instead of each firing its own duplicate request, and
+  // starts a remount from the last known answer instead of a blank
+  // "checking…" state.
+  const { user, me } = useMe();
   const [customer, setCustomer] = useState(null); // null = loading
-  const [isSuper, setIsSuper] = useState(false);
-  const [isAccountAdmin, setIsAccountAdmin] = useState(false);
-  const [accountId, setAccountId] = useState(null);
+  const isSuper = me?.superAdmin === true;
+  const isAccountAdmin = me?.isAccountAdmin === true;
+  const accountId = me?.accountId || user?.uid || null;
   const [openingKey, setOpeningKey] = useState(null);
   // Both the Razorpay handler (PricingPlans.tsx) and the Stripe hosted
   // checkout's success_url (app/api/checkout/route.js) land back here with
@@ -117,32 +122,8 @@ function DashboardInner() {
   }, []);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) {
-        router.push("/sign-in");
-        return;
-      }
-      setUser(u);
-    });
-    return unsub;
-  }, [router]);
-
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      try {
-        const t = await user.getIdToken();
-        const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + t } });
-        const d = await r.json();
-        setIsSuper(d.superAdmin === true);
-        setIsAccountAdmin(d.isAccountAdmin === true);
-        setAccountId(d.accountId || user.uid);
-      } catch {
-        setIsSuper(false);
-        setAccountId(user.uid);
-      }
-    })();
-  }, [user]);
+    if (user === null) router.push("/sign-in");
+  }, [user, router]);
 
   // Does NOT swallow errors on purpose — OnboardingModal's onDone call
   // needs the real error (e.g. a Firestore permission message) to bubble up
@@ -162,7 +143,19 @@ function DashboardInner() {
   }, [user, accountId]);
 
   if (!user || customer === null || !accountId) {
-    return <div className="login-wrap"><p style={{ color: "#fff" }}>Loading…</p></div>;
+    // Was the same dark, full-viewport .login-wrap the sign-in page uses —
+    // fine for an actual takeover screen, but as a ~1-2s loading state
+    // (waiting on auth + the customer doc) it read as the page going blank
+    // and black. Keeping Nav visible on a light background here, the same
+    // pattern AdminTabs.tsx and team/page.js already use for their own
+    // loading states, makes the wait look like a normal in-page load
+    // instead of a flash to a different screen.
+    return (
+      <div>
+        <Nav />
+        <div className="py-24 text-center text-slate-400">Loading…</div>
+      </div>
+    );
   }
 
   // Google sign-ins already have a verified email; only email/password +
@@ -318,7 +311,14 @@ function DashboardInner() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="login-wrap"><p style={{ color: "#fff" }}>Loading…</p></div>}>
+    <Suspense
+      fallback={
+        <div>
+          <Nav />
+          <div className="py-24 text-center text-slate-400">Loading…</div>
+        </div>
+      }
+    >
       <DashboardInner />
     </Suspense>
   );

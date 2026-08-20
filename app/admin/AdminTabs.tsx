@@ -2,13 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, type User } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import dynamic from "next/dynamic";
 import SuperAdminPanel from "@/components/SuperAdminPanel";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
-import AnalyticsPanel from "@/components/AnalyticsPanel";
 import { IconDownload } from "@/components/Icons";
+import { useMe } from "@/lib/useMe";
+
+// Super Admin (SaaS) is the default/first tab, so SuperAdminPanel is
+// imported normally — it's needed on the very first render either way.
+// Analytics is the third tab and often never opened in a given visit, so
+// it's loaded on demand instead of padding out every /admin page load with
+// its charting code.
+const AnalyticsPanel = dynamic(() => import("@/components/AnalyticsPanel"), {
+  loading: () => <div className="py-12 text-center text-slate-400">Loading…</div>,
+});
 
 type Application = {
   id: string;
@@ -35,9 +43,12 @@ type Application = {
 // Admin" tab at all.
 export default function AdminTabs() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = checking auth
-  const [isSuper, setIsSuper] = useState<boolean | null>(null); // null = checking role
-  const [isAccountAdmin, setIsAccountAdmin] = useState(false);
+  // useMe() (lib/useMe.js) shares this /api/me lookup with Nav instead of
+  // each firing its own duplicate request, and starts a remount from the
+  // last known answer instead of a blank "checking…" state.
+  const { user, me } = useMe();
+  const isSuper = me ? me.superAdmin === true : null; // null = checking role
+  const isAccountAdmin = me?.isAccountAdmin === true;
   const [tab, setTab] = useState<"saas" | "career" | "analytics">("saas");
   const [apps, setApps] = useState<Application[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -45,30 +56,8 @@ export default function AdminTabs() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) {
-        router.push("/sign-in");
-        return;
-      }
-      setUser(u);
-    });
-    return unsub;
-  }, [router]);
-
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      try {
-        const t = await user.getIdToken();
-        const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + t } });
-        const d = await r.json();
-        setIsSuper(d.superAdmin === true);
-        setIsAccountAdmin(d.isAccountAdmin === true);
-      } catch {
-        setIsSuper(false);
-      }
-    })();
-  }, [user]);
+    if (user === null) router.push("/sign-in");
+  }, [user, router]);
 
   useEffect(() => {
     if (!user || isSuper !== true) return;
@@ -157,13 +146,13 @@ export default function AdminTabs() {
             Super Admin (SaaS)
           </button>
           <button
-            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold ${tab === "career" ? "bg-white text-brand-blue shadow-sm" : "text-slate-800"}`}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "career" ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white shadow-sm" : "text-slate-800"}`}
             onClick={() => setTab("career")}
           >
             Career applications
           </button>
           <button
-            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold ${tab === "analytics" ? "bg-white text-brand-blue shadow-sm" : "text-slate-800"}`}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "analytics" ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white shadow-sm" : "text-slate-800"}`}
             onClick={() => setTab("analytics")}
           >
             Analytics

@@ -12,6 +12,8 @@ import {
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import { IconEye, IconEyeOff } from "@/components/Icons";
+import { COUNTRIES, DEFAULT_COUNTRY_ISO2, findCountry, phoneLengthLabel, phoneLengthShortLabel, isValidPhoneLength } from "@/lib/countryCodes";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,7 +22,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [countryIso, setCountryIso] = useState(DEFAULT_COUNTRY_ISO2);
   const [phone, setPhone] = useState("");
+  const country = findCountry(countryIso);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState("");
@@ -70,7 +74,8 @@ export default function LoginPage() {
     else if (password.length < 8) errs.password = "Password cannot be less than 8 characters";
 
     if (!phone.trim()) errs.phone = "Please enter your phone number";
-    else if (!/^\d{10}$/.test(phone.trim())) errs.phone = "Please enter a valid 10-digit phone number";
+    else if (!isValidPhoneLength(phone.trim(), country.len))
+      errs.phone = `Please enter a valid ${country.name} phone number (${phoneLengthLabel(country.len)})`;
 
     if (!agreeTerms) errs.agreeTerms = "Please accept the Terms of Service and Privacy Policy";
     setFieldErrors(errs);
@@ -92,7 +97,7 @@ export default function LoginPage() {
         const r = await fetch("/api/check-phone", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: phone.trim() }),
+          body: JSON.stringify({ phone: country.dial + phone.trim() }),
         });
         const d = await r.json();
         if (!d.available) {
@@ -115,7 +120,7 @@ export default function LoginPage() {
         } catch {
           // Non-fatal — account creation already succeeded either way.
         }
-        await afterAuth({ fullName: fullName.trim(), phone: phone.trim() });
+        await afterAuth({ fullName: fullName.trim(), phone: country.dial + phone.trim() });
       } else {
         await signInWithEmailAndPassword(auth, email, password);
         await afterAuth();
@@ -134,6 +139,16 @@ export default function LoginPage() {
 
   return (
     <>
+      {/* While a sign-in/sign-up submission is in flight, block every other
+          click on the page (Nav links, WhatsApp/Book a demo, mode toggle,
+          etc.) so the app doesn't end up mid-navigation or firing a second
+          submit on top of the first one. Nav's own buttons already have no
+          disabled state of their own to thread through, so a transparent,
+          full-viewport click-catcher above everything is the simplest way
+          to freeze the whole page for that brief window. */}
+      {(busy || googleBusy) && (
+        <div className="fixed inset-0 z-[999] cursor-wait" style={{ background: "transparent" }} aria-hidden="true" />
+      )}
       <Nav />
       <div className="login-wrap">
       <div className="login-shell">
@@ -169,6 +184,7 @@ export default function LoginPage() {
             type="button" role="tab" aria-selected={mode === "signin"}
             className={"mode-toggle-btn" + (mode === "signin" ? " active" : "")}
             onClick={() => { setMode("signin"); setFieldErrors({}); setError(""); }}
+            disabled={busy || googleBusy}
           >
             Sign in
           </button>
@@ -176,6 +192,7 @@ export default function LoginPage() {
             type="button" role="tab" aria-selected={mode === "signup"}
             className={"mode-toggle-btn" + (mode === "signup" ? " active" : "")}
             onClick={() => { setMode("signup"); setFieldErrors({}); setError(""); }}
+            disabled={busy || googleBusy}
           >
             Sign up
           </button>
@@ -208,8 +225,14 @@ export default function LoginPage() {
                 className="input" type={showPassword ? "text" : "password"}
                 value={password} onChange={(e) => setPassword(e.target.value)}
               />
-              <button type="button" className="password-toggle" onClick={() => setShowPassword((s) => !s)} tabIndex={-1}>
-                {showPassword ? "🙈" : "👁"}
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword((s) => !s)}
+                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
               </button>
             </div>
             {fieldErrors.password && <p className="field-error">{fieldErrors.password}</p>}
@@ -220,11 +243,32 @@ export default function LoginPage() {
               <div>
                 <label className="label">Phone</label>
                 <div className="phone-field">
-                  <span className="phone-code">+91</span>
+                  <select
+                    className="phone-code-select"
+                    value={countryIso}
+                    aria-label="Country code"
+                    onChange={(e) => {
+                      setCountryIso(e.target.value);
+                      // A number typed for the previous country may be too
+                      // long for the new one's expected length — trim it
+                      // instead of leaving a stale, now-invalid value sitting
+                      // in the field.
+                      const next = findCountry(e.target.value);
+                      const maxLen = Array.isArray(next.len) ? next.len[1] : next.len;
+                      setPhone((p) => p.slice(0, maxLen));
+                    }}
+                  >
+                    {COUNTRIES.map((c) => (
+                      <option key={c.iso2} value={c.iso2}>
+                        {c.name} ({c.dial})
+                      </option>
+                    ))}
+                  </select>
                   <input
                     className="input" type="tel" value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, ""))}
-                    placeholder="Phone number"
+                    placeholder={`Phone number (${phoneLengthShortLabel(country.len)})`}
+                    maxLength={Array.isArray(country.len) ? country.len[1] : country.len}
                   />
                 </div>
                 {fieldErrors.phone && <p className="field-error">{fieldErrors.phone}</p>}
@@ -234,8 +278,9 @@ export default function LoginPage() {
                 <label>
                   <input type="checkbox" checked={agreeTerms} onChange={(e) => setAgreeTerms(e.target.checked)} />
                   <span>
-                    I agree to the <a href="#" onClick={(e) => e.preventDefault()}>Terms of Service</a> and{" "}
-                    <a href="#" onClick={(e) => e.preventDefault()}>Privacy Policy</a>.
+                    I agree to the{" "}
+                    <a href="/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a> and{" "}
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
                   </span>
                 </label>
                 {fieldErrors.agreeTerms && <p className="field-error">{fieldErrors.agreeTerms}</p>}

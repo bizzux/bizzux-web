@@ -5,13 +5,10 @@ import Link from "next/link";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
-// Secondary tab strip shown just below Nav on the signed-in account pages.
-// Two top-level destinations only: "Profile" (which itself expands into a
-// second row of sub-tabs — Your Profile / Dashboard / Team) and "Super
-// Admin" (Super-Admin-only, its own page handles its own 3 sub-tabs
-// internally — see AdminTabs.tsx). `active` marks which sub-page is
-// current; Team only shows for account admins, Super Admin only for
-// Super Admin.
+// Secondary strip shown just below Nav, only on the Your Profile / Dashboard
+// / Team pages themselves — the Super Admin page has its own tab strip
+// (AdminTabs.tsx) and doesn't need this one at all, so it renders nothing
+// there. The sub-tabs and the signed-in-as email + Sign out share one row.
 const PROFILE_SECTION_KEYS = ["profile", "dashboard", "team"];
 
 export default function AccountTabs({ active, isAccountAdmin = false, isSuper = false }) {
@@ -23,13 +20,9 @@ export default function AccountTabs({ active, isAccountAdmin = false, isSuper = 
   }, []);
 
   const inProfileSection = PROFILE_SECTION_KEYS.includes(active);
+  if (!inProfileSection) return null;
 
-  const topTabs = [
-    { key: "profile-section", href: "/profile", label: "Profile", isActive: inProfileSection },
-    ...(isSuper ? [{ key: "admin", href: "/admin", label: "Super Admin", isActive: active === "admin" }] : []),
-  ];
-
-  // Your Profile is always first, so landing on the Profile top tab always
+  // Your Profile is always first, so landing on the Profile nav link always
   // opens there first.
   const subTabs = [
     { key: "profile", href: "/profile", label: "Your Profile" },
@@ -39,40 +32,8 @@ export default function AccountTabs({ active, isAccountAdmin = false, isSuper = 
 
   return (
     <div className="border-b border-slate-100 bg-white">
-      <div className="max-w-7xl mx-auto px-6 h-12 flex items-center justify-between">
-        <nav className="flex items-center gap-6 text-sm font-medium">
-          {topTabs.map((t) => (
-            <Link
-              key={t.key}
-              href={t.href}
-              className={
-                "h-12 inline-flex items-center border-b-2 transition-colors " +
-                (t.isActive
-                  ? "border-brand-blue text-brand-blue"
-                  : "border-transparent text-slate-800 hover:text-brand-blue")
-              }
-            >
-              {t.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="flex items-center gap-4">
-          {user?.email && (
-            <span className="hidden sm:inline text-xs text-slate-500" title="Signed in as">
-              {user.email}
-            </span>
-          )}
-          <button
-            onClick={() => signOut(auth)}
-            className="text-sm font-medium text-slate-600 hover:text-brand-blue transition-colors"
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
-
-      {inProfileSection && (
-        <div className="max-w-7xl mx-auto px-6 h-10 flex items-center gap-5 text-[13px] font-medium border-t border-slate-50">
+      <div className="max-w-7xl mx-auto px-6 h-12 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-5 text-[13px] font-medium">
           {subTabs.map((t) => (
             <Link
               key={t.key}
@@ -86,7 +47,20 @@ export default function AccountTabs({ active, isAccountAdmin = false, isSuper = 
             </Link>
           ))}
         </div>
-      )}
+        <div className="flex items-center gap-4">
+          {user?.email && (
+            <span className="hidden sm:inline text-xs text-slate-700" title="Signed in as">
+              {user.email}
+            </span>
+          )}
+          <button
+            onClick={() => signOut(auth)}
+            className="text-sm font-medium text-black bg-slate-200 hover:bg-slate-300 rounded-full px-4 py-1.5 transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

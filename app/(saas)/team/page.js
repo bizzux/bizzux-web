@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { PROFILES } from "@/lib/roles";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
+import { useMe } from "@/lib/useMe";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -28,23 +28,19 @@ async function api(path, method, body) {
 
 export default function TeamPage() {
   const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(null); // null = checking
-  const [isSuper, setIsSuper] = useState(false);
+  // useMe() (lib/useMe.js) shares this /api/me lookup with Nav instead of
+  // each firing its own duplicate request, and starts a remount from the
+  // last known answer instead of a blank "checking…" state.
+  const { user, me } = useMe();
+  const isAdmin = me ? me.isAccountAdmin === true : null; // null = checking
+  const isSuper = me?.superAdmin === true;
   const [members, setMembers] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) {
-        router.push("/sign-in");
-        return;
-      }
-      setUser(u);
-    });
-    return unsub;
-  }, [router]);
+    if (user === null) router.push("/sign-in");
+  }, [user, router]);
 
   async function load() {
     try {
@@ -57,21 +53,10 @@ export default function TeamPage() {
   }
 
   useEffect(() => {
-    if (!user) return;
-    (async () => {
-      try {
-        const t = await user.getIdToken();
-        const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + t } });
-        const d = await r.json();
-        setIsAdmin(d.isAccountAdmin === true);
-        setIsSuper(d.superAdmin === true);
-        if (d.isAccountAdmin) await load();
-      } catch {
-        setIsAdmin(false);
-      }
-    })();
+    if (!user || !me) return;
+    if (me.isAccountAdmin) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, me]);
 
   if (!user || isAdmin === null) {
     return (

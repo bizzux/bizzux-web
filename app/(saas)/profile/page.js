@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import OrganizationsManager from "@/components/OrganizationsManager";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
+import { useMe } from "@/lib/useMe";
 
 // Anyone can reach their own profile; only the fields below decide what's
 // visible on it. "canManageOrgs" mirrors requireOrgManager() server-side
@@ -15,39 +15,43 @@ import AccountTabs from "@/components/AccountTabs";
 // see lib/firebaseAdmin.js for why that's the intended gate, not a mistake.
 export default function ProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [me, setMe] = useState(null); // null = loading
+  // useMe() (lib/useMe.js) shares this /api/me lookup with Nav instead of
+  // each firing its own duplicate request, and starts a remount from the
+  // last known answer instead of a blank "checking…" state.
+  const { user, me } = useMe();
   const [customer, setCustomer] = useState(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) { router.push("/sign-in"); return; }
-      if (!u.emailVerified) { router.push("/dashboard"); return; } // reuse the existing verify-email gate there
-      setUser(u);
-    });
-    return unsub;
-  }, [router]);
+    if (user === null) { router.push("/sign-in"); return; }
+    if (user && !user.emailVerified) { router.push("/dashboard"); return; } // reuse the existing verify-email gate there
+  }, [user, router]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !me || !me.accountId) return;
+    let cancelled = false;
     (async () => {
       try {
-        const t = await user.getIdToken();
-        const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + t } });
-        const d = await r.json();
-        setMe(d);
-        if (d.accountId) {
-          const snap = await getDoc(doc(db, "customers", d.accountId));
-          setCustomer(snap.exists() ? snap.data() : {});
-        }
+        const snap = await getDoc(doc(db, "customers", me.accountId));
+        if (!cancelled) setCustomer(snap.exists() ? snap.data() : {});
       } catch {
-        setMe({ canManageOrgs: false });
+        if (!cancelled) setCustomer({});
       }
     })();
-  }, [user]);
+    return () => {
+      cancelled = true;
+    };
+  }, [user, me]);
 
   if (!user || me === null) {
-    return <div className="login-wrap"><p style={{ color: "#fff" }}>Loading…</p></div>;
+    // Same fix as dashboard/page.js: keep Nav visible on a light background
+    // during this ~1-2s load instead of flashing to the dark, full-viewport
+    // .login-wrap the sign-in page uses, which read as the page going blank.
+    return (
+      <div>
+        <Nav />
+        <div className="py-24 text-center text-slate-400">Loading…</div>
+      </div>
+    );
   }
 
   const roleLabel = me.isOwner ? "Owner" : (me.profile || "Team member");

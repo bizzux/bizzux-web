@@ -48,8 +48,13 @@ export default function Footer() {
           </a>
         </div>
       </div>
-      <div className="border-t border-white/10 py-4 text-center text-xs text-slate-500">
-        © {new Date().getFullYear()} Bizzux. All rights reserved.
+      <div className="border-t border-white/10 py-4 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center text-xs text-slate-500">
+        <span>© {new Date().getFullYear()} Bizzux. All rights reserved.</span>
+        <span className="hidden sm:inline">·</span>
+        <span className="flex items-center gap-4">
+          <Link href="/terms" className="hover:text-brand-teal transition-colors">Terms of Service</Link>
+          <Link href="/privacy" className="hover:text-brand-teal transition-colors">Privacy Policy</Link>
+        </span>
       </div>
     </footer>
   );
