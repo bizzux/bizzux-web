@@ -7,6 +7,7 @@ import { auth } from "@/lib/firebase";
 import SuperAdminPanel from "@/components/SuperAdminPanel";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
+import AnalyticsPanel from "@/components/AnalyticsPanel";
 import { IconDownload } from "@/components/Icons";
 
 type Application = {
@@ -24,20 +25,20 @@ type Application = {
   resumeFileName?: string | null;
 };
 
-// Combines bizzux.com's existing Career Applications tool with
-// apps.bizzux.com's Super Admin panel under one /admin route (they used to
-// collide on the same path in the two separate codebases). /admin used to
-// have its own separate cookie/ADMIN_PASSWORD password gate on top of this
-// (middleware.ts) — that's been removed, so this page is now gated the
-// same way every other admin surface is: signed-in Firebase user +
-// Super Admin (SUPER_ADMIN_EMAIL), same isSuper flag AccountTabs uses to
-// decide whether to show the "Admin" tab at all.
+// Combines bizzux.com's existing Career Applications tool, apps.bizzux.com's
+// Super Admin panel, and the former standalone /analytics page under one
+// /admin route, as three sub-tabs — Super Admin (SaaS) is first/default,
+// since that's the primary reason a Super Admin lands here, then Career
+// applications, then Analytics. This page is gated the same way every other
+// admin surface is: signed-in Firebase user + Super Admin (SUPER_ADMIN_EMAIL),
+// same isSuper flag AccountTabs uses to decide whether to show the "Super
+// Admin" tab at all.
 export default function AdminTabs() {
   const router = useRouter();
   const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = checking auth
   const [isSuper, setIsSuper] = useState<boolean | null>(null); // null = checking role
   const [isAccountAdmin, setIsAccountAdmin] = useState(false);
-  const [tab, setTab] = useState<"career" | "saas">("career");
+  const [tab, setTab] = useState<"saas" | "career" | "analytics">("saas");
   const [apps, setApps] = useState<Application[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -142,13 +143,19 @@ export default function AdminTabs() {
       <div className="max-w-6xl mx-auto px-6">
         <div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold">Admin</h1>
+            <h1 className="text-xl font-bold">Super Admin</h1>
             <p className="text-sm text-slate-500">
-              {tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` : "Bizzux SaaS platform"}
+              {tab === "saas" ? "Bizzux SaaS platform" : tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` : "Subscriptions and revenue across every organization"}
             </p>
           </div>
 
           <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
+          <button
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "saas" ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white shadow-sm" : "text-slate-800"}`}
+            onClick={() => setTab("saas")}
+          >
+            Super Admin (SaaS)
+          </button>
           <button
             className={`px-3.5 py-1.5 rounded-md text-xs font-semibold ${tab === "career" ? "bg-white text-brand-blue shadow-sm" : "text-slate-800"}`}
             onClick={() => setTab("career")}
@@ -156,10 +163,10 @@ export default function AdminTabs() {
             Career applications
           </button>
           <button
-            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "saas" ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white shadow-sm" : "text-slate-800"}`}
-            onClick={() => setTab("saas")}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold ${tab === "analytics" ? "bg-white text-brand-blue shadow-sm" : "text-slate-800"}`}
+            onClick={() => setTab("analytics")}
           >
-            Super Admin (SaaS)
+            Analytics
           </button>
           </div>
         </div>
@@ -225,10 +232,12 @@ export default function AdminTabs() {
                             onClick={() => downloadResume(a)}
                             disabled={downloadingId === a.id}
                             title={a.resumeFileName || "Download resume"}
-                            className="inline-flex items-center gap-1.5 text-brand-teal font-medium hover:underline disabled:opacity-60"
+                            className="inline-flex items-center gap-1.5 max-w-[190px] text-brand-teal font-medium hover:underline disabled:opacity-60"
                           >
                             <IconDownload className="w-4 h-4 shrink-0" />
-                            {downloadingId === a.id ? "Downloading…" : "Download"}
+                            <span className="truncate">
+                              {downloadingId === a.id ? "Downloading…" : (a.resumeFileName || "Download")}
+                            </span>
                           </button>
                         ) : a.resumeFileName ? (
                           <span className="text-amber-600" title={`"${a.resumeFileName}" was selected but the upload failed. Ask the applicant to resend it, or check Blob storage config.`}>
@@ -258,6 +267,8 @@ export default function AdminTabs() {
             <SuperAdminPanel />
           </div>
         )}
+
+        {tab === "analytics" && <AnalyticsPanel user={user} />}
       </div>
       </section>
     </>
