@@ -21,16 +21,16 @@ const items = [
 export default function CustomSolutionsPage() {
   return (
     <>
-      <section className="pt-20 pb-16 bg-navy text-white relative overflow-hidden">
+      <section className="pt-12 pb-10 bg-navy text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-40" style={{
           background: "radial-gradient(50% 50% at 80% 20%, rgba(163,230,53,0.2) 0%, transparent 60%)"
         }} />
         <Container className="relative text-center">
           <Eyebrow light>Custom Cloud &amp; AI Solutions</Eyebrow>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             Software built around the way your business works.
           </h1>
-          <p className="text-lg text-slate-300 max-w-2xl mx-auto mb-10">
+          <p className="text-lg text-slate-300 max-w-2xl mx-auto mb-8">
             When standard software is not enough, Bizzux designs and builds custom web applications, e-commerce
             platforms, AI-enabled workflows and secure cloud solutions.
           </p>
@@ -38,11 +38,11 @@ export default function CustomSolutionsPage() {
         </Container>
       </section>
 
-      <section className="py-20">
+      <section className="py-14">
         <Container>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {items.map((f) => (
-              <div key={f.title} className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm">
+              <div key={f.title} className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                 <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-brand-blue to-brand-deep text-white flex items-center justify-center mb-4">
                   <f.icon className="w-5 h-5" />
                 </div>
@@ -54,7 +54,7 @@ export default function CustomSolutionsPage() {
         </Container>
       </section>
 
-      <section className="py-20 bg-slate-50 text-center">
+      <section className="py-14 pb-24 bg-slate-50 text-center">
         <Container className="max-w-2xl">
           <IconShield className="w-10 h-10 mx-auto mb-4 text-brand-blue" />
           <h2 className="text-2xl font-bold mb-4">Have a specific requirement in mind?</h2>

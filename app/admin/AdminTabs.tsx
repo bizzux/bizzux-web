@@ -7,6 +7,7 @@ import { auth } from "@/lib/firebase";
 import SuperAdminPanel from "@/components/SuperAdminPanel";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
+import { IconDownload } from "@/components/Icons";
 
 type Application = {
   id: string;
@@ -19,7 +20,8 @@ type Application = {
   area?: string;
   linkedin?: string;
   portfolio?: string;
-  resumeSignedUrl?: string | null;
+  resumeBlobPath?: string | null;
+  resumeFileName?: string | null;
 };
 
 // Combines bizzux.com's existing Career Applications tool with
@@ -34,9 +36,12 @@ export default function AdminTabs() {
   const router = useRouter();
   const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = checking auth
   const [isSuper, setIsSuper] = useState<boolean | null>(null); // null = checking role
+  const [isAccountAdmin, setIsAccountAdmin] = useState(false);
   const [tab, setTab] = useState<"career" | "saas">("career");
   const [apps, setApps] = useState<Application[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -57,6 +62,7 @@ export default function AdminTabs() {
         const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + t } });
         const d = await r.json();
         setIsSuper(d.superAdmin === true);
+        setIsAccountAdmin(d.isAccountAdmin === true);
       } catch {
         setIsSuper(false);
       }
@@ -78,6 +84,37 @@ export default function AdminTabs() {
     })();
   }, [user, isSuper]);
 
+  // Resumes live in a private Blob store (see /api/careers), so there's no
+  // public URL a plain <a href> can point to — a Bearer token is required,
+  // which only a JS fetch can attach. This fetches the file through the
+  // Super-Admin-gated /api/admin/resume-file route, then hands the browser
+  // a temporary object URL to actually trigger the download/save-as dialog.
+  async function downloadResume(a: Application) {
+    if (!user) return;
+    setDownloadingId(a.id);
+    setDownloadError(null);
+    try {
+      const t = await user.getIdToken();
+      const r = await fetch("/api/admin/resume-file?id=" + a.id, { headers: { Authorization: "Bearer " + t } });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error || "Could not download the resume.");
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = a.resumeFileName || "resume";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setDownloadError(e?.message || "Could not download the resume.");
+    }
+    setDownloadingId(null);
+  }
+
   if (user === undefined || isSuper === null) {
     return (
       <div>
@@ -91,7 +128,7 @@ export default function AdminTabs() {
     return (
       <div>
         <Nav />
-        <AccountTabs active="admin" isSuper={false} />
+        <AccountTabs active="admin" isAccountAdmin={isAccountAdmin} isSuper={false} />
         <div className="py-12 text-center text-slate-500">You don&apos;t have access to this page.</div>
       </div>
     );
@@ -100,12 +137,12 @@ export default function AdminTabs() {
   return (
     <>
       <Nav />
-      <AccountTabs active="admin" isSuper={true} />
-      <section className="pt-5 pb-10 bg-slate-50 min-h-[70vh]">
+      <AccountTabs active="admin" isAccountAdmin={isAccountAdmin} isSuper={true} />
+      <section className="pt-4 pb-6 bg-slate-50 min-h-[45vh]">
       <div className="max-w-6xl mx-auto px-6">
-        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+        <div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold">Admin</h1>
+            <h1 className="text-xl font-bold">Admin</h1>
             <p className="text-sm text-slate-500">
               {tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` : "Bizzux SaaS platform"}
             </p>
@@ -113,13 +150,13 @@ export default function AdminTabs() {
 
           <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
           <button
-            className={`px-4 py-2 rounded-md text-sm font-semibold ${tab === "career" ? "bg-white text-brand-blue shadow-sm" : "text-slate-500"}`}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold ${tab === "career" ? "bg-white text-brand-blue shadow-sm" : "text-slate-800"}`}
             onClick={() => setTab("career")}
           >
             Career applications
           </button>
           <button
-            className={`px-4 py-2 rounded-md text-sm font-semibold ${tab === "saas" ? "bg-white text-brand-blue shadow-sm" : "text-slate-500"}`}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "saas" ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white shadow-sm" : "text-slate-800"}`}
             onClick={() => setTab("saas")}
           >
             Super Admin (SaaS)
@@ -132,6 +169,11 @@ export default function AdminTabs() {
             {loadError && (
               <div className="mb-6 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm p-4">
                 {loadError}
+              </div>
+            )}
+            {downloadError && (
+              <div className="mb-6 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm p-4">
+                {downloadError}
               </div>
             )}
 
@@ -177,10 +219,21 @@ export default function AdminTabs() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {a.resumeSignedUrl ? (
-                          <a href={a.resumeSignedUrl} target="_blank" rel="noopener noreferrer" className="text-brand-teal font-medium hover:underline">
-                            Download
-                          </a>
+                        {a.resumeBlobPath ? (
+                          <button
+                            type="button"
+                            onClick={() => downloadResume(a)}
+                            disabled={downloadingId === a.id}
+                            title={a.resumeFileName || "Download resume"}
+                            className="inline-flex items-center gap-1.5 text-brand-teal font-medium hover:underline disabled:opacity-60"
+                          >
+                            <IconDownload className="w-4 h-4 shrink-0" />
+                            {downloadingId === a.id ? "Downloading…" : "Download"}
+                          </button>
+                        ) : a.resumeFileName ? (
+                          <span className="text-amber-600" title={`"${a.resumeFileName}" was selected but the upload failed. Ask the applicant to resend it, or check Blob storage config.`}>
+                            Upload failed
+                          </span>
                         ) : (
                           <span className="text-slate-400">No file</span>
                         )}

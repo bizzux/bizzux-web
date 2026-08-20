@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
 import { CTAButton } from "@/components/Section";
@@ -14,6 +15,7 @@ type Plan = {
   id: string;
   name: string;
   price: number;
+  strikePrice?: number | null;
   billingPeriod?: string;
   description?: string;
   features?: string[];
@@ -54,6 +56,34 @@ function formatPrice(priceINR: number, currency: "INR" | "USD") {
 // what's configured there instead of being hand-maintained twice.
 type CouponResult = { valid: boolean; discountedPrice?: number; error?: string };
 
+type ActiveOffer = {
+  code: string;
+  planId: string;
+  planName: string;
+  discountType: "percent" | "flat";
+  discountValue: number;
+  duration: "forever" | "cycles" | "once";
+  cyclesCount?: number | null;
+};
+
+function offerHeadline(o: ActiveOffer) {
+  const amount = o.discountType === "flat" ? `₹${o.discountValue}` : `${o.discountValue}%`;
+  const when =
+    o.duration === "once" ? "on your first payment" : o.duration === "cycles" ? `for your first ${o.cyclesCount} billing cycle${o.cyclesCount === 1 ? "" : "s"}` : "for as long as you stay subscribed";
+  return `Use code ${o.code} to get ${amount} off the ${o.planName} plan, ${when}.`;
+}
+
+// Ranks offers by actual rupee value against the plan they apply to, so
+// "best" means the largest real discount rather than just whichever has
+// the bigger raw number (a flat ₹300 off a ₹499 plan can easily beat a 10%
+// off a ₹1999 plan). Falls back to 0 if the plan can't be found (e.g. it
+// was deactivated after the offer was created).
+function offerValue(o: ActiveOffer, plans: Plan[] | null) {
+  const plan = plans?.find((p) => p.id === o.planId);
+  const price = plan?.price ?? 0;
+  return o.discountType === "flat" ? o.discountValue : (o.discountValue / 100) * price;
+}
+
 export default function PricingPlans() {
   const router = useRouter();
   const [currency, setCurrency] = useState<"INR" | "USD">("INR");
@@ -66,10 +96,25 @@ export default function PricingPlans() {
   const [couponResults, setCouponResults] = useState<Record<string, CouponResult> | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponMsg, setCouponMsg] = useState<string | null>(null);
+  const [activeOffers, setActiveOffers] = useState<ActiveOffer[] | null>(null); // null = loading
+  const [trialExpired, setTrialExpired] = useState(false);
+  const [currentPlanId, setCurrentPlanId] = useState<string | null>(null); // the plan this person is actively paying for, if any
+  const [topBannerTarget, setTopBannerTarget] = useState<HTMLElement | null>(null);
+  const [showOffersModal, setShowOffersModal] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return unsub;
+  }, []);
+
+  // The trial/offer banners below are portaled into #pricing-top-banner
+  // (see app/(marketing)/pricing/page.tsx), a marker sitting right under
+  // the main nav, so they appear at the very top of the page instead of
+  // further down where this component itself renders. Falls back to
+  // rendering inline, right here, if that marker isn't found for any
+  // reason (e.g. this component gets reused somewhere without it).
+  useEffect(() => {
+    setTopBannerTarget(document.getElementById("pricing-top-banner"));
   }, []);
 
   useEffect(() => {
@@ -87,15 +132,64 @@ export default function PricingPlans() {
     })();
   }, []);
 
+  // Publicly lists currently-live promo codes (see app/api/offers/active) so
+  // the pricing page can advertise them itself, instead of relying on a
+  // visitor already knowing a code to type into the box below.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/offers/active");
+        const data = await res.json();
+        setActiveOffers(Array.isArray(data.offers) ? data.offers : []);
+      } catch {
+        setActiveOffers([]);
+      }
+    })();
+  }, []);
+
+  // If this person is signed in, checks two things off their own customer
+  // doc: whether their free trial has run out with no plan chosen yet
+  // (surfaced as a banner below), and — once they've actually paid for a
+  // plan — which one, so that plan's card can show "Your current plan"
+  // instead of "Choose this plan" and every trial-only message here stays
+  // gone for as long as the subscription is active.
+  useEffect(() => {
+    if (!user) { setTrialExpired(false); setCurrentPlanId(null); return; }
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const meRes = await fetch("/api/me", { headers: { Authorization: "Bearer " + token } });
+        const me = await meRes.json();
+        const snap = await getDoc(doc(db, "customers", me.accountId || user.uid));
+        if (!snap.exists()) return;
+        const c = snap.data() as { status?: string; trialEndDate?: any; planId?: string };
+        const status = c.status || "trial";
+
+        if (status === "active" && c.planId) {
+          setCurrentPlanId(c.planId);
+        } else {
+          setCurrentPlanId(null);
+        }
+
+        if (status !== "trial" || !c.trialEndDate) { setTrialExpired(false); return; }
+        const end = c.trialEndDate.toDate ? c.trialEndDate.toDate() : new Date(c.trialEndDate);
+        setTrialExpired(end.getTime() <= Date.now());
+      } catch {
+        // Not signed in to a real account yet, or no customer doc — nothing to show.
+      }
+    })();
+  }, [user]);
+
   // Checks a promo code against every visible plan at once (there are only
   // ever a handful) since a code is scoped to one specific plan — see
   // app/api/admin/offers/route.js — but this page doesn't know in advance
   // which plan the person will pick. Whichever plan(s) it's valid for get
   // a discounted-price preview on their card; checkout re-validates the
   // code from scratch server-side regardless, so this preview is purely UX.
-  async function applyCoupon() {
-    const code = couponInput.trim();
+  async function applyCoupon(codeOverride?: string) {
+    const code = (codeOverride ?? couponInput).trim();
     if (!code || !plans) return;
+    setCouponInput(code);
     if (!user) {
       setCouponMsg("Sign in first, then apply your code.");
       return;
@@ -215,9 +309,55 @@ export default function PricingPlans() {
     );
   }
 
+  // When there are multiple live offers, only the single best-value one
+  // (by actual rupee savings, see offerValue() above) gets the prominent
+  // banner treatment — the rest are one click away via "more offers
+  // available", instead of stacking every code as its own banner.
+  const bestOffer =
+    activeOffers && activeOffers.length > 0
+      ? [...activeOffers].sort((a, b) => offerValue(b, plans) - offerValue(a, plans))[0]
+      : null;
+
+  const topBannerContent =
+    trialExpired || bestOffer ? (
+      <div className="max-w-5xl mx-auto px-6 pt-3 space-y-2">
+        {trialExpired && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-3 text-center">
+            <p className="text-red-700 font-semibold text-sm">
+              Your free trial has ended. Choose a plan below to keep using Bizzux without any interruption.
+            </p>
+          </div>
+        )}
+        {bestOffer && (
+          <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl bg-brand-gradient-soft border border-brand-teal/20 px-5 py-3 text-center">
+            <span className="text-sm text-ink">
+              🎉 <span className="font-semibold">{offerHeadline(bestOffer)}</span>
+            </span>
+            <button
+              onClick={() => applyCoupon(bestOffer.code)}
+              disabled={couponChecking}
+              className="rounded-full bg-brand-gradient text-white text-xs font-bold px-4 py-1.5 whitespace-nowrap disabled:opacity-60"
+            >
+              Use this code
+            </button>
+            {activeOffers && activeOffers.length > 1 && (
+              <button
+                onClick={() => setShowOffersModal(true)}
+                className="text-xs font-semibold text-brand-blue hover:underline whitespace-nowrap"
+              >
+                +{activeOffers.length - 1} more offer{activeOffers.length - 1 === 1 ? "" : "s"} available
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    ) : null;
+
   return (
     <div>
-      <div className="flex justify-center mb-8">
+      {topBannerContent && (topBannerTarget ? createPortal(topBannerContent, topBannerTarget) : topBannerContent)}
+
+      <div className="flex justify-center mb-4">
         <div className="inline-flex rounded-full border border-slate-200 p-1 bg-white">
           {(["INR", "USD"] as const).map((c) => (
             <button
@@ -233,28 +373,97 @@ export default function PricingPlans() {
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-2 mb-8">
-        <div className="flex gap-2 w-full max-w-xs">
-          <input
-            type="text"
-            value={couponInput}
-            onChange={(e) => setCouponInput(e.target.value)}
-            placeholder="Have a promo code?"
-            className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:outline-none focus:border-brand-blue"
-          />
+      <div className="flex flex-col items-center gap-3 mb-10">
+        <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-md">
+          <div className="relative flex-1 min-w-[180px]">
+            <input
+              type="text"
+              value={couponInput}
+              onChange={(e) => setCouponInput(e.target.value)}
+              placeholder="Have a promo code?"
+              className="w-full rounded-full border border-slate-200 pl-5 pr-10 py-3 text-sm focus:outline-none focus:border-brand-blue"
+            />
+            {(couponInput || couponCode) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCouponInput("");
+                  setCouponCode(null);
+                  setCouponResults(null);
+                  setCouponMsg(null);
+                }}
+                aria-label="Clear promo code"
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                ×
+              </button>
+            )}
+          </div>
           <button
-            onClick={applyCoupon}
+            onClick={() => applyCoupon()}
             disabled={couponChecking || !couponInput.trim()}
-            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap"
+            className="rounded-full border border-slate-200 px-6 py-3 text-sm font-semibold text-ink hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap"
           >
             {couponChecking ? "Checking…" : "Apply"}
           </button>
+          {activeOffers && activeOffers.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowOffersModal(true)}
+              className="text-xs font-semibold text-brand-blue hover:underline whitespace-nowrap"
+            >
+              Check available offers
+            </button>
+          )}
         </div>
         {couponCode && !couponMsg && (
-          <p className="text-xs text-brand-teal font-semibold">Code "{couponCode}" applied — discount shown below.</p>
+          <p className="text-xs text-brand-teal font-semibold">Code "{couponCode}" applied, discount shown below.</p>
         )}
         {couponMsg && <p className="text-xs text-red-600">{couponMsg}</p>}
       </div>
+
+      {showOffersModal && activeOffers && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setShowOffersModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl p-6 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Available offers</h3>
+              <button
+                onClick={() => setShowOffersModal(false)}
+                aria-label="Close"
+                className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-3">
+              {activeOffers.map((o) => (
+                <button
+                  key={o.code}
+                  onClick={() => {
+                    applyCoupon(o.code);
+                    setShowOffersModal(false);
+                  }}
+                  className="w-full text-left rounded-xl border border-slate-200 hover:border-brand-blue hover:bg-brand-gradient-soft transition-colors p-4"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-brand-blue">{o.code}</span>
+                    <span className="text-xs font-semibold text-white bg-brand-gradient rounded-full px-3 py-1 whitespace-nowrap">
+                      Apply
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-600 mt-1">{offerHeadline(o)}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-3 gap-6 items-start">
         {plans.map((p) => (
@@ -273,13 +482,29 @@ export default function PricingPlans() {
             {couponResults?.[p.id]?.valid ? (
               <div className="mb-3">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-lg text-slate-400 line-through">{formatPrice(p.price, currency)}</span>
+                  <span className="text-xl font-bold text-[#FF4D00] line-through decoration-2">{formatPrice(p.price, currency)}</span>
                   <span className="text-3xl font-extrabold text-brand-teal">
                     {formatPrice(couponResults[p.id].discountedPrice ?? p.price, currency)}
                   </span>
                   <span className="text-slate-500 text-sm">/{p.billingPeriod || "month"}</span>
                 </div>
                 <span className="inline-block mt-1 text-xs font-semibold text-brand-teal">Promo code applied</span>
+              </div>
+            ) : p.strikePrice && p.strikePrice > p.price ? (
+              <div className="mb-3">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl font-bold text-[#FF4D00] line-through decoration-2">{formatPrice(p.strikePrice, currency)}</span>
+                  <span className="text-3xl font-extrabold">{formatPrice(p.price, currency)}</span>
+                  <span className="text-slate-500 text-sm">/{p.billingPeriod || "month"}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="inline-block rounded-full bg-brand-gradient text-white text-[11px] font-bold px-3 py-1 tracking-wide uppercase">
+                    ⚡ Limited offer
+                  </span>
+                  <span className="text-xs font-semibold text-[#FF4D00]">
+                    Save {formatPrice(p.strikePrice - p.price, currency)}
+                  </span>
+                </div>
               </div>
             ) : (
               <div className="flex items-baseline gap-1 mb-3">
@@ -298,17 +523,27 @@ export default function PricingPlans() {
                 ))}
               </ul>
             )}
-            <button
-              onClick={() => choosePlan(p.id)}
-              disabled={pickingId === p.id}
-              className={`w-full text-center rounded-full text-sm font-semibold px-5 py-3 transition-opacity disabled:opacity-60 ${
-                p.popular
-                  ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white hover:opacity-90"
-                  : "border border-slate-200 text-ink hover:bg-slate-50"
-              }`}
-            >
-              {pickingId === p.id ? "Selecting…" : user ? "Choose this plan" : "Start free trial"}
-            </button>
+            {currentPlanId === p.id ? (
+              <div
+                className="w-full flex items-center justify-center gap-2 rounded-full text-sm font-semibold px-5 py-3 bg-gradient-to-r from-brand-teal to-brand-blue text-white cursor-default select-none"
+                aria-current="true"
+              >
+                <IconCheck className="w-4 h-4" />
+                Your current plan
+              </div>
+            ) : (
+              <button
+                onClick={() => choosePlan(p.id)}
+                disabled={pickingId === p.id}
+                className={`w-full text-center rounded-full text-sm font-semibold px-5 py-3 transition-opacity disabled:opacity-60 ${
+                  p.popular
+                    ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white hover:opacity-90"
+                    : "border border-slate-200 text-ink hover:bg-slate-50"
+                }`}
+              >
+                {pickingId === p.id ? "Selecting…" : user ? "Choose this plan" : "Start free trial"}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -323,7 +558,7 @@ export default function PricingPlans() {
         </p>
       )}
 
-      <p className="text-center text-sm text-slate-500 mt-10">
+      <p className="text-center text-sm text-slate-500 mt-8">
         Prefer to talk it through first?{" "}
         <CTAButton href="/contact" variant="secondary">Request a demo</CTAButton>
       </p>

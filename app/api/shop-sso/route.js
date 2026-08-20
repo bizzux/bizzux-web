@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireUser, resolveAccount } from "@/lib/firebaseAdmin";
+import { requireUser, resolveAccount, adminDb } from "@/lib/firebaseAdmin";
+import { canAccessApps } from "@/lib/trial";
 import { createHmac } from "crypto";
 
 export const runtime = "nodejs";
@@ -49,17 +50,46 @@ export async function GET(req) {
     if (!secret) throw { status: 500, message: "SHOP_SSO_SECRET is not configured" };
 
     let role;
+    // Shop's real main tabs this account's plan allows (see lib/apps.js's
+    // APP_CATALOG "features" list, edited from Admin > Plan Apps). Left
+    // undefined — meaning "don't restrict" — for a Super Admin, or whenever
+    // the current plan hasn't configured a tab list for Shop at all, so an
+    // unconfigured plan behaves exactly like before this existed.
+    let features;
     if (c.isSuper) {
       role = "super";
     } else {
       const acct = await resolveAccount(c.uid);
       role = acct.isOwner ? "owner" : PROFILE_TO_SHOP_ROLE[acct.profile] || "shopkeeper";
+
+      // Defense in depth — dashboard/page.js already blocks this in the UI
+      // via the same canAccessApps() check (lib/trial.js) before it ever
+      // calls this endpoint, but a signed-in user could still hit it
+      // directly, so trial/subscription status is enforced here too. Team
+      // members don't carry the customer doc on their own account record
+      // (resolveAccount only gives that to the owner), so look it up by
+      // accountId when needed.
+      const customer = acct.isOwner
+        ? acct.customer
+        : (await adminDb().doc("customers/" + acct.accountId).get()).data();
+      if (!canAccessApps(customer)) {
+        throw { status: 402, message: "Your trial has ended. Choose a plan to keep using Bizzux apps." };
+      }
+
+      if (customer?.planId) {
+        const planSnap = await adminDb().doc("plans/" + customer.planId).get();
+        const shopAccess = planSnap.exists ? planSnap.data()?.appAccess?.juicechatjunction : null;
+        if (shopAccess?.enabled && Array.isArray(shopAccess.features) && shopAccess.features.length > 0) {
+          features = shopAccess.features;
+        }
+      }
     }
 
     const payload = {
       email: c.email,
       role,
       iat: Date.now(),
+      ...(features ? { features } : {}),
     };
     const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
     const sig = createHmac("sha256", secret).update(payloadB64).digest("hex");

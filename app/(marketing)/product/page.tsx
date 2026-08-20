@@ -17,20 +17,20 @@ const steps = [
 export default function ProductPage() {
   return (
     <>
-      <section className="pt-20 pb-16 bg-gradient-to-b from-teal-50/60 to-white text-center">
+      <section className="pt-12 pb-10 bg-gradient-to-b from-teal-50/60 to-white text-center">
         <Container>
           <Eyebrow>Product</Eyebrow>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             From sale to insight, automatically.
           </h1>
         </Container>
       </section>
 
-      <section className="py-20 border-t border-slate-100">
+      <section className="py-14 border-t border-slate-100">
         <Container>
           <div className="grid md:grid-cols-4 gap-6">
             {steps.map((s, i) => (
-              <div key={s.title} className="relative rounded-2xl p-6 bg-white border border-slate-100 shadow-sm">
+              <div key={s.title} className="relative rounded-2xl p-6 bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                 <div className="text-xs font-semibold text-brand-blue mb-3">STEP {i + 1}</div>
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-teal to-brand-blue text-white flex items-center justify-center mb-4">
                   <s.icon className="w-6 h-6" />
@@ -43,14 +43,14 @@ export default function ProductPage() {
         </Container>
       </section>
 
-      <section className="py-20 bg-navy text-white text-center">
+      <section className="py-14 bg-navy text-white text-center">
         <Container className="max-w-2xl">
           <h2 className="text-3xl font-bold mb-4">Designed for owners, not accountants.</h2>
           <p className="text-slate-300">
             Bizzux keeps daily work simple for staff while giving owners the visibility needed to make better
             business decisions.
           </p>
-          <div className="mt-10">
+          <div className="mt-8">
             <CTAButton href="/contact">Book a demo</CTAButton>
           </div>
         </Container>

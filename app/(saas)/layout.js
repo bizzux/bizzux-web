@@ -10,11 +10,18 @@ import Footer from "@/components/Footer";
 // across the whole app. Route groups don't affect the URL, so /dashboard,
 // /team, /profile, /sign-in, /accept-invite and /apps all keep their exact
 // paths.
+//
+// min-h-screen + flex-col on the outer wrapper, flex-1 on .bzx-app, is the
+// standard "sticky footer" pattern (the same one app/(marketing)/layout.tsx
+// already uses) — it pins the Footer to the bottom of the viewport on short
+// pages like Team/Profile instead of leaving it stranded below a big empty
+// gap, while still letting it sit at the true end of the page (pushed down
+// naturally) once content is taller than the screen.
 export default function SaasLayout({ children }) {
   return (
-    <>
-      <div className="bzx-app">{children}</div>
+    <div className="min-h-screen flex flex-col">
+      <div className="bzx-app flex-1">{children}</div>
       <Footer />
-    </>
+    </div>
   );
 }

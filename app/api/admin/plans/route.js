@@ -70,7 +70,7 @@ export async function POST(req) {
     const { action, id } = body;
 
     if (action === "create") {
-      const { name, price, billingPeriod, description, features, popular, active, sortOrder, limits } = body;
+      const { name, price, billingPeriod, description, features, popular, active, sortOrder, limits, strikePrice } = body;
       if (!name || price === undefined) throw { status: 400, message: "Name and price are required" };
 
       const { razorpayPlanId, stripePriceId } = await resolveGatewayIds({
@@ -85,6 +85,11 @@ export async function POST(req) {
         description: description || "", features: Array.isArray(features) ? features : [],
         popular: !!popular, active: active !== false, sortOrder: Number(sortOrder) || 0,
         limits: limits && typeof limits === "object" ? limits : {},
+        // Marketing-only "was" price shown crossed out next to the real price
+        // on the pricing page (see PricingPlans.tsx) to make an ongoing
+        // discount visible at a glance. Purely cosmetic — never used for
+        // billing math. null/omitted means no strike-through is shown.
+        strikePrice: strikePrice !== undefined && strikePrice !== null && strikePrice !== "" ? Number(strikePrice) : null,
         razorpayPlanId, stripePriceId,
         createdAt: FieldValue.serverTimestamp(),
       });
@@ -93,7 +98,7 @@ export async function POST(req) {
 
     if (action === "update") {
       if (!id) throw { status: 400, message: "Plan id required" };
-      const { name, price, billingPeriod, description, features, popular, active, sortOrder } = body;
+      const { name, price, billingPeriod, description, features, popular, active, sortOrder, strikePrice } = body;
 
       const existingSnap = await adminDb().doc("plans/" + id).get();
       const existing = existingSnap.exists ? existingSnap.data() : null;
@@ -114,6 +119,7 @@ export async function POST(req) {
         name, price: Number(price), billingPeriod: billingPeriod || "month",
         description: description || "", features: Array.isArray(features) ? features : [],
         popular: !!popular, active: active !== false, sortOrder: Number(sortOrder) || 0,
+        strikePrice: strikePrice !== undefined && strikePrice !== null && strikePrice !== "" ? Number(strikePrice) : null,
         razorpayPlanId, stripePriceId,
       }, { merge: true });
       return NextResponse.json({ ok: true, razorpayPlanId, stripePriceId });
@@ -126,6 +132,17 @@ export async function POST(req) {
       if (!id) throw { status: 400, message: "Plan id required" };
       const { limits } = body;
       await adminDb().doc("plans/" + id).set({ limits: limits && typeof limits === "object" ? limits : {} }, { merge: true });
+      return NextResponse.json({ ok: true });
+    }
+
+    // Lightweight patch used by the new Plan Apps tab — only touches the
+    // `appAccess` map ({ [appKey]: { enabled, features } }), so it can't
+    // accidentally clobber name/price/features while someone's mid-edit on
+    // the main Plans tab. See lib/apps.js for the app catalog.
+    if (action === "setAppAccess") {
+      if (!id) throw { status: 400, message: "Plan id required" };
+      const { appAccess } = body;
+      await adminDb().doc("plans/" + id).set({ appAccess: appAccess && typeof appAccess === "object" ? appAccess : {} }, { merge: true });
       return NextResponse.json({ ok: true });
     }
 

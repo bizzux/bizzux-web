@@ -1,14 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { onAuthStateChanged, signOut, sendEmailVerification } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import Link from "next/link";
 import OnboardingModal from "@/components/OnboardingModal";
+import CheckoutSuccessModal from "@/components/CheckoutSuccessModal";
+import TrialExpiredModal from "@/components/TrialExpiredModal";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
+import { IconClock } from "@/components/Icons";
+import { daysLeft, canAccessApps } from "@/lib/trial";
 
 const APPS = [
   // `sso: true` means clicking this tile goes through /api/shop-sso instead
@@ -26,13 +30,6 @@ const APPS = [
   { key: "support", name: "Bizzux Support", icon: "🎧", desc: "Coming soon", live: false },
   { key: "sites", name: "Bizzux Sites", icon: "🌐", desc: "Coming soon", live: false },
 ];
-
-function daysLeft(trialEndDate) {
-  if (!trialEndDate) return null;
-  const end = trialEndDate.toDate ? trialEndDate.toDate() : new Date(trialEndDate);
-  const ms = end.getTime() - Date.now();
-  return Math.ceil(ms / (1000 * 60 * 60 * 24));
-}
 
 function VerifyEmailGate({ user }) {
   const router = useRouter();
@@ -93,14 +90,31 @@ function VerifyEmailGate({ user }) {
   );
 }
 
-export default function DashboardPage() {
+function DashboardInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState(null);
   const [customer, setCustomer] = useState(null); // null = loading
   const [isSuper, setIsSuper] = useState(false);
   const [isAccountAdmin, setIsAccountAdmin] = useState(false);
   const [accountId, setAccountId] = useState(null);
   const [openingKey, setOpeningKey] = useState(null);
+  // Both the Razorpay handler (PricingPlans.tsx) and the Stripe hosted
+  // checkout's success_url (app/api/checkout/route.js) land back here with
+  // ?checkout=success — this shows the congratulations modal once, then
+  // strips the param so refreshing/revisiting doesn't retrigger it.
+  const [showCheckoutSuccess, setShowCheckoutSuccess] = useState(false);
+  // Shown instead of opening a live app when canAccessApps() (below) says
+  // this account's trial has ended or its plan has lapsed.
+  const [showLockedModal, setShowLockedModal] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("checkout") === "success") {
+      setShowCheckoutSuccess(true);
+      router.replace("/dashboard");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -161,8 +175,16 @@ export default function DashboardPage() {
   const remaining = daysLeft(customer.trialEndDate);
   const status = customer.status || "trial";
   const expired = status === "trial" && remaining !== null && remaining <= 0;
+  // Gates the live app tiles only — the account/dashboard itself stays
+  // reachable either way. Covers an expired trial and a lapsed
+  // (past_due/cancelled) plan with the same friendly modal.
+  const appsLocked = !canAccessApps(customer);
 
   async function openApp(a) {
+    if (appsLocked) {
+      setShowLockedModal(true);
+      return;
+    }
     if (!a.sso) {
       window.open(a.url, "_blank", "noopener,noreferrer");
       return;
@@ -171,6 +193,14 @@ export default function DashboardPage() {
     try {
       const token = await user.getIdToken();
       const r = await fetch("/api/shop-sso", { headers: { Authorization: "Bearer " + token } });
+      // The server enforces the same access rule (defense in depth, in case
+      // this account's trial/plan lapsed after the page loaded) and answers
+      // 402 when it does — surface the same friendly modal rather than a
+      // raw alert for that case too.
+      if (r.status === 402) {
+        setShowLockedModal(true);
+        return;
+      }
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Couldn't open that app right now");
       window.open(d.url, "_blank", "noopener,noreferrer");
@@ -188,12 +218,24 @@ export default function DashboardPage() {
 
       {status === "trial" && !expired && remaining !== null && (
         <div className="trial-banner">
-          {remaining} day{remaining === 1 ? "" : "s"} left on your free trial. Enjoy exploring!
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <IconClock className="w-4 h-4" />
+            {remaining} day{remaining === 1 ? "" : "s"} left on your free trial. Enjoy exploring!
+          </span>
+          {/* Keyed on `remaining` so the CTA remounts (and its two-burst
+              animation replays) whenever the day-count changes, most
+              notably when the trial reaches its final day, instead of
+              looping forever on every render. */}
+          <Link key={"trial-cta-" + remaining} href="/pricing" className="trial-banner-cta">Choose a plan →</Link>
         </div>
       )}
       {expired && (
         <div className="trial-banner expired">
-          Your trial has wrapped up. Pick a plan whenever you're ready to keep going.
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <IconClock className="w-4 h-4" />
+            Your trial has wrapped up. Pick a plan whenever you're ready to keep going.
+          </span>
+          <Link key="trial-cta-expired" href="/pricing" className="trial-banner-cta">Choose a plan →</Link>
         </div>
       )}
 
@@ -201,23 +243,37 @@ export default function DashboardPage() {
         <h1 className="dash-heading">
           Welcome back{customer.companyName ? `, ${customer.companyName}` : ""}!
         </h1>
-        <p className="dash-sub">
+        <p className="dash-sub" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span className={"status-pill " + status}>{status === "trial" ? "Trial" : status === "active" ? "Active" : "Expired"}</span>
-          {"  "}
-          {customer.planName ? <>· Plan: {customer.planName}</> : (
-            <Link href="/pricing" className="btn-primary-sm" style={{ marginLeft: 8 }}>Choose a plan</Link>
+          {customer.planName ? (
+            <span
+              style={{
+                display: "inline-flex", alignItems: "center",
+                background: "var(--brand-gradient)", color: "#fff",
+                borderRadius: 999, padding: "4px 14px", fontWeight: 700, fontSize: 12,
+              }}
+            >
+              Plan: {customer.planName}
+            </span>
+          ) : (
+            <Link href="/pricing" className="btn-primary-sm">Choose a plan</Link>
           )}
         </p>
 
         <div className="app-grid">
           {APPS.map((a) => {
             const opening = openingKey === a.key;
+            // A live app still greys out (reusing the same "locked" look
+            // "coming soon" tiles already use) once access is gated, so the
+            // trial-ended state is visible before someone even clicks —
+            // the modal on click is the explanation, this is the hint.
+            const tileLocked = a.live && appsLocked;
             const content = (
               <>
                 <div className="app-tile-icon">{a.icon}</div>
                 <div className="app-tile-name">{a.name}</div>
-                <div className={"app-tile-status" + (a.live ? " live" : "")}>
-                  {a.live ? (opening ? "Opening…" : "Open app →") : a.desc}
+                <div className={"app-tile-status" + (a.live && !tileLocked ? " live" : "")}>
+                  {!a.live ? a.desc : tileLocked ? "Trial ended, choose a plan" : opening ? "Opening…" : "Open app →"}
                 </div>
               </>
             );
@@ -228,22 +284,18 @@ export default function DashboardPage() {
                 </div>
               );
             }
-            // SSO apps go through openApp() (fetches a signed hand-off link
-            // first); everything else is still a plain link.
-            return a.sso ? (
+            // Every live app now goes through openApp() — sso apps fetch a
+            // signed hand-off link first, plain-link apps just window.open —
+            // so the trial/plan gate above applies the same way regardless
+            // of how a given app ends up opening.
+            return (
               <button
                 key={a.key} type="button" onClick={() => openApp(a)} disabled={opening}
-                className="app-tile" style={{ textAlign: "left", border: "1px solid var(--line)" }}
+                className={"app-tile" + (tileLocked ? " locked" : "")}
+                style={{ textAlign: "left", border: "1px solid var(--line)" }}
               >
                 {content}
               </button>
-            ) : (
-              <a
-                key={a.key} href={a.url} target="_blank" rel="noopener noreferrer"
-                className="app-tile"
-              >
-                {content}
-              </a>
             );
           })}
         </div>
@@ -252,6 +304,22 @@ export default function DashboardPage() {
       {isOwner && customer.onboarded !== true && (
         <OnboardingModal user={user} onDone={() => reloadCustomer(accountId)} />
       )}
+
+      {showCheckoutSuccess && (
+        <CheckoutSuccessModal planName={customer.planName} onClose={() => setShowCheckoutSuccess(false)} />
+      )}
+
+      {showLockedModal && (
+        <TrialExpiredModal status={status} onClose={() => setShowLockedModal(false)} />
+      )}
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="login-wrap"><p style={{ color: "#fff" }}>Loading…</p></div>}>
+      <DashboardInner />
+    </Suspense>
   );
 }

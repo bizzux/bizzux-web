@@ -28,6 +28,27 @@ function toIso(ts) {
   return typeof ts.toDate === "function" ? ts.toDate().toISOString() : ts;
 }
 
+// The Profile (plan) a new organization gets is never taken from the
+// request body — it's always the CALLER's own current subscription, so
+// nobody can label a new organization with a plan they aren't actually on.
+// requireOrgManager() already attaches `customer` for account owners; for
+// team members (Global Admin/Admin via membership) and for a Super Admin
+// who also happens to hold their own customer account, fall back to
+// reading customers/{accountId} directly. Returns null if the caller has
+// no subscription (trial or paid) on file at all.
+async function resolveOwnPlan(c) {
+  let customer = c.customer || null;
+  const accountId = c.accountId || c.uid;
+  if (!customer) {
+    const snap = await adminDb().doc("customers/" + accountId).get();
+    if (snap.exists) customer = snap.data();
+  }
+  if (!customer) return null;
+  const status = customer.status || "trial";
+  if (status === "trial" || !customer.planId) return { planId: "", planName: "Trial" };
+  return { planId: customer.planId, planName: customer.planName || "" };
+}
+
 export async function GET(req) {
   try {
     await requireOrgManager(req);
@@ -72,11 +93,11 @@ export async function POST(req) {
     const userRange = String(body.userRange || "");
     if (!USER_RANGES.includes(userRange)) throw { status: 400, message: "Choose a valid number of users" };
 
-    const planId = String(body.planId || "").trim();
-    if (!planId) throw { status: 400, message: "Profile (plan) is required" };
-    const planSnap = await adminDb().doc("plans/" + planId).get();
-    if (!planSnap.exists) throw { status: 400, message: "That plan no longer exists. Refresh and try again." };
-    const planName = planSnap.data().name || "";
+    const ownPlan = await resolveOwnPlan(c);
+    if (!ownPlan) {
+      throw { status: 400, message: "Your account doesn't have an active plan or trial on file, so a Profile can't be set for this organization." };
+    }
+    const { planId, planName } = ownPlan;
 
     const ref = await adminDb().collection("organizations").add({
       organizationName,

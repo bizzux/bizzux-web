@@ -121,15 +121,15 @@ export default function TeamPage() {
       <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} />
 
       <div className="admin-shell">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
           <div>
-            <h1 className="dash-heading">Users</h1>
+            <h1 className="dash-heading" style={{ fontSize: 20 }}>Users</h1>
             <p className="dash-sub" style={{ marginBottom: 0 }}>Invite teammates and manage who has access to your Bizzux apps.</p>
           </div>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>+ New User</button>
+          <button className="btn-primary-sm" onClick={() => setShowAdd(true)}>+ New User</button>
         </div>
 
-        {err && <p className="error" style={{ marginBottom: 14 }}>{err}</p>}
+        {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
 
         <div className="card">
           {members === null && <p className="muted">Loading…</p>}
@@ -220,13 +220,13 @@ function AddUserModal({ onClose, onAdded }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginBottom: 18 }}>Add New User</h2>
+        <h2 style={{ marginBottom: 14 }}>Add New User</h2>
         <form onSubmit={submit} noValidate>
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 10 }}>
             <label className="label">First name *</label>
             <input className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoFocus required />
           </div>
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 10 }}>
             <label className="label">Last name</label>
             <input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
           </div>
@@ -234,10 +234,10 @@ function AddUserModal({ onClose, onAdded }) {
             <label className="label">Email *</label>
             <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
-          <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
             An invitation will be sent to this email address.
           </p>
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: 16 }}>
             <label className="label">Roles *</label>
             <select className="input" value={profile} onChange={(e) => setProfile(e.target.value)} required>
               <option value="" disabled>Select role</option>

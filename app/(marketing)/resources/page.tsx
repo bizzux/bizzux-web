@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function ResourcesPage() {
   return (
-    <section className="py-24 text-center">
+    <section className="py-16 pb-24 text-center">
       <Container className="max-w-xl">
         <Eyebrow>Resources</Eyebrow>
         <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">Guides and resources are on the way.</h1>

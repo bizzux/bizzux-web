@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { auth } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import { COUNTRIES, STATES_BY_COUNTRY } from "@/lib/countries";
 import { getTimezones, formatTimezoneLabel } from "@/lib/timezones";
 import { getCurrencyCodes, formatCurrencyLabel } from "@/lib/currencies";
@@ -27,15 +28,23 @@ async function api(path, method, body) {
 
 const USER_RANGES = ["1-10", "11-20", "21-50", "51-100", "101-200", "201-500", "500+"];
 const emptyOrg = {
-  organizationName: "", countryCode: "", state: "", timezone: "", currency: "", userRange: "", planId: "",
+  organizationName: "", countryCode: "", state: "", timezone: "", currency: "", userRange: "",
 };
 
 export default function OrganizationsManager() {
   const [orgs, setOrgs] = useState(null);
-  const [plans, setPlans] = useState(null);
   const [form, setForm] = useState(emptyOrg);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // The Profile (plan) field is never picked from a list here — it's
+  // auto-detected from the signed-in person's OWN subscription (trial or
+  // paid plan) and applied to every organization they create. This stops
+  // someone from labeling a new org with a plan they aren't actually on.
+  // null = still checking; { label } once resolved; { label: null, error }
+  // if this account has no plan/trial on file at all (e.g. a Super Admin
+  // with no subscription of their own — Add Organization is then unusable
+  // until that account has one).
+  const [ownPlan, setOwnPlan] = useState(null);
 
   const timezones = useMemo(() => getTimezones(), []);
   const currencyCodes = useMemo(() => getCurrencyCodes(), []);
@@ -48,15 +57,25 @@ export default function OrganizationsManager() {
       setOrgs([]);
     }
   }
-  async function loadPlans() {
+  async function loadOwnPlan() {
     try {
-      const d = await api("/api/admin/plans", "GET");
-      setPlans((d.plans || []).filter((p) => p.active !== false));
+      const token = await auth.currentUser.getIdToken();
+      const meRes = await fetch("/api/me", { headers: { Authorization: "Bearer " + token } });
+      const me = await meRes.json();
+      const snap = await getDoc(doc(db, "customers", me.accountId || auth.currentUser.uid));
+      if (!snap.exists()) {
+        setOwnPlan({ label: null, error: "Your account doesn't have an active plan or trial on file, so a Profile can't be set for a new organization." });
+        return;
+      }
+      const c = snap.data();
+      const status = c.status || "trial";
+      const label = status === "trial" || !c.planId ? "Trial" : (c.planName || "N/A");
+      setOwnPlan({ label });
     } catch {
-      setPlans([]);
+      setOwnPlan({ label: null, error: "Couldn't check your plan right now. Please refresh and try again." });
     }
   }
-  useEffect(() => { load(); loadPlans(); }, []);
+  useEffect(() => { load(); loadOwnPlan(); }, []);
 
   function setField(field, value) {
     setForm((f) => (field === "countryCode" ? { ...f, countryCode: value, state: "" } : { ...f, [field]: value }));
@@ -67,6 +86,9 @@ export default function OrganizationsManager() {
     setErr("");
     setBusy(true);
     try {
+      // No planId in the payload on purpose — the server derives it fresh
+      // from the caller's own account, the same way loadOwnPlan() above
+      // previews it, so this can't be tampered with client-side either.
       await api("/api/admin/organizations", "POST", { action: "create", ...form });
       setForm(emptyOrg);
       await load();
@@ -86,21 +108,21 @@ export default function OrganizationsManager() {
     }
   }
 
-  if (orgs === null || plans === null) return <p className="muted">Loading…</p>;
+  if (orgs === null || ownPlan === null) return <p className="muted">Loading…</p>;
 
   const statesForCountry = STATES_BY_COUNTRY[form.countryCode];
 
   return (
-    <div style={{ display: "grid", gap: 24, gridTemplateColumns: "1.1fr 1fr" }}>
+    <div style={{ display: "grid", gap: 18, gridTemplateColumns: "1.1fr 1fr" }}>
       <div className="card">
-        <h3 style={{ marginBottom: 6 }}>Add Organization</h3>
-        <p className="muted" style={{ marginTop: 0, marginBottom: 14 }}>
+        <h3 style={{ marginBottom: 5 }}>Add Organization</h3>
+        <p className="muted" style={{ marginTop: 0, marginBottom: 12, fontSize: 13 }}>
           Provisions a placeholder organization record. This is separate from a real signed-up customer
           account. No login is created here; inviting an actual person still happens from that
           organization&apos;s own <code>/team</code> once it has an account.
         </p>
         <form onSubmit={submit}>
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 10 }}>
             <label className="label">Organization Name *</label>
             <input
               className="input" value={form.organizationName}
@@ -108,7 +130,7 @@ export default function OrganizationsManager() {
             />
           </div>
 
-          <div className="row" style={{ marginBottom: 12 }}>
+          <div className="row" style={{ marginBottom: 10 }}>
             <div style={{ flex: 1 }}>
               <label className="label">Country *</label>
               <select
@@ -140,7 +162,7 @@ export default function OrganizationsManager() {
             </div>
           </div>
 
-          <div className="row" style={{ marginBottom: 12 }}>
+          <div className="row" style={{ marginBottom: 10 }}>
             <div style={{ flex: 1 }}>
               <label className="label">Time zone *</label>
               <select
@@ -167,7 +189,7 @@ export default function OrganizationsManager() {
             </div>
           </div>
 
-          <div className="row" style={{ marginBottom: 12 }}>
+          <div className="row" style={{ marginBottom: 10 }}>
             <div style={{ flex: 1 }}>
               <label className="label">No of users *</label>
               <select
@@ -181,25 +203,20 @@ export default function OrganizationsManager() {
               </select>
             </div>
             <div style={{ flex: 1 }}>
-              <label className="label">Profile *</label>
-              <select
-                className="input" value={form.planId}
-                onChange={(e) => setField("planId", e.target.value)} required
+              <label className="label">Profile</label>
+              <div
+                className="input"
+                style={{ display: "flex", alignItems: "center", background: "var(--line, #f1f5f9)", color: ownPlan.label ? "inherit" : "#b91c1c", cursor: "not-allowed" }}
               >
-                <option value="" disabled>Select a plan</option>
-                {plans.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              {plans.length === 0 && (
-                <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
-                  No plans configured yet. Add Essential/Business/Premium (or your own) from the Plans tab first.
-                </p>
-              )}
+                {ownPlan.label || "Not available"}
+              </div>
+              <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
+                {ownPlan.error || "Auto-detected from your own subscription, not editable."}
+              </p>
             </div>
           </div>
 
-          <button className="btn-primary" disabled={busy || plans.length === 0}>
+          <button className="btn-primary" disabled={busy || !ownPlan.label}>
             {busy ? "Adding…" : "Add organization"}
           </button>
           {err && <p className="error" style={{ marginTop: 10 }}>{err}</p>}
@@ -207,7 +224,7 @@ export default function OrganizationsManager() {
       </div>
 
       <div className="card">
-        <h3 style={{ marginBottom: 14 }}>Organizations</h3>
+        <h3 style={{ marginBottom: 12 }}>Organizations</h3>
         {orgs.length === 0 && <p className="muted">None added yet.</p>}
         {orgs.map((o) => (
           <div key={o.id} style={{ borderBottom: "1px solid var(--line)", padding: "12px 0" }}>

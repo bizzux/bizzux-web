@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { IconX, IconCheck } from "@/components/Icons";
 
 const areas = [
   "Frontend development",
@@ -15,6 +16,13 @@ const areas = [
 export default function CareersForm() {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [resumeFileName, setResumeFileName] = useState("");
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+
+  function clearResume() {
+    if (resumeInputRef.current) resumeInputRef.current.value = "";
+    setResumeFileName("");
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,9 +43,12 @@ export default function CareersForm() {
 
   if (status === "success") {
     return (
-      <div className="rounded-xl border border-brand-teal/30 bg-teal-50 p-8 text-center">
-        <h3 className="font-semibold text-lg mb-2">Application received.</h3>
-        <p className="text-sm text-slate-600">Thanks for your interest in Bizzux. Our team will review and reach out.</p>
+      <div className="rounded-xl bg-gradient-to-r from-brand-teal to-brand-blue p-8 text-center shadow-lg">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/20">
+          <IconCheck className="w-6 h-6 text-white" />
+        </div>
+        <h3 className="font-bold text-2xl text-white mb-2">Application received!</h3>
+        <p className="text-sm text-white/90">Thanks for your interest in Bizzux. Our team will review and reach out.</p>
       </div>
     );
   }
@@ -92,12 +103,35 @@ export default function CareersForm() {
       </div>
       <div>
         <label className="block text-sm font-medium mb-1.5" htmlFor="resume">Upload resume (PDF or DOCX)</label>
+        <div className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm flex items-center gap-3">
+          <label
+            htmlFor="resume"
+            className="shrink-0 cursor-pointer rounded-full bg-slate-100 hover:bg-slate-200 px-4 py-1.5 text-sm font-medium transition-colors"
+          >
+            Choose File
+          </label>
+          <span className="flex-1 min-w-0 flex items-center gap-1.5">
+            <span className="truncate text-slate-600">{resumeFileName || "No file chosen"}</span>
+            {resumeFileName && (
+              <button
+                type="button"
+                onClick={clearResume}
+                aria-label="Remove selected resume"
+                className="shrink-0 text-slate-400 hover:text-red-600 transition-colors p-1"
+              >
+                <IconX className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </span>
+        </div>
         <input
+          ref={resumeInputRef}
           id="resume"
           name="resume"
           type="file"
           accept=".pdf,.doc,.docx"
-          className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-1.5 file:text-sm file:font-medium hover:file:bg-slate-200"
+          className="hidden"
+          onChange={(e) => setResumeFileName(e.target.files?.[0]?.name || "")}
         />
       </div>
       {status === "error" && <p className="text-sm text-red-600">{errorMsg}</p>}

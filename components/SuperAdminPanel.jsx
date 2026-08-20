@@ -5,6 +5,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import OrganizationsManager from "@/components/OrganizationsManager";
+import { APP_CATALOG } from "@/lib/apps";
 
 // Ported from apps.bizzux.com's app/admin/page.js (Super Admin panel), now
 // embedded as the "Super Admin" tab of bizzux.com's merged /admin page —
@@ -17,6 +18,7 @@ const TABS = [
   { id: "trial", label: "Trial settings" },
   { id: "plans", label: "Plans" },
   { id: "planlimits", label: "Plan Limits" },
+  { id: "planapps", label: "Plan Apps" },
   { id: "offers", label: "Offers" },
   { id: "customers", label: "Customers" },
   { id: "organizations", label: "Add Organization" },
@@ -96,6 +98,7 @@ export default function SuperAdminPanel() {
       {tab === "trial" && <TrialSettings />}
       {tab === "plans" && <PlansManager />}
       {tab === "planlimits" && <PlanLimitsManager />}
+      {tab === "planapps" && <PlanAppsManager />}
       {tab === "offers" && <OffersManager />}
       {tab === "customers" && <CustomersList />}
       {tab === "organizations" && <OrganizationsManager />}
@@ -153,7 +156,7 @@ function TrialSettings() {
   );
 }
 
-const emptyPlan = { name: "", price: "", billingPeriod: "month", description: "", features: "", popular: false, active: true, sortOrder: 0, razorpayPlanId: "", stripePriceId: "" };
+const emptyPlan = { name: "", price: "", billingPeriod: "month", description: "", features: "", popular: false, active: true, sortOrder: 0, razorpayPlanId: "", stripePriceId: "", strikePrice: "" };
 
 function PlansManager() {
   const [plans, setPlans] = useState(null);
@@ -161,6 +164,12 @@ function PlansManager() {
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // Snapshot of the plan's price/billing period at the moment Edit was
+  // clicked — compared against the live form below to warn before a save
+  // that would trigger a brand-new Razorpay/Stripe plan object (both
+  // platforms make these immutable once created; see the comment atop
+  // app/api/admin/plans/route.js). Not used at all for "Add a plan".
+  const [originalPricing, setOriginalPricing] = useState(null);
 
   async function load() {
     try {
@@ -179,9 +188,20 @@ function PlansManager() {
       description: p.description || "", features: (p.features || []).join(", "),
       popular: !!p.popular, active: p.active !== false, sortOrder: p.sortOrder ?? 0,
       razorpayPlanId: p.razorpayPlanId || "", stripePriceId: p.stripePriceId || "",
+      strikePrice: p.strikePrice ?? "",
     });
+    setOriginalPricing({ price: p.price ?? "", billingPeriod: p.billingPeriod || "month" });
   }
-  function resetForm() { setEditingId(null); setForm(emptyPlan); }
+  function resetForm() { setEditingId(null); setForm(emptyPlan); setOriginalPricing(null); }
+
+  // True once the person has actually changed Price or Billing period away
+  // from what this plan was saved with — the two fields that make saving
+  // create a fresh gateway plan instead of reusing the existing one (see
+  // resolveGatewayIds() in app/api/admin/plans/route.js).
+  const willCreateNewGatewayPlan =
+    editingId &&
+    originalPricing &&
+    (Number(form.price) !== Number(originalPricing.price) || form.billingPeriod !== originalPricing.billingPeriod);
 
   async function submit(e) {
     e.preventDefault();
@@ -193,6 +213,7 @@ function PlansManager() {
         description: form.description, popular: !!form.popular, active: !!form.active,
         sortOrder: Number(form.sortOrder) || 0,
         features: form.features.split(",").map((s) => s.trim()).filter(Boolean),
+        strikePrice: form.strikePrice === "" ? null : Number(form.strikePrice),
         // No razorpayPlanId/stripePriceId here on purpose — the API
         // auto-creates (or reuses) both from name/price/billingPeriod. See
         // app/api/admin/plans/route.js's resolveGatewayIds().
@@ -246,6 +267,28 @@ function PlansManager() {
               </select>
             </div>
           </div>
+          {willCreateNewGatewayPlan && (
+            <p
+              className="muted"
+              style={{ fontSize: 12.5, marginTop: -6, marginBottom: 12, color: "#B23C00", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 10px" }}
+            >
+              Razorpay and Stripe don&apos;t allow editing a plan&apos;s price after it&apos;s created, so saving this
+              will set up a brand-new plan there instead of changing the existing one. Anyone already subscribed
+              keeps their current price; only new checkouts will use this one. If you were just testing a value,
+              change it back before saving to avoid leaving an unused plan behind at the gateway.
+            </p>
+          )}
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">Marketing price (strike-through, optional)</label>
+            <input
+              className="input" type="number" min="0" placeholder="e.g. 699"
+              value={form.strikePrice} onChange={(e) => setForm({ ...form, strikePrice: e.target.value })}
+            />
+            <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+              Shown crossed out next to the real price on the pricing page, with a "Limited offer" badge, to
+              make the current price look like an active discount. Purely cosmetic. Leave blank to hide it.
+            </p>
+          </div>
           <div style={{ marginBottom: 12 }}>
             <label className="label">Description</label>
             <input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -294,7 +337,10 @@ function PlansManager() {
         {plans.map((p) => (
           <div key={p.id} style={{ borderBottom: "1px solid var(--line)", padding: "12px 0" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <strong>{p.name} (₹{p.price}/{p.billingPeriod})</strong>
+              <strong>
+                {p.name} ({p.strikePrice > p.price && <span style={{ textDecoration: "line-through", opacity: 0.6 }}>₹{p.strikePrice}</span>}{" "}
+                ₹{p.price}/{p.billingPeriod})
+              </strong>
               {p.active === false && <span className="muted" style={{ fontSize: 12 }}>hidden</span>}
             </div>
             <div className="row" style={{ marginTop: 4, gap: 12 }}>
@@ -418,7 +464,7 @@ function OffersManager() {
               onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
               placeholder="LAUNCH20" required
             />
-            {editingId && <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>The code itself can&apos;t be changed once created — delete and re-add if you need a different one.</p>}
+            {editingId && <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>The code itself can&apos;t be changed once created. Delete and re-add if you need a different one.</p>}
           </div>
           <div style={{ marginBottom: 12 }}>
             <label className="label">Plan</label>
@@ -448,7 +494,7 @@ function OffersManager() {
             <select className="input" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })}>
               <option value="forever">Forever (lifetime of the subscription)</option>
               <option value="cycles">For a number of billing cycles</option>
-              <option value="once">One-time — first payment only</option>
+              <option value="once">One-time, first payment only</option>
             </select>
           </div>
           {form.duration === "cycles" && (
@@ -520,21 +566,21 @@ function OffersManager() {
 // tabs like any other plan.
 const DEFAULT_PLANS = [
   {
-    name: "Essential", price: 499, billingPeriod: "month", sortOrder: 1,
+    name: "Essential", price: 499, strikePrice: 699, billingPeriod: "month", sortOrder: 1,
     description: "Everything you need to run one counter.",
     features: ["1 shop location", "Up to 2 staff logins", "Digital menu & self-order", "Basic sales reports"],
     popular: false, active: true,
     limits: { maxStaffLogins: 2, maxShops: 1, maxMenuItems: 50, maxMonthlyOrders: 500, supportLevel: "Email" },
   },
   {
-    name: "Business", price: 999, billingPeriod: "month", sortOrder: 2,
+    name: "Business", price: 999, strikePrice: 1299, billingPeriod: "month", sortOrder: 2,
     description: "For growing shops with more staff and locations.",
     features: ["Up to 3 shop locations", "Up to 8 staff logins", "Inventory & purchases", "Priority email support"],
     popular: true, active: true,
     limits: { maxStaffLogins: 8, maxShops: 3, maxMenuItems: 300, maxMonthlyOrders: 3000, supportLevel: "Priority Email" },
   },
   {
-    name: "Premium", price: 1999, billingPeriod: "month", sortOrder: 3,
+    name: "Premium", price: 1999, strikePrice: 2299, billingPeriod: "month", sortOrder: 3,
     description: "Unlimited scale with every feature unlocked.",
     features: ["Unlimited shop locations", "Unlimited staff logins", "Full CapEx/OpEx & analytics", "Phone & priority support"],
     popular: false, active: true,
@@ -679,6 +725,162 @@ function PlanLimitsManager() {
 
               <button className="btn-primary" disabled={savingId === p.id} onClick={() => saveLimits(p.id)}>
                 {savingId === p.id ? "Saving…" : "Save limits"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Lets a Super Admin pick, per plan, which Bizzux apps are included and
+// (optionally) which named features within each app are unlocked — e.g.
+// "Business" gets Shop + POS + Orders, with POS limited to "Single till".
+// Mirrors the Plan Limits tab's per-plan-card layout. See lib/apps.js for
+// the app catalog and app/api/admin/plans/route.js's setAppAccess action.
+function PlanAppsManager() {
+  const [plans, setPlans] = useState(null);
+  // planId -> { [appKey]: { enabled, features: string[], featuresText: string } }
+  // `features` (array) drives the checklist for apps with a known real tab
+  // list (APP_CATALOG entry has `features`); `featuresText` (raw string,
+  // kept separate so a mid-typed comma is never eaten) drives the free-text
+  // fallback for apps whose feature list isn't known yet.
+  const [edits, setEdits] = useState({});
+  const [savingId, setSavingId] = useState(null);
+  const [err, setErr] = useState("");
+
+  async function load() {
+    try {
+      const d = await api("/api/admin/plans", "GET");
+      const list = d.plans || [];
+      setPlans(list);
+      const next = {};
+      for (const p of list) {
+        const access = p.appAccess || {};
+        const forPlan = {};
+        for (const app of APP_CATALOG) {
+          const a = access[app.key] || {};
+          const featuresArr = Array.isArray(a.features) ? a.features : [];
+          forPlan[app.key] = { enabled: !!a.enabled, features: featuresArr, featuresText: featuresArr.join(", ") };
+        }
+        next[p.id] = forPlan;
+      }
+      setEdits(next);
+    } catch {
+      setPlans([]);
+    }
+  }
+  useEffect(() => { load(); }, []);
+
+  function setAppField(planId, appKey, field, value) {
+    setEdits((e) => ({
+      ...e,
+      [planId]: { ...e[planId], [appKey]: { ...e[planId]?.[appKey], [field]: value } },
+    }));
+  }
+
+  // Checklist apps only — toggles one real tab id in or out of the plan's
+  // allowed set.
+  function toggleFeature(planId, appKey, featureId) {
+    setEdits((e) => {
+      const current = e[planId]?.[appKey]?.features || [];
+      const next = current.includes(featureId) ? current.filter((f) => f !== featureId) : [...current, featureId];
+      return { ...e, [planId]: { ...e[planId], [appKey]: { ...e[planId]?.[appKey], features: next } } };
+    });
+  }
+
+  async function saveAppAccess(planId) {
+    setSavingId(planId);
+    setErr("");
+    try {
+      const forPlan = edits[planId] || {};
+      const appAccess = {};
+      for (const app of APP_CATALOG) {
+        const a = forPlan[app.key] || {};
+        // Checklist apps save straight from the `features` array; free-text
+        // apps parse `featuresText` the same way they always did.
+        const features = app.features
+          ? (a.features || []).filter(Boolean)
+          : (a.featuresText || "").split(",").map((s) => s.trim()).filter(Boolean);
+        appAccess[app.key] = { enabled: !!a.enabled, features };
+      }
+      await api("/api/admin/plans", "POST", { action: "setAppAccess", id: planId, appAccess });
+      await load();
+    } catch (e2) {
+      setErr(e2.message);
+    }
+    setSavingId(null);
+  }
+
+  if (plans === null) return <p className="muted">Loading…</p>;
+
+  return (
+    <div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <p className="section-title" style={{ marginTop: 0 }}>App access per plan</p>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Choose which Bizzux apps come with each plan. Apps with a known tab structure, like Bizzux Shop,
+          show a checklist of their real tabs to include or exclude; the rest still take a free-text list of
+          feature names for reference. Enforcement currently reaches Bizzux Shop, since it's the only app
+          live today, through the sign-in hand-off.
+        </p>
+        {err && <p className="error" style={{ marginTop: 10 }}>{err}</p>}
+      </div>
+
+      {plans.length === 0 && <p className="muted">No plans yet. Add one from the Plans tab.</p>}
+
+      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+        {plans.map((p) => {
+          const forPlan = edits[p.id] || {};
+          return (
+            <div key={p.id} className="card">
+              <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
+                <strong>{p.name}</strong>
+                {p.popular && <span className="muted" style={{ fontSize: 12 }}>★ Popular</span>}
+              </div>
+
+              {APP_CATALOG.map((app) => {
+                const a = forPlan[app.key] || { enabled: false, features: [], featuresText: "" };
+                return (
+                  <div key={app.key} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--line)" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, marginBottom: a.enabled ? 6 : 0 }}>
+                      <input
+                        type="checkbox" checked={a.enabled}
+                        onChange={(e) => setAppField(p.id, app.key, "enabled", e.target.checked)}
+                      />
+                      <span>{app.icon} {app.name}</span>
+                    </label>
+
+                    {a.enabled && app.features && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "5px 14px", paddingLeft: 22 }}>
+                        {app.features.map((f) => (
+                          <label key={f.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--muted)" }}>
+                            <input
+                              type="checkbox"
+                              checked={a.features.includes(f.id)}
+                              onChange={() => toggleFeature(p.id, app.key, f.id)}
+                            />
+                            {f.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {a.enabled && !app.features && (
+                      <input
+                        className="input" placeholder="Unlocked features (comma-separated, optional)"
+                        value={a.featuresText}
+                        onChange={(e) => setAppField(p.id, app.key, "featuresText", e.target.value)}
+                        style={{ fontSize: 12.5 }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+
+              <button className="btn-primary" disabled={savingId === p.id} onClick={() => saveAppAccess(p.id)}>
+                {savingId === p.id ? "Saving…" : "Save app access"}
               </button>
             </div>
           );

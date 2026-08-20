@@ -46,13 +46,13 @@ function SolutionCard({ icon: Icon, title, href }: { icon: any; title: string; h
 export default function SolutionsPage() {
   return (
     <>
-      <section className="pt-20 pb-16 bg-navy text-white relative overflow-hidden">
+      <section className="pt-12 pb-10 bg-navy text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-40" style={{
           background: "radial-gradient(50% 50% at 80% 20%, rgba(163,230,53,0.2) 0%, transparent 60%)"
         }} />
         <Container className="relative text-center">
           <Eyebrow light>Solutions</Eyebrow>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             Built for businesses that sell every day.
           </h1>
           <p className="text-lg text-slate-300 max-w-2xl mx-auto">
@@ -61,21 +61,21 @@ export default function SolutionsPage() {
         </Container>
       </section>
 
-      <section className="py-20">
+      <section className="py-14">
         <Container>
-          <h2 className="text-2xl font-bold mb-8">Bizzux Platform Solutions</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-20">
+          <h2 className="text-2xl font-bold mb-6">Bizzux Platform Solutions</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-14">
             {platformSolutions.map((s) => <SolutionCard key={s.title} {...s} />)}
           </div>
 
-          <h2 className="text-2xl font-bold mb-8">Custom Technology Solutions</h2>
+          <h2 className="text-2xl font-bold mb-6">Custom Technology Solutions</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {customSolutions.map((s) => <SolutionCard key={s.title} {...s} />)}
           </div>
         </Container>
       </section>
 
-      <section className="py-20 bg-slate-50 text-center">
+      <section className="py-14 pb-24 bg-slate-50 text-center">
         <Container>
           <h2 className="text-3xl font-bold mb-4">Not sure which fits your business?</h2>
           <p className="text-slate-600 mb-8">Tell us about your business and we&apos;ll configure the right solution.</p>

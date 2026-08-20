@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSuperAdmin, getDb, getBucket } from "@/lib/firebaseAdmin";
+import { requireSuperAdmin, getDb } from "@/lib/firebaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +11,12 @@ export const dynamic = "force-dynamic";
 // data (names, emails, phone numbers, resume links) must never render into
 // a server-rendered page before an auth check runs, so this now lives
 // behind a bearer-token-gated API route that AdminTabs calls client-side.
+//
+// Resumes live in a private Vercel Blob store (see /api/careers), not a
+// publicly-fetchable URL, so this route no longer hands out a download
+// link directly — it just tells the table whether resumeBlobPath exists.
+// The actual file is streamed through /api/admin/resume-file (also
+// Super-Admin gated) only when the admin clicks Download.
 export async function GET(req) {
   try {
     await requireSuperAdmin(req);
@@ -21,27 +27,7 @@ export async function GET(req) {
   try {
     const db = getDb();
     const snap = await db.collection("careerApplications").orderBy("createdAt", "desc").get();
-    const bucket = getBucket();
-
-    const apps = await Promise.all(
-      snap.docs.map(async (doc) => {
-        const data = doc.data();
-        let resumeSignedUrl = null;
-        if (data.resumeUrl) {
-          try {
-            const [url] = await bucket.file(data.resumeUrl).getSignedUrl({
-              action: "read",
-              expires: Date.now() + 15 * 60 * 1000,
-            });
-            resumeSignedUrl = url;
-          } catch {
-            resumeSignedUrl = null;
-          }
-        }
-        return { id: doc.id, ...data, resumeSignedUrl };
-      })
-    );
-
+    const apps = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     return NextResponse.json({ apps });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Could not load applications." }, { status: 500 });

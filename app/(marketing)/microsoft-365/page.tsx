@@ -18,13 +18,13 @@ const setupItems = [
 export default function Microsoft365Page() {
   return (
     <>
-      <section className="pt-20 pb-16 bg-gradient-to-b from-teal-50/60 to-white text-center">
+      <section className="pt-12 pb-10 bg-gradient-to-b from-teal-50/60 to-white text-center">
         <Container>
           <Eyebrow>Microsoft 365 Solutions</Eyebrow>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             Make your business look and work like a professional company.
           </h1>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-10">
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-8">
             Stop using yourbusiness@gmail.com for your business. Get a professional business identity with your
             own domain email, cloud storage and collaboration tools.
           </p>
@@ -32,13 +32,13 @@ export default function Microsoft365Page() {
         </Container>
       </section>
 
-      <section className="py-20 border-t border-slate-100">
+      <section className="py-14 border-t border-slate-100">
         <Container>
           <h2 className="text-2xl font-bold mb-2 text-center">Microsoft 365 Business Setup</h2>
-          <p className="text-slate-600 text-center max-w-xl mx-auto mb-12">We help businesses set up and configure:</p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+          <p className="text-slate-600 text-center max-w-xl mx-auto mb-9">We help businesses set up and configure:</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {setupItems.map((f) => (
-              <div key={f.title} className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm text-center">
+              <div key={f.title} className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm text-center hover:shadow-md transition-shadow">
                 <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-brand-teal to-brand-blue text-white flex items-center justify-center mb-4 mx-auto">
                   <f.icon className="w-5 h-5" />
                 </div>
@@ -55,7 +55,7 @@ export default function Microsoft365Page() {
         </Container>
       </section>
 
-      <section className="py-20 bg-slate-50">
+      <section className="py-14 pb-24 bg-slate-50">
         <Container className="max-w-3xl">
           <h2 className="text-2xl font-bold mb-8 text-center">Microsoft 365 Business Basic</h2>
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">

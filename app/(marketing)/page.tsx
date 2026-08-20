@@ -127,9 +127,9 @@ export default function Home() {
       </div>
 
       {/* Two core offerings */}
-      <section className="pt-14 pb-16 md:pt-20 md:pb-16 border-b border-slate-100">
+      <section className="pt-10 pb-12 md:pt-14 md:pb-14 border-b border-slate-100">
         <Container>
-          <div className="text-center max-w-2xl mx-auto mb-14">
+          <div className="text-center max-w-2xl mx-auto mb-10">
             <Eyebrow>Two ways to work with us</Eyebrow>
             <h2 className="text-3xl font-bold">Everything you need, or exactly what you need.</h2>
           </div>
@@ -179,9 +179,9 @@ export default function Home() {
       </section>
 
       {/* Why Bizzux */}
-      <section className="py-16 md:py-20 bg-slate-50">
+      <section className="py-12 md:py-14 bg-slate-50">
         <Container>
-          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-8 md:mb-10">
             <Eyebrow>Why Bizzux</Eyebrow>
             <h2 className="text-3xl font-bold mb-4">Modern business software, built for what comes next.</h2>
             <p className="text-slate-600">
@@ -206,9 +206,9 @@ export default function Home() {
       </section>
 
       {/* Secure solutions */}
-      <section className="py-16 md:py-20">
+      <section className="py-12 md:py-14">
         <Container>
-          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-8 md:mb-10">
             <Eyebrow>Secure by design</Eyebrow>
             <h2 className="text-3xl font-bold">Your business deserves a professional and secure digital foundation.</h2>
           </div>

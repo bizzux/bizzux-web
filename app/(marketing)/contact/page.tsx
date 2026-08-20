@@ -11,16 +11,16 @@ export const metadata: Metadata = {
 export default function ContactPage() {
   return (
     <>
-      <section className="pt-20 pb-16 bg-navy text-white text-center relative overflow-hidden">
+      <section className="pt-12 pb-10 bg-navy text-white text-center relative overflow-hidden">
         <div className="absolute inset-0 opacity-30" style={{
           background: "radial-gradient(55% 55% at 50% 0%, rgba(20,184,166,0.3) 0%, transparent 65%)"
         }} />
         <Container className="relative max-w-2xl">
           <Eyebrow light>Contact</Eyebrow>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             Let&apos;s build what your business needs.
           </h1>
-          <p className="text-lg text-slate-300 mb-10">
+          <p className="text-lg text-slate-300 mb-8">
             Whether you need Bizzux for daily business management, a professional Microsoft 365 setup, an
             e-commerce website or a custom AI-enabled application, our team can help.
           </p>
@@ -36,8 +36,8 @@ export default function ContactPage() {
         </Container>
       </section>
 
-      <section className="py-20">
-        <Container className="grid lg:grid-cols-5 gap-12 max-w-5xl">
+      <section className="py-14 pb-24">
+        <Container className="grid lg:grid-cols-5 gap-10 max-w-5xl">
           <div className="lg:col-span-2">
             <h2 className="text-xl font-bold mb-4">Reach us directly</h2>
             <div className="space-y-4 text-sm">

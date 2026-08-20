@@ -24,13 +24,13 @@ const process = [
 export default function CustomSoftwarePage() {
   return (
     <>
-      <section className="pt-20 pb-16 bg-gradient-to-b from-teal-50/60 to-white">
+      <section className="pt-12 pb-10 bg-gradient-to-b from-teal-50/60 to-white">
         <Container className="text-center">
           <Eyebrow>Custom Software Development</Eyebrow>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6">
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             When off-the-shelf isn&apos;t enough, we build it.
           </h1>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-10">
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-8">
             Some businesses run on processes no template can cover. We design and
             build bespoke applications, internal tools, and integrations tailored to
             exactly how your business operates, not the other way around.
@@ -39,8 +39,8 @@ export default function CustomSoftwarePage() {
         </Container>
       </section>
 
-      <section className="py-20 border-t border-slate-100">
-        <Container className="grid md:grid-cols-2 gap-12">
+      <section className="py-14 border-t border-slate-100">
+        <Container className="grid md:grid-cols-2 gap-10">
           <div>
             <h2 className="text-2xl font-bold mb-6">What we build</h2>
             <ul className="space-y-4">
@@ -64,12 +64,12 @@ export default function CustomSoftwarePage() {
         </Container>
       </section>
 
-      <section className="py-20 bg-slate-50 border-t border-slate-100">
+      <section className="py-14 bg-slate-50 border-t border-slate-100">
         <Container>
-          <h2 className="text-2xl font-bold mb-10 text-center">How it works</h2>
+          <h2 className="text-2xl font-bold mb-8 text-center">How it works</h2>
           <div className="grid md:grid-cols-4 gap-6">
             {process.map(([title, desc], i) => (
-              <div key={title} className="bg-white rounded-xl p-6 border border-slate-100">
+              <div key={title} className="bg-white rounded-xl p-6 border border-slate-100 hover:shadow-md transition-shadow">
                 <div className="w-8 h-8 rounded-full bg-brand text-white text-sm font-bold flex items-center justify-center mb-4">
                   {i + 1}
                 </div>
@@ -81,7 +81,7 @@ export default function CustomSoftwarePage() {
         </Container>
       </section>
 
-      <section className="py-20 text-center border-t border-slate-100">
+      <section className="py-14 pb-24 text-center border-t border-slate-100">
         <Container>
           <h2 className="text-3xl font-bold mb-4">Tell us what you&apos;re trying to build.</h2>
           <CTAButton href="/contact">Request a Custom Software Consultation</CTAButton>

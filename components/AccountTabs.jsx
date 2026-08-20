@@ -6,15 +6,17 @@ import { auth } from "@/lib/firebase";
 
 // Secondary tab strip shown just below Nav on the signed-in account pages
 // (dashboard/team/profile) — the account-specific destinations (Dashboard,
-// Profile, Team, Admin) live here instead of in the main header, so Nav
-// itself stays identical to the signed-out marketing bar. `active` marks
-// which tab is current; Team/Admin only render for people with that role.
+// Profile, Team, Analytics, Admin) live here instead of in the main header,
+// so Nav itself stays identical to the signed-out marketing bar. `active`
+// marks which tab is current; Team only renders for account admins,
+// Analytics and Admin only render for Super Admin.
 export default function AccountTabs({ active, isAccountAdmin = false, isSuper = false }) {
   const tabs = [
     { key: "dashboard", href: "/dashboard", label: "Dashboard" },
     { key: "profile", href: "/profile", label: "Profile" },
     ...(isAccountAdmin ? [{ key: "team", href: "/team", label: "Team" }] : []),
     ...(isSuper ? [{ key: "admin", href: "/admin", label: "Admin" }] : []),
+    ...(isSuper ? [{ key: "analytics", href: "/analytics", label: "Analytics" }] : []),
   ];
 
   return (
@@ -29,7 +31,7 @@ export default function AccountTabs({ active, isAccountAdmin = false, isSuper = 
                 "h-12 inline-flex items-center border-b-2 transition-colors " +
                 (active === t.key
                   ? "border-brand-blue text-brand-blue"
-                  : "border-transparent text-slate-600 hover:text-brand-blue")
+                  : "border-transparent text-slate-800 hover:text-brand-blue")
               }
             >
               {t.label}
