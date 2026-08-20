@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signOut, sendEmailVerification } from "firebase/auth";
+import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import Link from "next/link";
@@ -42,7 +42,17 @@ function VerifyEmailGate({ user }) {
     setBusy(true);
     setMsg("");
     try {
-      await sendEmailVerification(user, { url: window.location.origin + "/dashboard" });
+      // Sent through Resend (see /api/send-verification-email), not the
+      // Firebase client SDK's own sendEmailVerification() — Firebase's
+      // default sender has no SPF/DKIM alignment with bizzux.com and
+      // reliably lands in spam.
+      const token = await user.getIdToken();
+      const r = await fetch("/api/send-verification-email", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ continueUrl: window.location.origin + "/dashboard" }),
+      });
+      if (!r.ok) throw new Error();
       setMsg("Sent! Take a peek at your inbox, and your spam folder just in case.");
     } catch {
       setMsg("Hmm, that didn't go through. Give it another try in a moment.");

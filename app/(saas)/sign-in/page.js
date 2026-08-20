@@ -7,7 +7,6 @@ import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
-  sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
@@ -116,7 +115,16 @@ export default function LoginPage() {
       if (mode === "signup") {
         await createUserWithEmailAndPassword(auth, email, password);
         try {
-          await sendEmailVerification(auth.currentUser, { url: window.location.origin + "/dashboard" });
+          // Sent through Resend (see /api/send-verification-email), not the
+          // Firebase client SDK's own sendEmailVerification() — Firebase's
+          // default sender has no SPF/DKIM alignment with bizzux.com and
+          // reliably lands in spam.
+          const token = await auth.currentUser.getIdToken();
+          await fetch("/api/send-verification-email", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+            body: JSON.stringify({ continueUrl: window.location.origin + "/dashboard" }),
+          });
         } catch {
           // Non-fatal — account creation already succeeded either way.
         }
