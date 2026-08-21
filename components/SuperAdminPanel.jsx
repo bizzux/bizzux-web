@@ -187,7 +187,7 @@ function TrialSettings() {
 
       <div className="card" style={{ maxWidth: 420 }}>
         <label className="label" style={{ marginBottom: 4, display: "block" }}>Sign-up verification method</label>
-        <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+        <p className="muted" style={{ fontSize: 11.5, marginBottom: 14 }}>
           How new signups confirm they own the email or phone number they gave us. Check both to require both.
           Google sign-ins are unaffected, since they're already verified.
         </p>
