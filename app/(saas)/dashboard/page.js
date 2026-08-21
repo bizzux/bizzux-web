@@ -14,6 +14,7 @@ import AccountTabs from "@/components/AccountTabs";
 import { IconClock } from "@/components/Icons";
 import { daysLeft, canAccessApps } from "@/lib/trial";
 import { useMe } from "@/lib/useMe";
+import { deriveVerificationFlags } from "@/lib/verification";
 
 const APPS = [
   // `sso: true` means clicking this tile goes through /api/shop-sso instead
@@ -101,10 +102,11 @@ function VerifyEmailGate({ user }) {
   );
 }
 
-// Shown instead of VerifyEmailGate when this account's verificationMethod
-// (stamped at signup time by /api/claim, based on the Super Admin's
-// Trial settings > Sign-up verification method choice) is "mobile" rather
-// than "email". Sends and checks the code through /api/send-mobile-otp and
+// Shown after VerifyEmailGate (if that one applies too) when this
+// account's verifyMobileRequired flag (stamped at signup time by
+// /api/claim, based on the Super Admin's Trial settings > Sign-up
+// verification method checkboxes) is set and the phone isn't verified
+// yet. Sends and checks the code through /api/send-mobile-otp and
 // /api/verify-mobile-otp (MSG91) instead of Firebase's email link flow.
 function VerifyMobileGate({ user, customer }) {
   const [phone, setPhone] = useState(customer.phone || "");
@@ -320,14 +322,14 @@ function DashboardInner() {
   }
 
   // Google sign-ins already have a verified email; only email/password
-  // signups need either gate. Which one depends on verificationMethod,
-  // stamped onto the account at signup by /api/claim.
-  if (customer.verificationMethod === "mobile") {
-    if (!customer.phoneVerified) {
-      return <VerifyMobileGate user={user} customer={customer} />;
-    }
-  } else if (!user.emailVerified) {
+  // signups can need either gate — sometimes both, if a Super Admin has
+  // both Email and Mobile enabled. Email clears first, then mobile.
+  const { verifyEmailRequired, verifyMobileRequired } = deriveVerificationFlags(customer);
+  if (verifyEmailRequired && !user.emailVerified) {
     return <VerifyEmailGate user={user} />;
+  }
+  if (verifyMobileRequired && !customer.phoneVerified) {
+    return <VerifyMobileGate user={user} customer={customer} />;
   }
 
   const isOwner = accountId === user.uid;

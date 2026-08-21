@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireSuperAdmin, adminDb } from "@/lib/firebaseAdmin";
+import { deriveVerificationSettings } from "@/lib/verification";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const VALID_METHODS = ["email", "mobile"];
 
 export async function GET(req) {
   try {
@@ -12,15 +11,15 @@ export async function GET(req) {
     const snap = await adminDb().doc("portalSettings/config").get();
     const data = snap.exists ? snap.data() : {};
     const trialDays = data.trialDays;
-    const verificationMethod = VALID_METHODS.includes(data.verificationMethod) ? data.verificationMethod : "email";
-    return NextResponse.json({ trialDays: trialDays ?? 14, verificationMethod });
+    const { verifyEmail, verifyMobile } = deriveVerificationSettings(data);
+    return NextResponse.json({ trialDays: trialDays ?? 14, verifyEmail, verifyMobile });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
 }
 
-// Accepts either field on its own so Trial settings and the verification
-// method toggle can each save independently, or together.
+// Accepts any of these fields on its own so Trial settings and the
+// verification method checkboxes can each save independently, or together.
 export async function POST(req) {
   try {
     await requireSuperAdmin(req);
@@ -35,11 +34,16 @@ export async function POST(req) {
       update.trialDays = n;
     }
 
-    if (body.verificationMethod !== undefined) {
-      if (!VALID_METHODS.includes(body.verificationMethod)) {
-        throw { status: 400, message: "Verification method must be \"email\" or \"mobile\"" };
+    if (body.verifyEmail !== undefined || body.verifyMobile !== undefined) {
+      const snap = await adminDb().doc("portalSettings/config").get();
+      const current = deriveVerificationSettings(snap.exists ? snap.data() : {});
+      const verifyEmail = body.verifyEmail !== undefined ? !!body.verifyEmail : current.verifyEmail;
+      const verifyMobile = body.verifyMobile !== undefined ? !!body.verifyMobile : current.verifyMobile;
+      if (!verifyEmail && !verifyMobile) {
+        throw { status: 400, message: "At least one verification method must stay enabled" };
       }
-      update.verificationMethod = body.verificationMethod;
+      update.verifyEmail = verifyEmail;
+      update.verifyMobile = verifyMobile;
     }
 
     if (Object.keys(update).length === 0) {

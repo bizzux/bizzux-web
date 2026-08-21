@@ -36,14 +36,25 @@ export default function LoginPage() {
   }, []);
 
   // Ensures a customers/{uid} record exists (creating it with the current
-  // trial length on first login), then sends the user to their dashboard.
-  async function afterAuth(extra) {
+  // trial length and verification requirements on first login). Returns
+  // the parsed response so callers can see whether email verification is
+  // actually required for this account before deciding to send that email.
+  async function claimAccount(extra) {
     const token = await auth.currentUser.getIdToken();
-    await fetch("/api/claim", {
+    const r = await fetch("/api/claim", {
       method: "POST",
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
       body: JSON.stringify(extra || {}),
     });
+    try {
+      return await r.json();
+    } catch {
+      return {};
+    }
+  }
+
+  async function afterAuth(extra) {
+    await claimAccount(extra);
     router.push("/dashboard");
   }
 
@@ -114,21 +125,30 @@ export default function LoginPage() {
     try {
       if (mode === "signup") {
         await createUserWithEmailAndPassword(auth, email, password);
-        try {
-          // Sent through Resend (see /api/send-verification-email), not the
-          // Firebase client SDK's own sendEmailVerification() — Firebase's
-          // default sender has no SPF/DKIM alignment with bizzux.com and
-          // reliably lands in spam.
-          const token = await auth.currentUser.getIdToken();
-          await fetch("/api/send-verification-email", {
-            method: "POST",
-            headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-            body: JSON.stringify({ continueUrl: window.location.origin + "/dashboard" }),
-          });
-        } catch {
-          // Non-fatal — account creation already succeeded either way.
+        // /api/claim stamps and returns which gate(s) this account actually
+        // needs — a Super Admin can require Email, Mobile, or both (see
+        // Super Admin > Trial settings), so only send the email when
+        // verifyEmailRequired comes back true. The mobile OTP, if also
+        // required, is sent by VerifyMobileGate itself once the dashboard
+        // shows it (app/(saas)/dashboard/page.js).
+        const claimed = await claimAccount({ fullName: fullName.trim(), phone: country.dial + phone.trim() });
+        if (claimed.verifyEmailRequired) {
+          try {
+            // Sent through Resend (see /api/send-verification-email), not the
+            // Firebase client SDK's own sendEmailVerification() — Firebase's
+            // default sender has no SPF/DKIM alignment with bizzux.com and
+            // reliably lands in spam.
+            const token = await auth.currentUser.getIdToken();
+            await fetch("/api/send-verification-email", {
+              method: "POST",
+              headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+              body: JSON.stringify({ continueUrl: window.location.origin + "/dashboard" }),
+            });
+          } catch {
+            // Non-fatal — account creation already succeeded either way.
+          }
         }
-        await afterAuth({ fullName: fullName.trim(), phone: country.dial + phone.trim() });
+        router.push("/dashboard");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
         await afterAuth();

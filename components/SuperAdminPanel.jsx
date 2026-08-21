@@ -108,7 +108,8 @@ export default function SuperAdminPanel() {
 
 function TrialSettings() {
   const [trialDays, setTrialDays] = useState("");
-  const [verificationMethod, setVerificationMethod] = useState("email");
+  const [verifyEmail, setVerifyEmail] = useState(true);
+  const [verifyMobile, setVerifyMobile] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -120,7 +121,8 @@ function TrialSettings() {
       try {
         const d = await api("/api/admin/settings", "GET");
         setTrialDays(String(d.trialDays ?? 14));
-        setVerificationMethod(d.verificationMethod === "mobile" ? "mobile" : "email");
+        setVerifyEmail(d.verifyEmail !== false);
+        setVerifyMobile(d.verifyMobile === true);
       } catch {
         setTrialDays("14");
       }
@@ -141,12 +143,23 @@ function TrialSettings() {
     setSaving(false);
   }
 
-  async function saveVerificationMethod(method) {
-    setVerificationMethod(method);
+  // Both checkboxes can be on at once — new signups then have to clear
+  // BOTH gates (email first, then mobile) before reaching the dashboard.
+  // At least one has to stay on, so unchecking the last one is blocked
+  // client-side (the API also refuses it, as a backstop).
+  async function toggle(which, next) {
+    const nextEmail = which === "email" ? next : verifyEmail;
+    const nextMobile = which === "mobile" ? next : verifyMobile;
+    if (!nextEmail && !nextMobile) {
+      setVmMsg("At least one verification method has to stay enabled.");
+      return;
+    }
+    if (which === "email") setVerifyEmail(next);
+    else setVerifyMobile(next);
     setVmSaving(true);
     setVmMsg("");
     try {
-      await api("/api/admin/settings", "POST", { verificationMethod: method });
+      await api("/api/admin/settings", "POST", { verifyEmail: nextEmail, verifyMobile: nextMobile });
       setVmMsg("Saved. New signups from now on will verify this way.");
     } catch (err) {
       setVmMsg(err.message);
@@ -175,25 +188,25 @@ function TrialSettings() {
       <div className="card" style={{ maxWidth: 420 }}>
         <label className="label" style={{ marginBottom: 4, display: "block" }}>Sign-up verification method</label>
         <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
-          How new signups confirm they own the email or phone number they gave us. Google sign-ins are unaffected,
-          since they're already verified.
+          How new signups confirm they own the email or phone number they gave us. Check both to require both.
+          Google sign-ins are unaffected, since they're already verified.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: vmMsg ? 10 : 0 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: vmSaving ? "wait" : "pointer" }}>
             <input
-              type="radio" name="verificationMethod" value="email"
-              checked={verificationMethod === "email"}
+              type="checkbox"
+              checked={verifyEmail}
               disabled={vmSaving}
-              onChange={() => saveVerificationMethod("email")}
+              onChange={(e) => toggle("email", e.target.checked)}
             />
             <span>Email: sends a verification link (via Resend)</span>
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: vmSaving ? "wait" : "pointer" }}>
             <input
-              type="radio" name="verificationMethod" value="mobile"
-              checked={verificationMethod === "mobile"}
+              type="checkbox"
+              checked={verifyMobile}
               disabled={vmSaving}
-              onChange={() => saveVerificationMethod("mobile")}
+              onChange={(e) => toggle("mobile", e.target.checked)}
             />
             <span>Mobile: sends an OTP by SMS (via MSG91)</span>
           </label>
@@ -958,22 +971,31 @@ function CustomersList() {
     <div className="card">
       {customers.length === 0 && <p className="muted">No signups yet.</p>}
       {customers.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr><th>Email</th><th>Signed up</th><th>Status</th><th>Plan</th><th>Trial ends</th></tr>
-          </thead>
-          <tbody>
-            {customers.map((c) => (
-              <tr key={c.id}>
-                <td>{c.email}</td>
-                <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}</td>
-                <td><span className={"status-pill " + (c.status || "trial")}>{c.status || "trial"}</span></td>
-                <td>{c.planName || "N/A"}</td>
-                <td>{c.trialEndDate ? new Date(c.trialEndDate).toLocaleDateString() : "N/A"}</td>
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th><th>Email</th><th>Mobile</th><th>Country</th>
+                <th>Signed up</th><th>Status</th><th>Type</th><th>Plan</th><th>Trial ends</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {customers.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.fullName || "N/A"}</td>
+                  <td>{c.email}</td>
+                  <td>{c.phone || "N/A"}</td>
+                  <td>{c.country || "N/A"}</td>
+                  <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}</td>
+                  <td><span className={"status-pill " + (c.status || "trial")}>{c.status || "trial"}</span></td>
+                  <td>{c.customerType}</td>
+                  <td>{c.planName || "N/A"}</td>
+                  <td>{c.trialEndDate ? new Date(c.trialEndDate).toLocaleDateString() : "N/A"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

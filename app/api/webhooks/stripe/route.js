@@ -135,12 +135,22 @@ export async function POST(req) {
       // renewal after it. This is the single place offer redemption
       // counting + discount-cycle tracking happens, mirroring Razorpay's
       // subscription.charged, so a cycle can't get double-counted between
-      // this and checkout.session.completed.
+      // this and checkout.session.completed. Also where paymentCount is
+      // incremented (mirroring Razorpay's own increment) — used by the
+      // Super Admin Customers list to tell a first-time payer from a
+      // renewal. Webhooks can be redelivered, so it can drift slightly
+      // high on a retry — fine for a display column, not billing logic.
       case "invoice.paid": {
         const invoice = event.data.object;
         const uid = invoice.subscription_details?.metadata?.uid || invoice.metadata?.uid;
         const offerCode = invoice.subscription_details?.metadata?.offerCode;
         const subscriptionId = invoice.subscription;
+        if (uid) {
+          await adminDb().doc("customers/" + uid).set(
+            { paymentCount: FieldValue.increment(1), lastChargedAt: FieldValue.serverTimestamp() },
+            { merge: true }
+          );
+        }
         if (uid && offerCode && subscriptionId) {
           await recordOfferRedemption(offerCode, subscriptionId);
           const totalCycles = invoice.subscription_details?.metadata?.offerCyclesRemaining

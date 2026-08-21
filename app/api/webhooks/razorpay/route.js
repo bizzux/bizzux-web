@@ -135,14 +135,26 @@ export async function POST(req) {
             { merge: true }
           );
         }
-        // Offer redemption counting + discount-cycle tracking only runs on
-        // subscription.charged — that's the event guaranteed to fire for
-        // every actual successful payment (activated can precede or
-        // coincide with it depending on auth type; charged is the one
-        // that's actually money changing hands).
-        if (event.event === "subscription.charged" && sub?.notes?.offerCode) {
-          await recordOfferRedemption(sub.notes.offerCode, sub.id);
-          await decrementOfferCycles(sub);
+        // Offer redemption counting + discount-cycle tracking, and the
+        // paymentCount used by the Super Admin Customers list to tell a
+        // first-time payer from a renewal, only run on subscription.charged
+        // — that's the event guaranteed to fire for every actual successful
+        // payment (activated can precede or coincide with it depending on
+        // auth type; charged is the one that's actually money changing
+        // hands). Webhooks can be redelivered, so paymentCount can drift
+        // slightly high on a retry — fine for a display column, not used
+        // for billing logic.
+        if (event.event === "subscription.charged") {
+          if (uid) {
+            await adminDb().doc("customers/" + uid).set(
+              { paymentCount: FieldValue.increment(1), lastChargedAt: FieldValue.serverTimestamp() },
+              { merge: true }
+            );
+          }
+          if (sub?.notes?.offerCode) {
+            await recordOfferRedemption(sub.notes.offerCode, sub.id);
+            await decrementOfferCycles(sub);
+          }
         }
         break;
 
