@@ -199,7 +199,7 @@ function TrialSettings() {
               disabled={vmSaving}
               onChange={(e) => toggle("email", e.target.checked)}
             />
-            <span>Email: sends a verification link (via Resend)</span>
+            <span style={{ fontSize: 13 }}>Email: sends a verification link (via Resend)</span>
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: vmSaving ? "wait" : "pointer" }}>
             <input
@@ -208,7 +208,7 @@ function TrialSettings() {
               disabled={vmSaving}
               onChange={(e) => toggle("mobile", e.target.checked)}
             />
-            <span>Mobile: sends an OTP by SMS (via MSG91)</span>
+            <span style={{ fontSize: 13 }}>Mobile: sends an OTP by SMS (via MSG91)</span>
           </label>
         </div>
         {vmMsg && <p className="muted" style={{ fontSize: 13 }}>{vmMsg}</p>}
