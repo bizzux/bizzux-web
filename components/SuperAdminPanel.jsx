@@ -108,15 +108,19 @@ export default function SuperAdminPanel() {
 
 function TrialSettings() {
   const [trialDays, setTrialDays] = useState("");
+  const [verificationMethod, setVerificationMethod] = useState("email");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [vmSaving, setVmSaving] = useState(false);
+  const [vmMsg, setVmMsg] = useState("");
 
   useEffect(() => {
     (async () => {
       try {
         const d = await api("/api/admin/settings", "GET");
         setTrialDays(String(d.trialDays ?? 14));
+        setVerificationMethod(d.verificationMethod === "mobile" ? "mobile" : "email");
       } catch {
         setTrialDays("14");
       }
@@ -137,22 +141,66 @@ function TrialSettings() {
     setSaving(false);
   }
 
+  async function saveVerificationMethod(method) {
+    setVerificationMethod(method);
+    setVmSaving(true);
+    setVmMsg("");
+    try {
+      await api("/api/admin/settings", "POST", { verificationMethod: method });
+      setVmMsg("Saved. New signups from now on will verify this way.");
+    } catch (err) {
+      setVmMsg(err.message);
+    }
+    setVmSaving(false);
+  }
+
   if (!loaded) return <p className="muted">Loading…</p>;
 
   return (
-    <div className="card" style={{ maxWidth: 420 }}>
-      <form onSubmit={save}>
-        <label className="label">Trial length (days)</label>
-        <input
-          className="input" type="number" min="1" value={trialDays}
-          onChange={(e) => setTrialDays(e.target.value)}
-          style={{ marginBottom: 14 }}
-          required
-        />
-        <button className="btn-primary" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
-        {msg && <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>{msg}</p>}
-      </form>
-    </div>
+    <>
+      <div className="card" style={{ maxWidth: 420, marginBottom: 20 }}>
+        <form onSubmit={save}>
+          <label className="label">Trial length (days)</label>
+          <input
+            className="input" type="number" min="1" value={trialDays}
+            onChange={(e) => setTrialDays(e.target.value)}
+            style={{ marginBottom: 14 }}
+            required
+          />
+          <button className="btn-primary" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+          {msg && <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>{msg}</p>}
+        </form>
+      </div>
+
+      <div className="card" style={{ maxWidth: 420 }}>
+        <label className="label" style={{ marginBottom: 4, display: "block" }}>Sign-up verification method</label>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+          How new signups confirm they own the email or phone number they gave us. Google sign-ins are unaffected,
+          since they're already verified.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: vmMsg ? 10 : 0 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: vmSaving ? "wait" : "pointer" }}>
+            <input
+              type="radio" name="verificationMethod" value="email"
+              checked={verificationMethod === "email"}
+              disabled={vmSaving}
+              onChange={() => saveVerificationMethod("email")}
+            />
+            <span>Email: sends a verification link (via Resend)</span>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: vmSaving ? "wait" : "pointer" }}>
+            <input
+              type="radio" name="verificationMethod" value="mobile"
+              checked={verificationMethod === "mobile"}
+              disabled={vmSaving}
+              onChange={() => saveVerificationMethod("mobile")}
+            />
+            <span>Mobile: sends an OTP by SMS (via MSG91)</span>
+          </label>
+        </div>
+        {vmMsg && <p className="muted" style={{ fontSize: 13 }}>{vmMsg}</p>}
+      </div>
+    </>
   );
 }
 

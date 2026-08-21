@@ -23,7 +23,15 @@ export async function POST(req) {
     const phone = typeof body.phone === "string" ? body.phone.trim().slice(0, 20) : "";
 
     const settingsSnap = await adminDb().doc("portalSettings/config").get();
-    const trialDays = Number(settingsSnap.exists ? settingsSnap.data().trialDays : 14) || 14;
+    const settingsData = settingsSnap.exists ? settingsSnap.data() : {};
+    const trialDays = Number(settingsData.trialDays ?? 14) || 14;
+    // Stamped onto the account at signup, not read live on every later
+    // visit — so switching the global setting never changes what an
+    // already-created account is waiting on. Google sign-ins (no phone
+    // collected) always land on "email", which they already satisfy since
+    // Google guarantees a verified address; only email/password signups
+    // with a phone on file can be routed to mobile OTP.
+    const verificationMethod = settingsData.verificationMethod === "mobile" && phone ? "mobile" : "email";
 
     const now = Timestamp.now();
     const trialEndDate = Timestamp.fromMillis(now.toMillis() + trialDays * 24 * 60 * 60 * 1000);
@@ -39,6 +47,8 @@ export async function POST(req) {
       planId: null,
       planName: null,
       onboarded: false,
+      verificationMethod,
+      ...(verificationMethod === "mobile" ? { phoneVerified: false } : {}),
     });
 
     return NextResponse.json({ ok: true, created: true });

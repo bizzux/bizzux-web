@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -101,6 +101,157 @@ function VerifyEmailGate({ user }) {
   );
 }
 
+// Shown instead of VerifyEmailGate when this account's verificationMethod
+// (stamped at signup time by /api/claim, based on the Super Admin's
+// Trial settings > Sign-up verification method choice) is "mobile" rather
+// than "email". Sends and checks the code through /api/send-mobile-otp and
+// /api/verify-mobile-otp (MSG91) instead of Firebase's email link flow.
+function VerifyMobileGate({ user, customer }) {
+  const [phone, setPhone] = useState(customer.phone || "");
+  const [otp, setOtp] = useState("");
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneDraft, setPhoneDraft] = useState(customer.phone || "");
+  const [sending, setSending] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+  const sentOnce = useRef(false);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  async function sendOtp(newPhone) {
+    setSending(true);
+    setErr("");
+    setMsg("");
+    try {
+      const token = await user.getIdToken();
+      const r = await fetch("/api/send-mobile-otp", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify(newPhone ? { phone: newPhone } : {}),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Couldn't send the code");
+      if (d.phone) setPhone(d.phone);
+      setMsg("Code sent! It should arrive within a minute.");
+      setCooldown(30);
+    } catch (e) {
+      setErr(e.message || "Couldn't send the code. Please try again.");
+    }
+    setSending(false);
+  }
+
+  // Auto-send the first code the moment this screen mounts, so the user
+  // doesn't have to press anything to get their initial OTP.
+  useEffect(() => {
+    if (sentOnce.current) return;
+    sentOnce.current = true;
+    sendOtp();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function verify(e) {
+    e.preventDefault();
+    if (!otp.trim()) return;
+    setVerifying(true);
+    setErr("");
+    setMsg("");
+    try {
+      const token = await user.getIdToken();
+      const r = await fetch("/api/verify-mobile-otp", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ otp: otp.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "That code didn't match");
+      window.location.reload();
+    } catch (e2) {
+      setErr(e2.message || "That code didn't match. Please check it and try again.");
+    }
+    setVerifying(false);
+  }
+
+  function saveNewPhone(e) {
+    e.preventDefault();
+    const next = phoneDraft.trim();
+    if (!next || next === phone) {
+      setEditingPhone(false);
+      return;
+    }
+    setEditingPhone(false);
+    sendOtp(next);
+  }
+
+  return (
+    <div className="login-wrap">
+      <div className="login-card" style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 40, marginBottom: 10 }}>📱</div>
+        <h1>Verify your sign-up</h1>
+        <p className="sub">Enter the one-time password sent to your mobile number.</p>
+
+        {editingPhone ? (
+          <form onSubmit={saveNewPhone} style={{ marginBottom: 14 }}>
+            <input
+              className="input" type="tel" value={phoneDraft}
+              onChange={(e) => setPhoneDraft(e.target.value)}
+              style={{ marginBottom: 8, textAlign: "center" }}
+              autoFocus
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <button type="submit" className="btn-primary-sm">Update &amp; resend</button>
+              <button type="button" className="link-btn" onClick={() => { setEditingPhone(false); setPhoneDraft(phone); }}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p style={{ marginBottom: 14 }}>
+            <strong>{phone || "your number"}</strong>{" "}
+            <button type="button" className="link-btn" onClick={() => { setPhoneDraft(phone); setEditingPhone(true); }}>
+              Change
+            </button>
+          </p>
+        )}
+
+        <form onSubmit={verify}>
+          <input
+            className="input" type="text" inputMode="numeric" value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/[^\d]/g, ""))}
+            placeholder="Enter code"
+            style={{ marginBottom: 8, textAlign: "center", letterSpacing: 2 }}
+            autoFocus
+          />
+          <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+            {cooldown > 0 ? (
+              `Resend in ${cooldown}s`
+            ) : (
+              <button type="button" className="link-btn" onClick={() => sendOtp()} disabled={sending}>
+                {sending ? "Sending…" : "Resend code"}
+              </button>
+            )}
+          </p>
+          <button className="btn-primary" style={{ width: "100%" }} disabled={verifying || !otp.trim()}>
+            {verifying ? "Verifying…" : "Verify"}
+          </button>
+        </form>
+
+        {msg && <p className="muted" style={{ marginTop: 14, fontSize: 13 }}>{msg}</p>}
+        {err && <p className="error" style={{ marginTop: 14 }}>{err}</p>}
+
+        <button className="link-btn" style={{ display: "block", margin: "18px auto 0" }} onClick={() => signOut(auth)}>
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DashboardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -168,9 +319,14 @@ function DashboardInner() {
     );
   }
 
-  // Google sign-ins already have a verified email; only email/password +
-  // phone-OTP signups need this gate.
-  if (!user.emailVerified) {
+  // Google sign-ins already have a verified email; only email/password
+  // signups need either gate. Which one depends on verificationMethod,
+  // stamped onto the account at signup by /api/claim.
+  if (customer.verificationMethod === "mobile") {
+    if (!customer.phoneVerified) {
+      return <VerifyMobileGate user={user} customer={customer} />;
+    }
+  } else if (!user.emailVerified) {
     return <VerifyEmailGate user={user} />;
   }
 

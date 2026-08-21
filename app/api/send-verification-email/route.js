@@ -40,7 +40,7 @@ export async function POST(req) {
     });
 
     const resend = new Resend(apiKey);
-    const from = process.env.RESEND_FROM_EMAIL || "Bizzux <verify@mail.bizzux.com>";
+    const from = process.env.RESEND_FROM_EMAIL || "Bizzux <verify@verify.bizzux.com>";
     const { error } = await resend.emails.send({
       from,
       to: c.email,
