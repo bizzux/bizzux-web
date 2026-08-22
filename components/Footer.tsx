@@ -17,17 +17,17 @@ export default function Footer() {
           <div className="font-semibold text-white mb-3 text-sm">Bizzux</div>
           <ul className="space-y-2 text-sm">
             <li><Link href="/platform" className="hover:text-brand-teal transition-colors">Platform</Link></li>
-            <li><Link href="/custom-solutions" className="hover:text-brand-teal transition-colors">Custom Solutions</Link></li>
-            <li><Link href="/microsoft-365" className="hover:text-brand-teal transition-colors">Microsoft 365</Link></li>
+            <li><Link href="/custom-solutions" className="hover:text-brand-teal transition-colors">Build</Link></li>
             <li><Link href="/solutions" className="hover:text-brand-teal transition-colors">Solutions</Link></li>
             <li><Link href="/pricing" className="hover:text-brand-teal transition-colors">Pricing</Link></li>
+            <li><Link href="/partners" className="hover:text-brand-teal transition-colors">Partners</Link></li>
           </ul>
         </div>
         <div>
           <div className="font-semibold text-white mb-3 text-sm">Company</div>
           <ul className="space-y-2 text-sm">
             <li><Link href="/about" className="hover:text-brand-teal transition-colors">About</Link></li>
-            <li><Link href="/careers" className="hover:text-brand-teal transition-colors">Careers</Link></li>
+            <li><Link href="/careers" className="hover:text-brand-teal transition-colors">Career</Link></li>
             <li><Link href="/contact" className="hover:text-brand-teal transition-colors">Contact</Link></li>
           </ul>
         </div>
@@ -41,7 +41,7 @@ export default function Footer() {
             href="https://wa.me/919591222422"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-full bg-green-600 text-white text-sm font-semibold px-5 py-2.5 hover:bg-green-700 transition-colors"
+            className="inline-flex items-center gap-2 h-10 rounded-full bg-green-600 text-white text-sm font-semibold px-5 hover:bg-green-700 transition-colors"
           >
             <IconWhatsApp className="w-4 h-4" />
             Chat on WhatsApp

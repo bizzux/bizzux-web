@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Contact | Bizzux",
-  description: "Let's build what your business needs: Bizzux platform, custom AI solutions, or Microsoft 365 setup.",
+  description: "Let's build what your business needs: Bizzux platform, custom AI solutions, or professional email setup.",
 };
 
 export default function ContactPage() {
@@ -13,7 +13,7 @@ export default function ContactPage() {
     <>
       <section className="pt-12 pb-10 bg-navy text-white text-center relative overflow-hidden">
         <div className="absolute inset-0 opacity-30" style={{
-          background: "radial-gradient(55% 55% at 50% 0%, rgba(20,184,166,0.3) 0%, transparent 65%)"
+          background: "radial-gradient(55% 55% at 50% 0%, rgba(18,166,149,0.3) 0%, transparent 65%)"
         }} />
         <Container className="relative max-w-2xl">
           <Eyebrow light>Contact</Eyebrow>
@@ -21,14 +21,14 @@ export default function ContactPage() {
             Let&apos;s build what your business needs.
           </h1>
           <p className="text-lg text-slate-300 mb-8">
-            Whether you need Bizzux for daily business management, a professional Microsoft 365 setup, an
+            Whether you need Bizzux for daily business management, a professional email setup, an
             e-commerce website or a custom AI-enabled application, our team can help.
           </p>
           <a
             href="https://wa.me/919591222422"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-full bg-green-600 text-white font-semibold px-6 py-3 text-sm hover:bg-green-700 transition-colors"
+            className="inline-flex items-center gap-2 h-10 rounded-full bg-green-600 text-white font-semibold px-6 text-sm hover:bg-green-700 transition-colors"
           >
             <IconWhatsApp className="w-4 h-4" />
             Chat on WhatsApp

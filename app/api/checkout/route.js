@@ -3,6 +3,7 @@ import { requireUser, adminDb } from "@/lib/firebaseAdmin";
 import { razorpay } from "@/lib/razorpay";
 import { stripe } from "@/lib/stripe";
 import { createRazorpayPlan, createStripePrice, computeDiscountedPrice } from "@/lib/gatewayPlans";
+import { resolveCode } from "@/lib/referral";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
@@ -28,43 +29,39 @@ export const dynamic = "force-dynamic";
 // notes/metadata — the webhook handlers decrement it on each renewal and
 // switch the subscription back to the regular full-price plan once it
 // hits 0 (see app/api/webhooks/razorpay/route.js and .../stripe/route.js).
-async function resolveOfferForCheckout({ code, planId, plan, gateway }) {
-  const offerRef = adminDb().doc("offers/" + String(code).trim().toUpperCase());
-  const offerSnap = await offerRef.get();
-  if (!offerSnap.exists) throw { status: 400, message: "That code isn't valid." };
-  const offer = offerSnap.data();
+//
+// Partner / reseller referral codes (see lib/referral.js) go through this
+// exact same path — resolveCode() checks offers/{CODE} first, then
+// referralCodes/{CODE}, and returns one common shape either way. When it's
+// a referral code, resolveCode also hands back the reseller's uid, which
+// gets stamped onto notes/metadata below (resellerId) so the payment
+// webhooks know who to credit a commission to once the sale goes through.
+async function resolveOfferForCheckout({ code, planId, plan, gateway, requester }) {
+  const resolved = await resolveCode(code, planId, requester);
+  if (!resolved.valid) throw { status: 400, message: resolved.error };
 
-  if (offer.active === false) throw { status: 400, message: "That code isn't active anymore." };
-  if (offer.planId !== planId) throw { status: 400, message: "That code isn't valid for this plan." };
-  if (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now()) {
-    throw { status: 400, message: "That code has expired." };
-  }
-  if (offer.maxRedemptions && (offer.redemptionCount || 0) >= offer.maxRedemptions) {
-    throw { status: 400, message: "That code has already been fully redeemed." };
-  }
-
-  const discountedPrice = computeDiscountedPrice(plan.price, offer.discountType, offer.discountValue);
-  const planFields = { name: `${plan.name} (${offer.code || offerSnap.id})`, price: discountedPrice, billingPeriod: plan.billingPeriod };
+  const discountedPrice = computeDiscountedPrice(plan.price, resolved.discountType, resolved.discountValue);
+  const planFields = { name: `${plan.name} (${resolved.code})`, price: discountedPrice, billingPeriod: plan.billingPeriod };
 
   let discountedPlanId;
   if (gateway === "razorpay") {
-    discountedPlanId = offer.razorpayPlanId;
+    discountedPlanId = resolved.razorpayPlanId;
     if (!discountedPlanId) {
       discountedPlanId = await createRazorpayPlan(planFields);
       if (!discountedPlanId) throw { status: 500, message: "Couldn't set up that discount right now. Please try again shortly." };
-      await offerRef.set({ razorpayPlanId: discountedPlanId }, { merge: true });
+      await resolved.ref.set({ razorpayPlanId: discountedPlanId }, { merge: true });
     }
   } else {
-    discountedPlanId = offer.stripePriceId;
+    discountedPlanId = resolved.stripePriceId;
     if (!discountedPlanId) {
       discountedPlanId = await createStripePrice(planFields);
       if (!discountedPlanId) throw { status: 500, message: "Couldn't set up that discount right now. Please try again shortly." };
-      await offerRef.set({ stripePriceId: discountedPlanId }, { merge: true });
+      await resolved.ref.set({ stripePriceId: discountedPlanId }, { merge: true });
     }
   }
 
-  const cyclesRemaining = offer.duration === "once" ? 1 : offer.duration === "cycles" ? offer.cyclesCount : null;
-  return { code: offerSnap.id, discountedPlanId, cyclesRemaining };
+  const cyclesRemaining = resolved.duration === "once" ? 1 : resolved.duration === "cycles" ? resolved.cyclesCount : null;
+  return { code: resolved.code, discountedPlanId, cyclesRemaining, resellerId: resolved.resellerId || null };
 }
 
 export async function POST(req) {
@@ -82,14 +79,17 @@ export async function POST(req) {
     }
     const plan = planSnap.data();
 
-    let offerResult = null;
-    if (couponCode && String(couponCode).trim()) {
-      offerResult = await resolveOfferForCheckout({ code: couponCode, planId, plan, gateway });
-    }
-
     const custRef = adminDb().doc("customers/" + c.uid);
     const custSnap = await custRef.get();
     const customer = custSnap.exists ? custSnap.data() : {};
+
+    let offerResult = null;
+    if (couponCode && String(couponCode).trim()) {
+      offerResult = await resolveOfferForCheckout({
+        code: couponCode, planId, plan, gateway,
+        requester: { uid: c.uid, paymentCount: customer.paymentCount || 0 },
+      });
+    }
 
     if (gateway === "razorpay") {
       const razorpayPlanId = offerResult ? offerResult.discountedPlanId : plan.razorpayPlanId;
@@ -123,6 +123,7 @@ export async function POST(req) {
       const notes = { uid: c.uid, planId, planName: plan.name };
       if (offerResult) {
         notes.offerCode = offerResult.code;
+        if (offerResult.resellerId) notes.resellerId = offerResult.resellerId;
         if (offerResult.cyclesRemaining !== null) {
           notes.offerCyclesRemaining = String(offerResult.cyclesRemaining);
           notes.regularRazorpayPlanId = plan.razorpayPlanId || "";
@@ -171,6 +172,7 @@ export async function POST(req) {
     const metadata = { uid: c.uid, planId, planName: plan.name };
     if (offerResult) {
       metadata.offerCode = offerResult.code;
+      if (offerResult.resellerId) metadata.resellerId = offerResult.resellerId;
       if (offerResult.cyclesRemaining !== null) {
         metadata.offerCyclesRemaining = String(offerResult.cyclesRemaining);
         metadata.regularStripePriceId = plan.stripePriceId || "";

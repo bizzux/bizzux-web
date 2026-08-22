@@ -26,6 +26,17 @@ export function IconDownload({ className = "w-4 h-4" }: IconProps) {
   );
 }
 
+export function IconShare({ className = "w-4 h-4" }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="18" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="18" cy="18.5" r="2.5" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M8.2 10.7l7.6-4.4M8.2 13.3l7.6 4.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function IconCrown({ className = "w-4 h-4" }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
@@ -236,6 +247,54 @@ export function IconEyeOff({ className = "w-4 h-4" }: IconProps) {
         strokeLinejoin="round"
       />
       <path d="M9.9 10a3 3 0 0 0 4.1 4.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Simple person-in-circle silhouette, used bare (no circle outline of its
+// own) so callers can drop it inside their own circular badge div and
+// control that badge's fill/border independently — see the Partners page's
+// "refer a friend" hero illustration.
+export function IconUserCircle({ className = "w-6 h-6" }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="12" cy="8.5" r="3.2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M5 19c0-3.6 3.1-6.5 7-6.5s7 2.9 7 6.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// A small wrapped gift box — the "you earn a reward" beat in the Partners
+// page's referral illustration.
+export function IconGift({ className = "w-6 h-6" }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="4" y="10" width="16" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M4 10h16v3H4v-3Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M12 10v10" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M12 10c-1.2-3.5-6-4-6-1 0 1.3 1.5 1.5 6 1Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M12 10c1.2-3.5 6-4 6-1 0 1.3-1.5 1.5-6 1Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Two opposing arrows — "you refer them, they sign up" — sits between the
+// two person badges in the Partners page's hero illustration.
+export function IconSwap({ className = "w-5 h-5" }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M3 8h15M14 4l4 4-4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M21 16H6M10 12l-4 4 4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconTrash({ className = "w-5 h-5" }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }

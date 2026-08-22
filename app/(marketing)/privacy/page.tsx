@@ -23,7 +23,7 @@ export default function PrivacyPage() {
       <section className="pt-14 pb-12 bg-navy text-white relative overflow-hidden">
         <div
           className="absolute inset-0 opacity-30"
-          style={{ background: "radial-gradient(60% 60% at 50% 0%, rgba(20,184,166,0.3) 0%, transparent 70%)" }}
+          style={{ background: "radial-gradient(60% 60% at 50% 0%, rgba(18,166,149,0.3) 0%, transparent 70%)" }}
         />
         <Container className="relative text-center max-w-2xl">
           <Eyebrow light>Legal</Eyebrow>

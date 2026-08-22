@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, adminDb } from "@/lib/firebaseAdmin";
 import { computeDiscountedPrice } from "@/lib/gatewayPlans";
+import { resolveCode } from "@/lib/referral";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,9 +11,13 @@ export const dynamic = "force-dynamic";
 // touch redemptionCount or create anything at the gateways; that only
 // happens for real at checkout (app/api/checkout/route.js), which
 // re-validates everything here from scratch rather than trusting this call.
+//
+// The code can be an admin-made Offer or a Partner's referral code —
+// resolveCode (lib/referral.js) checks both and returns one common shape.
 export async function POST(req) {
+  let c;
   try {
-    await requireUser(req);
+    c = await requireUser(req);
   } catch (e) {
     return NextResponse.json({ valid: false, error: "Please sign in first." }, { status: e.status || 401 });
   }
@@ -23,23 +28,12 @@ export async function POST(req) {
       return NextResponse.json({ valid: false, error: "Missing code or plan" }, { status: 400 });
     }
 
-    const offerSnap = await adminDb().doc("offers/" + String(code).trim().toUpperCase()).get();
-    if (!offerSnap.exists) {
-      return NextResponse.json({ valid: false, error: "That code isn't valid." });
-    }
-    const offer = offerSnap.data();
+    const custSnap = await adminDb().doc("customers/" + c.uid).get();
+    const paymentCount = custSnap.exists ? custSnap.data().paymentCount || 0 : 0;
 
-    if (offer.active === false) {
-      return NextResponse.json({ valid: false, error: "That code isn't active anymore." });
-    }
-    if (offer.planId !== planId) {
-      return NextResponse.json({ valid: false, error: "That code isn't valid for this plan." });
-    }
-    if (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now()) {
-      return NextResponse.json({ valid: false, error: "That code has expired." });
-    }
-    if (offer.maxRedemptions && (offer.redemptionCount || 0) >= offer.maxRedemptions) {
-      return NextResponse.json({ valid: false, error: "That code has already been fully redeemed." });
+    const resolved = await resolveCode(code, planId, { uid: c.uid, paymentCount });
+    if (!resolved.valid) {
+      return NextResponse.json({ valid: false, error: resolved.error });
     }
 
     const planSnap = await adminDb().doc("plans/" + planId).get();
@@ -47,15 +41,15 @@ export async function POST(req) {
       return NextResponse.json({ valid: false, error: "Plan not found." });
     }
     const plan = planSnap.data();
-    const discountedPrice = computeDiscountedPrice(plan.price, offer.discountType, offer.discountValue);
+    const discountedPrice = computeDiscountedPrice(plan.price, resolved.discountType, resolved.discountValue);
 
     return NextResponse.json({
       valid: true,
-      code: offerSnap.id,
-      discountType: offer.discountType,
-      discountValue: offer.discountValue,
-      duration: offer.duration,
-      cyclesCount: offer.cyclesCount || null,
+      code: resolved.code,
+      discountType: resolved.discountType,
+      discountValue: resolved.discountValue,
+      duration: resolved.duration,
+      cyclesCount: resolved.cyclesCount || null,
       originalPrice: plan.price,
       discountedPrice,
     });

@@ -91,6 +91,58 @@ async function decrementOfferCycles({ uid, subscriptionId, offerCode, totalCycle
   }
 }
 
+// Mirrors the Razorpay webhook's creditResellerCommission — see that one
+// (app/api/webhooks/razorpay/route.js) for the full explanation. Same
+// idempotency guard (customers/{uid}.referralCommissionPaid), same
+// resellerCommissions ledger, just sourced from a Stripe invoice's
+// amount_paid (USD cents) instead of a Razorpay payment (INR paise).
+async function creditResellerCommission({ uid, resellerId, saleAmount, subscriptionId }) {
+  if (!uid || !resellerId || !saleAmount) return;
+  const custRef = adminDb().doc("customers/" + uid);
+  const resellerRef = adminDb().doc("resellers/" + resellerId);
+  const settingsRef = adminDb().doc("portalSettings/config");
+
+  try {
+    await adminDb().runTransaction(async (tx) => {
+      const [custSnap, resellerSnap, settingsSnap] = await Promise.all([
+        tx.get(custRef),
+        tx.get(resellerRef),
+        tx.get(settingsRef),
+      ]);
+      if (!custSnap.exists || custSnap.data().referralCommissionPaid) return;
+      if (!resellerSnap.exists) return;
+
+      const commissionPercent = Number((settingsSnap.exists ? settingsSnap.data() : {}).resellerCommissionPercent ?? 20);
+      const commissionAmount = Math.round(Number(saleAmount) * (commissionPercent / 100));
+
+      tx.set(custRef, { referralCommissionPaid: true }, { merge: true });
+      tx.set(
+        resellerRef,
+        {
+          totalReferrals: FieldValue.increment(1),
+          totalEarnings: FieldValue.increment(commissionAmount),
+          pendingPayout: FieldValue.increment(commissionAmount),
+        },
+        { merge: true }
+      );
+      tx.set(adminDb().collection("resellerCommissions").doc(), {
+        resellerId,
+        referredUid: uid,
+        subscriptionId,
+        gateway: "stripe",
+        currency: "USD",
+        saleAmount,
+        commissionPercent,
+        commissionAmount,
+        status: "pending",
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (e) {
+    console.error("creditResellerCommission failed:", e);
+  }
+}
+
 export async function POST(req) {
   const rawBody = await req.text();
   const signature = req.headers.get("stripe-signature") || "";
@@ -158,6 +210,15 @@ export async function POST(req) {
             : null;
           const regularPriceId = invoice.subscription_details?.metadata?.regularStripePriceId;
           await decrementOfferCycles({ uid, subscriptionId, offerCode, totalCycles, regularPriceId });
+        }
+        const resellerId = invoice.subscription_details?.metadata?.resellerId;
+        if (uid && resellerId && subscriptionId && invoice.amount_paid) {
+          await creditResellerCommission({
+            uid,
+            resellerId,
+            saleAmount: invoice.amount_paid / 100,
+            subscriptionId,
+          });
         }
         break;
       }

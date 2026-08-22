@@ -140,19 +140,19 @@ export default function AdminTabs() {
 
           <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
           <button
-            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "saas" ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white shadow-sm" : "text-slate-800"}`}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "saas" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
             onClick={() => setTab("saas")}
           >
             Super Admin (SaaS)
           </button>
           <button
-            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "career" ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white shadow-sm" : "text-slate-800"}`}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "career" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
             onClick={() => setTab("career")}
           >
             Career applications
           </button>
           <button
-            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "analytics" ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white shadow-sm" : "text-slate-800"}`}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "analytics" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
             onClick={() => setTab("analytics")}
           >
             Analytics

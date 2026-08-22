@@ -43,12 +43,12 @@ export default function CareersForm() {
 
   if (status === "success") {
     return (
-      <div className="rounded-xl bg-gradient-to-r from-brand-teal to-brand-blue p-8 text-center shadow-lg">
+      <div className="rounded-xl bg-gradient-to-r from-brand-tealDark to-brand-blueDark p-8 text-center shadow-lg">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/20">
           <IconCheck className="w-6 h-6 text-white" />
         </div>
         <h3 className="font-bold text-2xl text-white mb-2">Application received!</h3>
-        <p className="text-sm text-white/90">Thanks for your interest in Bizzux. Our team will review and reach out.</p>
+        <p className="text-sm text-white">Thanks for your interest in Bizzux. Our team will review and reach out.</p>
       </div>
     );
   }
@@ -138,7 +138,7 @@ export default function CareersForm() {
       <button
         type="submit"
         disabled={status === "loading"}
-        className="w-full rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-white font-semibold px-6 py-3 text-sm hover:opacity-90 transition-opacity disabled:opacity-60"
+        className="w-full h-10 rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white font-semibold px-6 text-sm hover:opacity-90 transition-opacity disabled:opacity-60"
       >
         {status === "loading" ? "Submitting…" : "Apply for Internship"}
       </button>

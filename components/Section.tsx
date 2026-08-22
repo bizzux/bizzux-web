@@ -23,9 +23,9 @@ export function CTAButton({
   variant?: "primary" | "secondary" | "ghost-light";
   icon?: boolean;
 }) {
-  const base = "inline-flex items-center gap-2 justify-center rounded-full px-6 py-3 text-sm font-semibold transition-all";
+  const base = "inline-flex items-center gap-2 justify-center rounded-full h-10 px-6 text-sm font-semibold transition-all";
   const styles = {
-    primary: `${base} bg-gradient-to-r from-brand-teal to-brand-blue text-white hover:opacity-90 shadow-sm`,
+    primary: `${base} bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white hover:opacity-90 shadow-sm`,
     secondary: `${base} border border-slate-300 text-ink hover:border-brand-blue hover:text-brand-blue`,
     "ghost-light": `${base} border border-white/40 text-white hover:bg-white/10`,
   }[variant];

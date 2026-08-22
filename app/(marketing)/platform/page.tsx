@@ -23,7 +23,7 @@ export default function PlatformPage() {
     <>
       <section className="pt-12 pb-10 bg-navy text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-40" style={{
-          background: "radial-gradient(60% 50% at 20% 20%, rgba(20,184,166,0.35) 0%, transparent 60%)"
+          background: "radial-gradient(60% 50% at 20% 20%, rgba(18,166,149,0.35) 0%, transparent 60%)"
         }} />
         <Container className="relative text-center">
           <Eyebrow light>Bizzux Business Platform</Eyebrow>
@@ -42,7 +42,7 @@ export default function PlatformPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((f) => (
               <div key={f.title} className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-brand-teal to-brand-blue text-white flex items-center justify-center mb-4">
+                <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white flex items-center justify-center mb-4">
                   <f.icon className="w-5 h-5" />
                 </div>
                 <h3 className="font-semibold mb-2">{f.title}</h3>

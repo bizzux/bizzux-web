@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, query, orderBy, doc, getDoc } from "firebase/firestore";
@@ -101,10 +101,26 @@ export default function PricingPlans() {
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null); // the plan this person is actively paying for, if any
   const [topBannerTarget, setTopBannerTarget] = useState<HTMLElement | null>(null);
   const [showOffersModal, setShowOffersModal] = useState(false);
+  const refCodeRef = useRef<string | null>(null); // a Partner's ?ref= code from their share link, if any
+  const refAppliedRef = useRef(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return unsub;
+  }, []);
+
+  // A Partner's share link (see app/(marketing)/partners) points here as
+  // /pricing?ref=CODE. Read via window.location directly, rather than
+  // Next's useSearchParams hook, so this component doesn't need a Suspense
+  // boundary just for this. Prefills the same coupon box used for admin
+  // Offer codes above — referral codes go through the exact same
+  // apply/checkout flow, see lib/referral.js.
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) {
+      refCodeRef.current = ref.toUpperCase();
+      setCouponInput(refCodeRef.current);
+    }
   }, []);
 
   // The trial/offer banners below are portaled into #pricing-top-banner
@@ -179,6 +195,18 @@ export default function PricingPlans() {
       }
     })();
   }, [user]);
+
+  // Once both a signed-in user and the plans list are ready, auto-apply a
+  // referral code that arrived via ?ref= so a Partner's link works without
+  // the visitor needing to also click "Apply" themselves. Only ever fires
+  // once per page load.
+  useEffect(() => {
+    if (!refCodeRef.current || refAppliedRef.current) return;
+    if (!user || !plans) return;
+    refAppliedRef.current = true;
+    applyCoupon(refCodeRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, plans]);
 
   // Checks a promo code against every visible plan at once (there are only
   // ever a handful) since a code is scoped to one specific plan — see
@@ -266,7 +294,7 @@ export default function PricingPlans() {
         subscription_id: data.subscriptionId,
         name: "Bizzux",
         description: data.planName ? `${data.planName} plan subscription` : "Subscription",
-        theme: { color: "#0f766e" },
+        theme: { color: "#12a695" },
         handler: async (response: {
           razorpay_payment_id: string;
           razorpay_subscription_id: string;
@@ -364,7 +392,7 @@ export default function PricingPlans() {
               key={c}
               onClick={() => setCurrency(c)}
               className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${
-                currency === c ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white" : "text-slate-600 hover:text-ink"
+                currency === c ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white" : "text-slate-600 hover:text-ink"
               }`}
             >
               {c}
@@ -402,7 +430,7 @@ export default function PricingPlans() {
           <button
             onClick={() => applyCoupon()}
             disabled={couponChecking || !couponInput.trim()}
-            className="rounded-full border border-slate-200 px-6 py-3 text-sm font-semibold text-ink hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap"
+            className="h-10 rounded-full border border-slate-200 px-6 text-sm font-semibold text-ink hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap"
           >
             {couponChecking ? "Checking…" : "Apply"}
           </button>
@@ -474,7 +502,7 @@ export default function PricingPlans() {
             }`}
           >
             {p.popular && (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-white text-xs font-semibold px-4 py-1">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white text-xs font-semibold px-4 py-1">
                 Most popular
               </div>
             )}
@@ -525,7 +553,7 @@ export default function PricingPlans() {
             )}
             {currentPlanId === p.id ? (
               <div
-                className="w-full flex items-center justify-center gap-2 rounded-full text-sm font-semibold px-5 py-3 bg-gradient-to-r from-brand-teal to-brand-blue text-white cursor-default select-none"
+                className="w-full h-10 flex items-center justify-center gap-2 rounded-full text-sm font-semibold px-5 bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white cursor-default select-none"
                 aria-current="true"
               >
                 <IconCheck className="w-4 h-4" />
@@ -535,9 +563,9 @@ export default function PricingPlans() {
               <button
                 onClick={() => choosePlan(p.id)}
                 disabled={pickingId === p.id}
-                className={`w-full text-center rounded-full text-sm font-semibold px-5 py-3 transition-opacity disabled:opacity-60 ${
+                className={`w-full h-10 text-center rounded-full text-sm font-semibold px-5 transition-opacity disabled:opacity-60 ${
                   p.popular
-                    ? "bg-gradient-to-r from-brand-teal to-brand-blue text-white hover:opacity-90"
+                    ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white hover:opacity-90"
                     : "border border-slate-200 text-ink hover:bg-slate-50"
                 }`}
               >

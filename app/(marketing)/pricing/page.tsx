@@ -36,12 +36,12 @@ export default function PricingPage() {
 
       <section className="py-12 pb-24 bg-slate-50 text-center">
         <Container className="max-w-xl">
-          <h2 className="text-xl font-bold mb-3">Looking for professional email and Microsoft 365?</h2>
+          <h2 className="text-xl font-bold mb-3">Looking for professional email?</h2>
           <p className="text-slate-600 mb-6">
-            Microsoft 365 pricing is India-specific and shown separately in INR.
+            Professional email and productivity plan pricing is India-specific and shown separately in INR.
           </p>
-          <Link href="/microsoft-365" className="text-brand-blue font-semibold hover:underline">
-            See Microsoft 365 pricing →
+          <Link href="/custom-solutions" className="text-brand-blue font-semibold hover:underline">
+            See professional email pricing →
           </Link>
         </Container>
       </section>

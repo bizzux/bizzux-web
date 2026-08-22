@@ -6,6 +6,7 @@ import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import OrganizationsManager from "@/components/OrganizationsManager";
 import { APP_CATALOG } from "@/lib/apps";
+import { IconTrash } from "@/components/Icons";
 
 // Ported from apps.bizzux.com's app/admin/page.js (Super Admin panel), now
 // embedded as the "Super Admin" tab of bizzux.com's merged /admin page —
@@ -20,6 +21,7 @@ const TABS = [
   { id: "planlimits", label: "Plan Limits" },
   { id: "planapps", label: "Plan Apps" },
   { id: "offers", label: "Offers" },
+  { id: "resellers", label: "Partners" },
   { id: "customers", label: "Customers" },
   { id: "organizations", label: "Add Organization" },
 ];
@@ -100,6 +102,7 @@ export default function SuperAdminPanel() {
       {tab === "planlimits" && <PlanLimitsManager />}
       {tab === "planapps" && <PlanAppsManager />}
       {tab === "offers" && <OffersManager />}
+      {tab === "resellers" && <ResellersManager />}
       {tab === "customers" && <CustomersList />}
       {tab === "organizations" && <OrganizationsManager />}
     </div>
@@ -995,6 +998,197 @@ function CustomersList() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function statusPillClass(status) {
+  if (status === "approved") return "active";
+  if (status === "pending") return "trial";
+  return "cancelled"; // rejected / suspended
+}
+
+function money(n) {
+  return `₹${Number(n || 0).toLocaleString("en-IN")}`;
+}
+
+// Super Admin -> Partners. The two percentages at the top (app/api/admin/
+// resellers/route.js's "saveSettings" action) are the SAME number applied
+// to every Partner's referral code — unlike the Offers tab above, an
+// individual Partner doesn't get their own custom discount. Applications
+// come in from the public Partners page (app/(marketing)/partners) via
+// app/api/reseller/apply/route.js and land here as "pending" until
+// approved or rejected; approving is what flips their referral code live.
+function ResellersManager() {
+  const [resellers, setResellers] = useState(null);
+  const [discountPercent, setDiscountPercent] = useState("");
+  const [commissionPercent, setCommissionPercent] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const [err, setErr] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null); // reseller row awaiting confirm, or null
+
+  async function load() {
+    try {
+      const d = await api("/api/admin/resellers", "GET");
+      setResellers(d.resellers || []);
+      setDiscountPercent(String(d.resellerDiscountPercent));
+      setCommissionPercent(String(d.resellerCommissionPercent));
+    } catch {
+      setResellers([]);
+    }
+  }
+  useEffect(() => { load(); }, []);
+
+  async function saveSettings(e) {
+    e.preventDefault();
+    setSavingSettings(true);
+    setSettingsMsg("");
+    try {
+      await api("/api/admin/resellers", "POST", {
+        action: "saveSettings",
+        resellerDiscountPercent: Number(discountPercent),
+        resellerCommissionPercent: Number(commissionPercent),
+      });
+      setSettingsMsg("Saved.");
+    } catch (e2) {
+      setSettingsMsg(e2.message);
+    }
+    setSavingSettings(false);
+  }
+
+  async function act(action, id) {
+    setBusyId(id);
+    setErr("");
+    try {
+      await api("/api/admin/resellers", "POST", { action, id });
+      await load();
+    } catch (e2) {
+      setErr(e2.message);
+    }
+    setBusyId(null);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id;
+    setPendingDelete(null);
+    await act("delete", id);
+  }
+
+  if (resellers === null) return <p className="muted">Loading…</p>;
+
+  return (
+    <div style={{ display: "grid", gap: 24 }}>
+      <div className="card" style={{ maxWidth: 460 }}>
+        <h3 style={{ marginBottom: 4 }}>Referral discount and commission</h3>
+        <p className="muted" style={{ fontSize: 11.5, marginBottom: 14 }}>
+          Applies to every Partner's referral code. A referred customer's discount and the Partner's commission
+          both apply once, on that customer's first successful payment.
+        </p>
+        <form onSubmit={saveSettings}>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label className="label">Customer discount (%)</label>
+              <input
+                className="input" type="number" min="1" max="100"
+                value={discountPercent} onChange={(e) => setDiscountPercent(e.target.value)} required
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="label">Partner commission (%)</label>
+              <input
+                className="input" type="number" min="1" max="100"
+                value={commissionPercent} onChange={(e) => setCommissionPercent(e.target.value)} required
+              />
+            </div>
+          </div>
+          <button className="btn-primary" disabled={savingSettings}>{savingSettings ? "Saving…" : "Save"}</button>
+          {settingsMsg && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>{settingsMsg}</p>}
+        </form>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginBottom: 14 }}>Partners</h3>
+        {resellers.length === 0 && <p className="muted">No applications yet.</p>}
+        {resellers.length > 0 && (
+          <div style={{ overflowX: "auto" }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Email</th><th>Phone</th><th>Business</th><th>Code</th>
+                  <th>Status</th><th>Referrals</th><th>Total earned</th><th>Pending payout</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resellers.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.fullName}</td>
+                    <td>{r.email}</td>
+                    <td>{r.phone || "N/A"}</td>
+                    <td>{r.businessName || "N/A"}</td>
+                    <td><code>{r.referralCode}</code></td>
+                    <td><span className={"status-pill " + statusPillClass(r.status)}>{r.status}</span></td>
+                    <td>{r.totalReferrals || 0}</td>
+                    <td>{money(r.totalEarnings)}</td>
+                    <td>{money(r.pendingPayout)}</td>
+                    <td>
+                      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                        {r.status === "pending" && (
+                          <>
+                            <button className="link-btn" disabled={busyId === r.id} onClick={() => act("approve", r.id)}>Approve</button>
+                            <button className="link-btn danger" disabled={busyId === r.id} onClick={() => act("reject", r.id)}>Reject</button>
+                          </>
+                        )}
+                        {r.status === "approved" && (
+                          <button className="link-btn danger" disabled={busyId === r.id} onClick={() => act("suspend", r.id)}>Suspend</button>
+                        )}
+                        {(r.status === "suspended" || r.status === "rejected") && (
+                          <button className="link-btn" disabled={busyId === r.id} onClick={() => act("approve", r.id)}>Approve</button>
+                        )}
+                        {r.pendingPayout > 0 && (
+                          <button className="link-btn" disabled={busyId === r.id} onClick={() => act("markPaid", r.id)}>Mark paid</button>
+                        )}
+                        <button className="link-btn danger" disabled={busyId === r.id} onClick={() => setPendingDelete(r)}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {err && <p className="error">{err}</p>}
+      </div>
+
+      {pendingDelete && (
+        <div className="modal-overlay" onClick={() => setPendingDelete(null)}>
+          <div className="modal" style={{ textAlign: "center", maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <div
+              style={{
+                width: 56, height: 56, borderRadius: "50%", margin: "0 auto 16px",
+                background: "#fef2f2", color: "var(--red)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <IconTrash className="w-6 h-6" />
+            </div>
+            <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Delete this Partner?</h2>
+            <p className="muted" style={{ marginBottom: 24, lineHeight: 1.55 }}>
+              This removes <strong>{pendingDelete.fullName}</strong>&apos;s application and deactivates their
+              referral code <code>{pendingDelete.referralCode}</code> for good. They&apos;ll see the initial
+              application form if they visit the Partners page again.
+            </p>
+            <div className="row" style={{ gap: 10, justifyContent: "center" }}>
+              <button className="btn-outline-dark" onClick={() => setPendingDelete(null)}>Cancel</button>
+              <button className="btn-danger" disabled={busyId === pendingDelete.id} onClick={confirmDelete}>
+                {busyId === pendingDelete.id ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

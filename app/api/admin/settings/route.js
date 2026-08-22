@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSuperAdmin, adminDb } from "@/lib/firebaseAdmin";
 import { deriveVerificationSettings } from "@/lib/verification";
+import { DEFAULT_RESELLER_DISCOUNT_PERCENT, DEFAULT_RESELLER_COMMISSION_PERCENT } from "@/lib/referral";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +13,15 @@ export async function GET(req) {
     const data = snap.exists ? snap.data() : {};
     const trialDays = data.trialDays;
     const { verifyEmail, verifyMobile } = deriveVerificationSettings(data);
-    return NextResponse.json({ trialDays: trialDays ?? 14, verifyEmail, verifyMobile });
+    const resellerDiscountPercent = data.resellerDiscountPercent ?? DEFAULT_RESELLER_DISCOUNT_PERCENT;
+    const resellerCommissionPercent = data.resellerCommissionPercent ?? DEFAULT_RESELLER_COMMISSION_PERCENT;
+    return NextResponse.json({
+      trialDays: trialDays ?? 14,
+      verifyEmail,
+      verifyMobile,
+      resellerDiscountPercent,
+      resellerCommissionPercent,
+    });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
@@ -44,6 +53,22 @@ export async function POST(req) {
       }
       update.verifyEmail = verifyEmail;
       update.verifyMobile = verifyMobile;
+    }
+
+    if (body.resellerDiscountPercent !== undefined) {
+      const n = Number(body.resellerDiscountPercent);
+      if (!Number.isFinite(n) || n <= 0 || n > 100) {
+        throw { status: 400, message: "Partner discount must be a percent between 1 and 100" };
+      }
+      update.resellerDiscountPercent = n;
+    }
+
+    if (body.resellerCommissionPercent !== undefined) {
+      const n = Number(body.resellerCommissionPercent);
+      if (!Number.isFinite(n) || n <= 0 || n > 100) {
+        throw { status: 400, message: "Partner commission must be a percent between 1 and 100" };
+      }
+      update.resellerCommissionPercent = n;
     }
 
     if (Object.keys(update).length === 0) {

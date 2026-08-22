@@ -17,7 +17,10 @@ export default function AppTopbar({ links = [] }) {
     <header className="border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-50">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
         <Link href="/" className="flex items-center gap-2 shrink-0">
-          <Image src="/logo-transparent.png" alt="Bizzux" width={132} height={54} className="h-9 w-auto" />
+          {/* Same nudge as components/Nav.tsx — the source PNG's transparent
+              headroom above the wordmark otherwise sits its visual center
+              below the nav links' text. */}
+          <Image src="/logo-transparent.png" alt="Bizzux" width={132} height={54} className="h-9 w-auto -translate-y-1.5" />
         </Link>
         <div className="flex items-center gap-3 shrink-0">
           {links.map((l) => (
@@ -31,7 +34,7 @@ export default function AppTopbar({ links = [] }) {
           ))}
           <button
             onClick={() => signOut(auth)}
-            className="rounded-full border border-slate-200 text-slate-600 text-sm font-semibold px-4 py-2 hover:bg-slate-50 transition-colors"
+            className="h-10 rounded-full border border-slate-200 text-slate-600 text-sm font-semibold px-4 hover:bg-slate-50 transition-colors"
           >
             Sign out
           </button>

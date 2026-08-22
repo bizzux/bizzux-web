@@ -86,7 +86,7 @@ export default function ContactForm() {
       <button
         type="submit"
         disabled={status === "loading"}
-        className="w-full rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-white font-semibold px-6 py-3 text-sm hover:opacity-90 transition-opacity disabled:opacity-60"
+        className="w-full h-10 rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white font-semibold px-6 text-sm hover:opacity-90 transition-opacity disabled:opacity-60"
       >
         {status === "loading" ? "Sending…" : "Request a demo"}
       </button>

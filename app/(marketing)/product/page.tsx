@@ -32,7 +32,7 @@ export default function ProductPage() {
             {steps.map((s, i) => (
               <div key={s.title} className="relative rounded-2xl p-6 bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                 <div className="text-xs font-semibold text-brand-blue mb-3">STEP {i + 1}</div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-teal to-brand-blue text-white flex items-center justify-center mb-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white flex items-center justify-center mb-4">
                   <s.icon className="w-6 h-6" />
                 </div>
                 <h3 className="font-semibold mb-2">{s.title}</h3>

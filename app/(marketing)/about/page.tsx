@@ -19,7 +19,7 @@ export default function AboutPage() {
     <>
       <section className="pt-14 pb-14 bg-navy text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-30" style={{
-          background: "radial-gradient(60% 60% at 50% 0%, rgba(20,184,166,0.3) 0%, transparent 70%)"
+          background: "radial-gradient(60% 60% at 50% 0%, rgba(18,166,149,0.3) 0%, transparent 70%)"
         }} />
         <Container className="relative text-center max-w-3xl">
           <Eyebrow light>About Bizzux</Eyebrow>
@@ -44,7 +44,7 @@ export default function AboutPage() {
       <section className="py-14 border-b border-slate-100">
         <Container className="text-center max-w-xl">
           <h2 className="text-2xl font-bold mb-4">Our approach is simple</h2>
-          <p className="text-xl font-semibold bg-gradient-to-r from-brand-teal via-brand-cyan to-brand-blue bg-clip-text text-transparent">
+          <p className="text-xl font-semibold bg-gradient-to-r from-brand-tealDark via-brand-cyanDark to-brand-blueDark bg-clip-text text-transparent">
             Understand the business. Build the right solution. Make growth visible.
           </p>
         </Container>

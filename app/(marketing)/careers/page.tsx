@@ -23,7 +23,7 @@ export default function CareersPage() {
     <>
       <section className="pt-12 pb-10 bg-navy text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-30" style={{
-          background: "radial-gradient(55% 55% at 80% 10%, rgba(20,184,166,0.3) 0%, transparent 65%)"
+          background: "radial-gradient(55% 55% at 80% 10%, rgba(18,166,149,0.3) 0%, transparent 65%)"
         }} />
         <Container className="relative text-center max-w-2xl">
           <Eyebrow light>Careers &amp; Internships</Eyebrow>

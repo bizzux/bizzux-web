@@ -24,8 +24,8 @@ const customSolutions = [
   { icon: IconBox, title: "E-commerce websites", href: "/custom-solutions" },
   { icon: IconCloud, title: "Cloud migration and hosting", href: "/custom-solutions" },
   { icon: IconDatabase, title: "On-premise and self-hosted solutions", href: "/custom-solutions" },
-  { icon: IconMail, title: "Microsoft 365 setup and integration", href: "/microsoft-365" },
-  { icon: IconTeam, title: "Teams, SharePoint and OneDrive solutions", href: "/microsoft-365" },
+  { icon: IconMail, title: "Professional email setup and integration", href: "/custom-solutions" },
+  { icon: IconTeam, title: "Team chat and cloud storage solutions", href: "/custom-solutions" },
   { icon: IconDatabase, title: "API and business-system integrations", href: "/custom-solutions" },
 ];
 
@@ -35,7 +35,7 @@ function SolutionCard({ icon: Icon, title, href }: { icon: any; title: string; h
       href={href}
       className="flex items-center gap-4 rounded-xl border border-slate-100 bg-white p-5 shadow-sm hover:shadow-md hover:border-brand-blue/30 transition-all"
     >
-      <div className="w-11 h-11 shrink-0 rounded-lg bg-gradient-to-br from-brand-teal to-brand-blue text-white flex items-center justify-center">
+      <div className="w-11 h-11 shrink-0 rounded-lg bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white flex items-center justify-center">
         <Icon className="w-5 h-5" />
       </div>
       <span className="font-medium text-sm text-ink">{title}</span>

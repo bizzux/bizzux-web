@@ -3,26 +3,48 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMe } from "@/lib/useMe";
-import { IconWhatsApp } from "./Icons";
 
 // "All apps" sits first, right next to the logo, on every page. The rest
-// are the marketing tabs — always shown, signed in or not, so the menu bar
+// are the marketing tabs, always shown, signed in or not, so the menu bar
 // never changes shape as someone moves between bizzux.com and the signed-in
-// app (dashboard/team/profile/apps) — one consistent nav for the whole
-// site. Account-specific destinations (Dashboard/Team/Sign out) live in
+// app (dashboard/team/profile/apps), one consistent nav for the whole
+// site. Links live directly next to the logo on the left; a flex-1 spacer
+// pushes the auth/CTA/Super Admin group to the far right edge.
+//
+// The right-side group has two slots that both flip on sign-in state:
+//   - Slot 1: "Sign in / Sign up" (signed out) -> "Profile" (signed in),
+//     styled as a plain link with the same hover underline as the tabs.
+//   - Slot 2: "Start Free Trial" (signed out) -> "Book a demo" (signed in,
+//     links to /contact), the one filled CTA button.
+// Account-specific destinations (Dashboard/Team/Sign out) live in
 // AccountTabs, a secondary strip rendered under this one on the signed-in
-// pages — Nav only shows "Profile" for those, plus, for Super Admins, a
-// themed "Super Admin" button in the right-side button group, right before
-// WhatsApp.
+// pages. For Super Admins, a themed "Super Admin" button follows the CTA.
 const links = [
   { href: "/apps", label: "All apps" },
-  { href: "/platform", label: "Platform" },
-  { href: "/custom-solutions", label: "Custom Solutions" },
-  { href: "/solutions", label: "Solutions" },
-  { href: "/microsoft-365", label: "Microsoft 365" },
+  { href: "/careers", label: "Career" },
+  { href: "/custom-solutions", label: "Build" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/careers", label: "Careers" },
+  { href: "/partners", label: "Partners" },
 ];
+
+// A fixed h-9 box (same height as the logo) with the label vertically
+// centered inside it, and the hover underline drawn as an absolutely
+// positioned bar pinned to the box's own bottom edge. Because the
+// underline doesn't add any padding or border to the box itself, the
+// label sits at the exact same vertical center as the logo instead of
+// getting nudged upward the way a real border-bottom would.
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="group relative inline-flex h-9 items-center whitespace-nowrap text-sm font-medium"
+      style={{ color: "#000000" }}
+    >
+      <span>{children}</span>
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left scale-x-0 bg-brand-teal transition-transform duration-200 group-hover:scale-x-100" />
+    </Link>
+  );
+}
 
 export default function Nav() {
   // useMe() (lib/useMe.js) is what actually fixes the flicker here: Nav
@@ -37,62 +59,57 @@ export default function Nav() {
 
   return (
     <header className="border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-50">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-8">
         <Link href="/" className="flex items-center gap-2 shrink-0">
-          <Image src="/logo-transparent.png" alt="Bizzux" width={132} height={54} priority className="h-9 w-auto" />
+          {/* The source PNG has a lot of transparent headroom above the
+              wordmark for the small cloud+arrow accent, so its own visual
+              center sits well below the true center of its h-9 box — nudge
+              it up so the "bizzux" text lines up with the nav tabs' text
+              instead of the box's geometric center. */}
+          <Image src="/logo-transparent.png" alt="Bizzux" width={132} height={54} priority className="h-9 w-auto -translate-y-1.5" />
         </Link>
-        <nav className="hidden xl:flex items-center gap-6 text-sm font-medium" style={{ color: "#000000" }}>
+        <nav className="hidden xl:flex items-center gap-6">
           {links.map((l) => (
-            <Link key={l.href} href={l.href} className="hover:text-brand-blue transition-colors whitespace-nowrap">
+            <NavLink key={l.href} href={l.href}>
               {l.label}
-            </Link>
+            </NavLink>
           ))}
         </nav>
+        <div className="flex-1" />
         <div className="flex items-center gap-3 shrink-0">
+          <div className="hidden sm:block">
+            {signedIn ? (
+              <NavLink href="/dashboard">Profile</NavLink>
+            ) : (
+              <NavLink href="/sign-in">Sign in / Sign up</NavLink>
+            )}
+          </div>
           {signedIn ? (
-            <Link href="/dashboard" className="hidden sm:block text-sm font-medium hover:text-brand-blue transition-colors" style={{ color: "#000000" }}>
-              Profile
+            <Link
+              href="/contact"
+              className="hidden sm:inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
+              style={{ color: "#ffffff" }}
+            >
+              Book a demo
             </Link>
           ) : (
-            <>
-              <Link href="/sign-in" className="hidden sm:block text-sm font-medium hover:text-brand-blue transition-colors" style={{ color: "#000000" }}>
-                Sign in
-              </Link>
-              <Link
-                href="/sign-in?mode=signup"
-                className="hidden sm:inline-flex rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
-                style={{ color: "#ffffff" }}
-              >
-                Start free trial
-              </Link>
-            </>
+            <Link
+              href="/sign-in?mode=signup"
+              className="hidden sm:inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
+              style={{ color: "#ffffff" }}
+            >
+              Start Free Trial
+            </Link>
           )}
           {signedIn && isSuper && (
             <Link
               href="/admin"
-              className="hidden sm:inline-flex rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
+              className="hidden sm:inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
               style={{ color: "#ffffff" }}
             >
               Super Admin
             </Link>
           )}
-          <a
-            href="https://wa.me/919591222422"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-green-500 text-sm font-semibold px-4 py-2.5 hover:bg-green-50 transition-colors"
-            style={{ color: "#16a34a" }}
-          >
-            <IconWhatsApp className="w-4 h-4" />
-            WhatsApp
-          </a>
-          <Link
-            href="/contact"
-            className="rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
-            style={{ color: "#ffffff" }}
-          >
-            Book a demo
-          </Link>
         </div>
       </div>
     </header>

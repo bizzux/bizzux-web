@@ -55,7 +55,7 @@ export default function AccountTabs({ active, isAccountAdmin = false, isSuper = 
           )}
           <button
             onClick={() => signOut(auth)}
-            className="text-sm font-medium text-black bg-slate-200 hover:bg-slate-300 rounded-full px-4 py-1.5 transition-colors"
+            className="h-10 text-sm font-medium text-black bg-slate-200 hover:bg-slate-300 rounded-full px-4 transition-colors"
           >
             Sign out
           </button>

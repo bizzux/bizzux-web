@@ -2,7 +2,7 @@ import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import {
   IconPOS, IconMenu, IconBox, IconWallet, IconUsers, IconChart,
   IconLayers, IconSpark, IconCloud, IconShield, IconCheck,
-  IconStore, IconArrowRight,
+  IconStore, IconArrowRight, IconWhatsApp,
 } from "@/components/Icons";
 
 const featuredApps = [
@@ -58,7 +58,7 @@ export default function Home() {
       {/* Hero */}
       <section className="relative overflow-hidden bg-navy">
         <div className="absolute inset-0 opacity-40" style={{
-          background: "radial-gradient(60% 50% at 20% 20%, rgba(20,184,166,0.35) 0%, transparent 60%), radial-gradient(50% 50% at 85% 30%, rgba(37,99,235,0.35) 0%, transparent 60%)"
+          background: "radial-gradient(60% 50% at 20% 20%, rgba(18,166,149,0.35) 0%, transparent 60%), radial-gradient(50% 50% at 85% 30%, rgba(33,89,212,0.35) 0%, transparent 60%)"
         }} />
         <Container className="relative pt-8 pb-6 md:pt-10 md:pb-8 text-center">
           <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight max-w-3xl mx-auto text-white">
@@ -70,7 +70,15 @@ export default function Home() {
           </p>
           <div className="mt-6 flex flex-wrap gap-4 justify-center">
             <CTAButton href="/apps">Explore Bizzux Platform</CTAButton>
-            <CTAButton href="/custom-solutions" variant="ghost-light">Build a Custom Solution</CTAButton>
+            <a
+              href="https://wa.me/919591222422"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 justify-center rounded-full h-10 bg-green-600 text-white text-sm font-semibold px-6 hover:bg-green-700 transition-colors"
+            >
+              <IconWhatsApp className="w-4 h-4" />
+              Chat on WhatsApp
+            </a>
           </div>
         </Container>
       </section>
@@ -81,13 +89,13 @@ export default function Home() {
       <div className="px-6 mt-8 md:mt-10 relative z-10">
         <Container className="!px-0 !max-w-7xl">
           <div className="rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-900/5 p-8 md:p-12 grid md:grid-cols-[340px_1fr] gap-8 md:gap-12">
-            <div className="rounded-xl bg-gradient-to-br from-brand-teal via-brand-cyan to-brand-blue text-white p-8 flex flex-col justify-between">
+            <div className="rounded-xl bg-gradient-to-br from-brand-tealDark via-brand-cyanDark to-brand-blueDark text-white p-8 flex flex-col justify-between">
               <div>
                 <div className="w-14 h-14 rounded-lg bg-white/15 flex items-center justify-center mb-5">
                   <IconStore className="w-7 h-7" />
                 </div>
                 <h3 className="text-2xl font-bold mb-3">Bizzux Shop is live</h3>
-                <p className="text-base text-white/80">
+                <p className="text-base text-white">
                   POS, digital menu, inventory and shop management. Start running your counter on Bizzux today, free for 14 days.
                 </p>
               </div>
@@ -99,7 +107,7 @@ export default function Home() {
                 <span className="text-sm font-bold tracking-wide uppercase text-slate-500">Featured apps</span>
                 <a
                   href="/apps"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-teal to-brand-blue text-sm font-semibold px-5 py-2.5 hover:opacity-90 transition-opacity whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 h-10 rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
                   style={{ color: "#ffffff" }}
                 >
                   Explore all apps <IconArrowRight className="w-4 h-4" />
@@ -108,7 +116,7 @@ export default function Home() {
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-8">
                 {featuredApps.map((a) => (
                   <div key={a.name} className="flex gap-4">
-                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center shrink-0 ${a.live ? "bg-gradient-to-br from-brand-teal to-brand-blue text-white" : "bg-slate-100 text-slate-400"}`}>
+                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center shrink-0 ${a.live ? "bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white" : "bg-slate-100 text-slate-400"}`}>
                       <a.icon className="w-5 h-5" />
                     </div>
                     <div>
@@ -135,7 +143,7 @@ export default function Home() {
           </div>
           <div className="grid lg:grid-cols-2 gap-6">
             <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-8 flex flex-col">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-teal to-brand-cyan text-white flex items-center justify-center mb-5">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-tealDark to-brand-cyanDark text-white flex items-center justify-center mb-5">
                 <IconPOS className="w-6 h-6" />
               </div>
               <div className="text-xs font-semibold text-brand-teal uppercase tracking-wide mb-1">01 · Bizzux Business Platform</div>
@@ -155,7 +163,7 @@ export default function Home() {
             </div>
 
             <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-8 flex flex-col">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-teal to-brand-cyan text-white flex items-center justify-center mb-5">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-tealDark to-brand-cyanDark text-white flex items-center justify-center mb-5">
                 <IconSpark className="w-6 h-6" />
               </div>
               <div className="text-xs font-semibold text-brand-teal uppercase tracking-wide mb-1">02 · Custom Cloud &amp; AI Solutions</div>
@@ -194,7 +202,7 @@ export default function Home() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {whyPillars.map((p) => (
               <div key={p.title} className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm">
-                <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-brand-teal to-brand-blue text-white flex items-center justify-center mb-4">
+                <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white flex items-center justify-center mb-4">
                   <p.icon className="w-5 h-5" />
                 </div>
                 <h3 className="font-semibold mb-2">{p.title}</h3>
@@ -228,12 +236,12 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section className="py-10 md:py-12 bg-gradient-to-r from-brand-teal to-brand-blue text-white text-center">
+      <section className="py-10 md:py-12 bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white text-center">
         <Container>
           <h2 className="text-3xl font-bold mb-3">Let&apos;s build what your business needs.</h2>
           <p className="text-teal-50 max-w-xl mx-auto">
             Whether it&apos;s daily business management, a custom AI-enabled application, or a professional
-            Microsoft 365 setup, our team can help.
+            email setup, our team can help.
           </p>
         </Container>
       </section>
