@@ -37,7 +37,17 @@ export default function CareersPage() {
         </Container>
       </section>
 
-      <section className="py-10 border-b border-slate-100">
+      <section className="py-10 bg-slate-50">
+        <Container className="max-w-2xl">
+          <h2 className="text-2xl font-bold mb-2 text-center">Apply for an internship</h2>
+          <p className="text-slate-600 text-center mb-8">Tell us a bit about yourself and what you&apos;d like to work on.</p>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8">
+            <CareersForm />
+          </div>
+        </Container>
+      </section>
+
+      <section className="py-10 pb-20">
         <Container>
           <h2 className="text-2xl font-bold mb-6 text-center">Internship opportunities</h2>
           <div className="flex flex-wrap justify-center gap-3 max-w-3xl mx-auto">
@@ -47,16 +57,6 @@ export default function CareersPage() {
                 {o}
               </span>
             ))}
-          </div>
-        </Container>
-      </section>
-
-      <section className="py-10 pb-20 bg-slate-50">
-        <Container className="max-w-2xl">
-          <h2 className="text-2xl font-bold mb-2 text-center">Apply for an internship</h2>
-          <p className="text-slate-600 text-center mb-8">Tell us a bit about yourself and what you&apos;d like to work on.</p>
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8">
-            <CareersForm />
           </div>
         </Container>
       </section>
