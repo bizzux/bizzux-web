@@ -956,16 +956,19 @@ function PlanAppsManager() {
 
 function CustomersList() {
   const [customers, setCustomers] = useState(null);
+  const [extending, setExtending] = useState(null); // customer row being extended, or null
+
+  async function load() {
+    try {
+      const d = await api("/api/admin/customers", "GET");
+      setCustomers(d.customers || []);
+    } catch {
+      setCustomers([]);
+    }
+  }
 
   useEffect(() => {
-    (async () => {
-      try {
-        const d = await api("/api/admin/customers", "GET");
-        setCustomers(d.customers || []);
-      } catch {
-        setCustomers([]);
-      }
-    })();
+    load();
   }, []);
 
   if (customers === null) return <p className="muted">Loading…</p>;
@@ -979,7 +982,7 @@ function CustomersList() {
             <thead>
               <tr>
                 <th>Name</th><th>Email</th><th>Mobile</th><th>Country</th>
-                <th>Signed up</th><th>Status</th><th>Type</th><th>Plan</th><th>Trial ends</th>
+                <th>Signed up</th><th>Status</th><th>Type</th><th>Plan</th><th>Trial ends</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -994,12 +997,92 @@ function CustomersList() {
                   <td>{c.customerType}</td>
                   <td>{c.planName || "N/A"}</td>
                   <td>{c.trialEndDate ? new Date(c.trialEndDate).toLocaleDateString() : "N/A"}</td>
+                  <td><button className="link-btn" onClick={() => setExtending(c)}>Extend trial</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {extending && (
+        <ExtendTrialModal
+          customer={extending}
+          onClose={() => setExtending(null)}
+          onExtended={async () => {
+            setExtending(null);
+            await load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+const TRIAL_UNITS = [
+  { value: "days", label: "Day(s)" },
+  { value: "weeks", label: "Week(s)" },
+  { value: "months", label: "Month(s)" },
+  { value: "years", label: "Year(s)" },
+];
+
+function ExtendTrialModal({ customer, onClose, onExtended }) {
+  const [amount, setAmount] = useState(1);
+  const [unit, setUnit] = useState("weeks");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    setError("");
+    if (!(amount > 0)) {
+      setError("Enter a positive amount");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api("/api/admin/customers", "POST", { action: "extendTrial", id: customer.id, amount: Number(amount), unit });
+      onExtended();
+    } catch (e2) {
+      setError(e2.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginBottom: 4 }}>Extend trial</h2>
+        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>
+          {customer.email} — currently ends {customer.trialEndDate ? new Date(customer.trialEndDate).toLocaleDateString() : "N/A"}
+        </p>
+        <form onSubmit={submit} noValidate>
+          <div className="row" style={{ gap: 10, marginBottom: 16 }}>
+            <input
+              className="input"
+              type="number"
+              min="1"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              style={{ width: 90 }}
+              autoFocus
+            />
+            <select className="input" value={unit} onChange={(e) => setUnit(e.target.value)}>
+              {TRIAL_UNITS.map((u) => (
+                <option key={u.value} value={u.value}>{u.label}</option>
+              ))}
+            </select>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
+            Extends from today if the trial already ended, or adds on top of the current end date if it hasn't.
+          </p>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" disabled={busy}>{busy ? "Extending…" : "Extend"}</button>
+          </div>
+          {error && <p className="error">{error}</p>}
+        </form>
+      </div>
     </div>
   );
 }

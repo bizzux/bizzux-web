@@ -385,7 +385,7 @@ function DashboardInner() {
       <Nav />
       <AccountTabs active="dashboard" isAccountAdmin={isAccountAdmin} isSuper={isSuper} />
 
-      {status === "trial" && !expired && remaining !== null && (
+      {!isSuper && status === "trial" && !expired && remaining !== null && (
         <div className="trial-banner">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <IconClock className="w-4 h-4" />
@@ -398,7 +398,13 @@ function DashboardInner() {
           <Link key={"trial-cta-" + remaining} href="/pricing" className="trial-banner-cta">Choose a plan →</Link>
         </div>
       )}
-      {expired && (
+      {/* Super Admin always has full access (see appsLocked above), so
+          showing "trial has wrapped up" here — while every app tile
+          actually says "Open app" — reads as a bug rather than a status
+          message. Their own customers/ record can genuinely still be
+          expired (e.g. a real trial that lapsed before they were made
+          Super Admin); it just shouldn't be surfaced as a blocker. */}
+      {!isSuper && expired && (
         <div className="trial-banner expired">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <IconClock className="w-4 h-4" />
