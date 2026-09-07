@@ -19,7 +19,10 @@ export async function GET(req, { params }) {
       file: {
         id: snap.id,
         title: f.title,
-        content: f.content,
+        content: f.content || null,
+        ext: f.ext || "txt",
+        hasBlob: !!f.blobPath,
+        folderId: f.folderId || null,
         sizeBytes: f.sizeBytes || 0,
         createdAt: f.createdAt?.toDate ? f.createdAt.toDate().toISOString() : f.createdAt,
       },

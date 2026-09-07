@@ -17,9 +17,11 @@ function toIso(ts) {
   return typeof ts.toDate === "function" ? ts.toDate().toISOString() : ts;
 }
 
-// Plain substring search across title + content, case-insensitive. Good
-// enough at the scale this app is built for (tens to low hundreds of text
-// files per account) without standing up a real search index.
+// Plain substring search, case-insensitive. Title is always searchable;
+// `content` only exists for .txt/pasted files (Office/PDF uploads are
+// stored as opaque blobs — see lib/files.js — so they're name-searchable
+// only, not full-text). Good enough at the scale this app is built for
+// (tens to low hundreds of files per account) without a real search index.
 function matches(doc, q) {
   if (!q) return true;
   const needle = q.toLowerCase();
@@ -36,8 +38,9 @@ export async function GET(req) {
     const folderId = params.get("folderId");
 
     const snap = await filesCollection(acct.accountId).orderBy("createdAt", "desc").get();
-    const files = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
+    const active = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((f) => !f.deletedAt);
+
+    const files = active
       .filter((f) => matches(f, q))
       .filter((f) => {
         if (!folderId) return true;
@@ -47,15 +50,19 @@ export async function GET(req) {
       .map((f) => ({
         id: f.id,
         title: f.title,
+        ext: f.ext || "txt",
         sizeBytes: f.sizeBytes || 0,
         createdAt: toIso(f.createdAt),
         folderId: f.folderId || null,
+        hasContent: !!f.content,
         // A short snippet around the first match, so search results show
         // *why* a file matched without shipping its whole content.
-        snippet: q ? snippetAround(f.content || "", q) : null,
+        snippet: q && f.content ? snippetAround(f.content, q) : null,
       }));
 
-    return NextResponse.json({ files });
+    const totalSizeBytes = active.reduce((sum, f) => sum + (f.sizeBytes || 0), 0);
+
+    return NextResponse.json({ files, totalSizeBytes, totalCount: active.length });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
@@ -76,35 +83,42 @@ export async function POST(req) {
 
     if (body.action === "create") {
       const title = String(body.title || "").trim().slice(0, MAX_TITLE_LEN);
-      const content = String(body.content || "");
       const folderId = body.folderId ? String(body.folderId) : null;
       if (!title) throw { status: 400, message: "File name is required" };
-      if (!content.trim()) throw { status: 400, message: "File content is empty" };
-      if (Buffer.byteLength(content, "utf8") > MAX_CONTENT_BYTES) {
-        throw { status: 400, message: "That file is too large (2MB limit)" };
-      }
 
-      const ref = await filesCollection(acct.accountId).add({
+      const doc = {
         title,
-        content,
         folderId,
-        sizeBytes: Buffer.byteLength(content, "utf8"),
         createdAt: FieldValue.serverTimestamp(),
         createdBy: acct.uid,
         createdByEmail: acct.email,
-      });
-      return NextResponse.json({ id: ref.id });
-    }
+        deletedAt: null,
+      };
 
-    if (body.action === "move") {
-      const id = String(body.id || "");
-      const folderId = body.folderId ? String(body.folderId) : null;
-      if (!id) throw { status: 400, message: "File id required" };
-      const ref = filesCollection(acct.accountId).doc(id);
-      const snap = await ref.get();
-      if (!snap.exists) throw { status: 404, message: "File not found" };
-      await ref.update({ folderId });
-      return NextResponse.json({ ok: true });
+      if (body.blobPath) {
+        // A binary upload (Word/Excel/PowerPoint/PDF/etc.) that already
+        // landed in Vercel Blob via /api/files/blob-upload — this call just
+        // records its metadata.
+        doc.blobPath = String(body.blobPath);
+        doc.contentType = body.contentType ? String(body.contentType) : "application/octet-stream";
+        doc.ext = String(body.ext || "").toLowerCase().slice(0, 10) || "bin";
+        doc.sizeBytes = Number(body.sizeBytes) || 0;
+        doc.content = null;
+      } else {
+        // Plain text: uploaded .txt or pasted directly — stored inline so
+        // it stays full-text searchable.
+        const content = String(body.content || "");
+        if (!content.trim()) throw { status: 400, message: "File content is empty" };
+        if (Buffer.byteLength(content, "utf8") > MAX_CONTENT_BYTES) {
+          throw { status: 400, message: "That file is too large (2MB limit)" };
+        }
+        doc.content = content;
+        doc.ext = "txt";
+        doc.sizeBytes = Buffer.byteLength(content, "utf8");
+      }
+
+      const ref = await filesCollection(acct.accountId).add(doc);
+      return NextResponse.json({ id: ref.id });
     }
 
     if (body.action === "rename") {
@@ -118,14 +132,38 @@ export async function POST(req) {
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === "delete") {
-      const id = String(body.id || "");
-      if (!id) throw { status: 400, message: "File id required" };
-      const ref = filesCollection(acct.accountId).doc(id);
-      const snap = await ref.get();
-      if (!snap.exists) throw { status: 404, message: "File not found" };
-      await ref.delete();
-      return NextResponse.json({ ok: true });
+    if (body.action === "move" || body.action === "moveMany") {
+      const ids = body.action === "moveMany" ? (Array.isArray(body.ids) ? body.ids.map(String) : []) : [String(body.id || "")];
+      const folderId = body.folderId ? String(body.folderId) : null;
+      if (ids.length === 0 || ids.some((i) => !i)) throw { status: 400, message: "File id(s) required" };
+      const batch = adminDb().batch();
+      for (const id of ids) {
+        const ref = filesCollection(acct.accountId).doc(id);
+        const snap = await ref.get();
+        if (snap.exists) batch.update(ref, { folderId });
+      }
+      await batch.commit();
+      return NextResponse.json({ ok: true, moved: ids.length });
+    }
+
+    // Soft delete — moves to the recycle bin (see /api/trash) rather than
+    // removing anything immediately.
+    if (body.action === "delete" || body.action === "deleteMany") {
+      const ids = body.action === "deleteMany" ? (Array.isArray(body.ids) ? body.ids.map(String) : []) : [String(body.id || "")];
+      if (ids.length === 0 || ids.some((i) => !i)) throw { status: 400, message: "File id(s) required" };
+      const now = FieldValue.serverTimestamp();
+      const batch = adminDb().batch();
+      let count = 0;
+      for (const id of ids) {
+        const ref = filesCollection(acct.accountId).doc(id);
+        const snap = await ref.get();
+        if (snap.exists && !snap.data().deletedAt) {
+          batch.update(ref, { deletedAt: now });
+          count++;
+        }
+      }
+      await batch.commit();
+      return NextResponse.json({ ok: true, deleted: count });
     }
 
     throw { status: 400, message: "Unknown action" };
