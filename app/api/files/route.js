@@ -29,17 +29,27 @@ function matches(doc, q) {
 export async function GET(req) {
   try {
     const acct = await requireAccountWithAppsAccess(req);
-    const q = new URL(req.url).searchParams.get("q")?.trim() || "";
+    const params = new URL(req.url).searchParams;
+    const q = params.get("q")?.trim() || "";
+    // folderId: omitted = every file regardless of folder; "unfiled" = only
+    // files with no folder; any other value = only that folder's files.
+    const folderId = params.get("folderId");
 
     const snap = await filesCollection(acct.accountId).orderBy("createdAt", "desc").get();
     const files = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((f) => matches(f, q))
+      .filter((f) => {
+        if (!folderId) return true;
+        if (folderId === "unfiled") return !f.folderId;
+        return f.folderId === folderId;
+      })
       .map((f) => ({
         id: f.id,
         title: f.title,
         sizeBytes: f.sizeBytes || 0,
         createdAt: toIso(f.createdAt),
+        folderId: f.folderId || null,
         // A short snippet around the first match, so search results show
         // *why* a file matched without shipping its whole content.
         snippet: q ? snippetAround(f.content || "", q) : null,
@@ -67,6 +77,7 @@ export async function POST(req) {
     if (body.action === "create") {
       const title = String(body.title || "").trim().slice(0, MAX_TITLE_LEN);
       const content = String(body.content || "");
+      const folderId = body.folderId ? String(body.folderId) : null;
       if (!title) throw { status: 400, message: "File name is required" };
       if (!content.trim()) throw { status: 400, message: "File content is empty" };
       if (Buffer.byteLength(content, "utf8") > MAX_CONTENT_BYTES) {
@@ -76,12 +87,24 @@ export async function POST(req) {
       const ref = await filesCollection(acct.accountId).add({
         title,
         content,
+        folderId,
         sizeBytes: Buffer.byteLength(content, "utf8"),
         createdAt: FieldValue.serverTimestamp(),
         createdBy: acct.uid,
         createdByEmail: acct.email,
       });
       return NextResponse.json({ id: ref.id });
+    }
+
+    if (body.action === "move") {
+      const id = String(body.id || "");
+      const folderId = body.folderId ? String(body.folderId) : null;
+      if (!id) throw { status: 400, message: "File id required" };
+      const ref = filesCollection(acct.accountId).doc(id);
+      const snap = await ref.get();
+      if (!snap.exists) throw { status: 404, message: "File not found" };
+      await ref.update({ folderId });
+      return NextResponse.json({ ok: true });
     }
 
     if (body.action === "rename") {

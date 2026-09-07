@@ -44,6 +44,9 @@ export default function FilesPage() {
   const router = useRouter();
   const { user } = useMe();
   const [files, setFiles] = useState(null);
+  const [folders, setFolders] = useState(null);
+  // null = All files, "unfiled" = no folder, otherwise a folder id.
+  const [activeFolder, setActiveFolder] = useState(null);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -53,9 +56,23 @@ export default function FilesPage() {
     if (user === null) router.push("/sign-in");
   }, [user, router]);
 
-  async function load(query) {
+  async function loadFolders() {
     try {
-      const d = await api(`/api/files${query ? "?q=" + encodeURIComponent(query) : ""}`, "GET");
+      const d = await api("/api/folders", "GET");
+      setFolders(d.folders || []);
+    } catch (e) {
+      setErr(e.message);
+      setFolders([]);
+    }
+  }
+
+  async function loadFiles(query, folderId) {
+    try {
+      const params = new URLSearchParams();
+      if (query) params.set("q", query);
+      if (folderId) params.set("folderId", folderId);
+      const qs = params.toString();
+      const d = await api(`/api/files${qs ? "?" + qs : ""}`, "GET");
       setFiles(d.files || []);
     } catch (e) {
       setErr(e.message);
@@ -65,17 +82,18 @@ export default function FilesPage() {
 
   useEffect(() => {
     if (!user) return;
-    load(q);
+    loadFolders();
+    loadFiles(q, activeFolder);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Debounced search-as-you-type.
+  // Debounced search-as-you-type; re-fetches immediately when the folder changes.
   useEffect(() => {
     if (!user) return;
-    const t = setTimeout(() => load(q), 300);
+    const t = setTimeout(() => loadFiles(q, activeFolder), 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [q, activeFolder]);
 
   async function openFile(id) {
     try {
@@ -91,7 +109,7 @@ export default function FilesPage() {
     if (!title || title === currentTitle) return;
     try {
       await api("/api/files", "POST", { action: "rename", id, title });
-      await load(q);
+      await loadFiles(q, activeFolder);
       if (viewing?.id === id) setViewing((v) => ({ ...v, title }));
     } catch (e) {
       setErr(e.message);
@@ -103,11 +121,56 @@ export default function FilesPage() {
     try {
       await api("/api/files", "POST", { action: "delete", id });
       if (viewing?.id === id) setViewing(null);
-      await load(q);
+      await loadFiles(q, activeFolder);
     } catch (e) {
       setErr(e.message);
     }
   }
+
+  async function moveFile(id, folderId) {
+    try {
+      await api("/api/files", "POST", { action: "move", id, folderId: folderId || null });
+      await loadFiles(q, activeFolder);
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  async function createFolder() {
+    const name = prompt("New folder name");
+    if (!name || !name.trim()) return;
+    try {
+      await api("/api/folders", "POST", { action: "create", name: name.trim() });
+      await loadFolders();
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  async function renameFolder(id, currentName) {
+    const name = prompt("Rename folder", currentName);
+    if (!name || name === currentName) return;
+    try {
+      await api("/api/folders", "POST", { action: "rename", id, name });
+      await loadFolders();
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  async function deleteFolder(id) {
+    if (!confirm("Delete this folder? Files inside won't be deleted — they'll move to \"No folder\".")) return;
+    try {
+      await api("/api/folders", "POST", { action: "delete", id });
+      if (activeFolder === id) setActiveFolder(null);
+      await loadFolders();
+      await loadFiles(q, activeFolder === id ? null : activeFolder);
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  const folderName = (id) => folders?.find((f) => f.id === id)?.name;
 
   return (
     <div>
@@ -117,67 +180,108 @@ export default function FilesPage() {
           <div>
             <h1 className="dash-heading" style={{ fontSize: 20 }}>Bizzux Files</h1>
             <p className="dash-sub" style={{ marginBottom: 0 }}>
-              Upload or paste your transcripts and notes, name them, and search across all of them later.
+              Upload or paste your transcripts and notes, organize them into folders, and search across all of them later.
             </p>
           </div>
           <button className="btn-primary-sm" onClick={() => setShowAdd(true)}>+ Add file</button>
         </div>
 
-        <input
-          className="input"
-          placeholder="Search file names and contents…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={{ marginBottom: 16, maxWidth: 420 }}
-        />
-
         {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
 
-        <div className="card">
-          {files === null && <p className="muted">Loading…</p>}
-          {files && files.length === 0 && (
-            <p className="muted">{q ? `No files match "${q}".` : "No files yet — add your first one."}</p>
-          )}
-          {files && files.length > 0 && (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Name</th><th>Date</th><th>Size</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {files.map((f) => (
-                  <tr key={f.id}>
-                    <td>
-                      <button className="link-btn" onClick={() => openFile(f.id)} style={{ textAlign: "left" }}>
-                        {f.title}
-                      </button>
-                      {f.snippet && (
-                        <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>…{f.snippet}…</p>
-                      )}
-                    </td>
-                    <td>{f.createdAt ? new Date(f.createdAt).toLocaleDateString() : "—"}</td>
-                    <td>{fmtSize(f.sizeBytes)}</td>
-                    <td>
-                      <div className="row" style={{ gap: 14 }}>
-                        <button className="link-btn" onClick={() => rename(f.id, f.title)}>Rename</button>
-                        <button className="link-btn danger" onClick={() => remove(f.id)}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+        <div className="row" style={{ gap: 20, alignItems: "flex-start" }}>
+          <aside style={{ width: 200, flexShrink: 0 }}>
+            <div className="card" style={{ padding: 10 }}>
+              <FolderRow label="All files" active={activeFolder === null} onClick={() => setActiveFolder(null)} />
+              <FolderRow label="No folder" active={activeFolder === "unfiled"} onClick={() => setActiveFolder("unfiled")} />
+              {folders && folders.length > 0 && <div style={{ borderTop: "1px solid var(--line)", margin: "8px 0" }} />}
+              {folders === null && <p className="muted" style={{ fontSize: 12, padding: "4px 8px" }}>Loading…</p>}
+              {folders?.map((f) => (
+                <FolderRow
+                  key={f.id}
+                  label={f.name}
+                  active={activeFolder === f.id}
+                  onClick={() => setActiveFolder(f.id)}
+                  onRename={() => renameFolder(f.id, f.name)}
+                  onDelete={() => deleteFolder(f.id)}
+                />
+              ))}
+              <button className="link-btn" onClick={createFolder} style={{ marginTop: 8, fontSize: 13 }}>+ New folder</button>
+            </div>
+          </aside>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <input
+              className="input"
+              placeholder="Search file names and contents…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ marginBottom: 16, maxWidth: 420 }}
+            />
+
+            <div className="card">
+              {files === null && <p className="muted">Loading…</p>}
+              {files && files.length === 0 && (
+                <p className="muted">{q ? `No files match "${q}".` : "No files here yet."}</p>
+              )}
+              {files && files.length > 0 && (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Name</th><th>Folder</th><th>Date</th><th>Size</th><th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {files.map((f) => (
+                        <tr key={f.id}>
+                          <td>
+                            <button className="link-btn" onClick={() => openFile(f.id)} style={{ textAlign: "left" }}>
+                              {f.title}
+                            </button>
+                            {f.snippet && (
+                              <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>…{f.snippet}…</p>
+                            )}
+                          </td>
+                          <td>
+                            <select
+                              className="input"
+                              style={{ fontSize: 12, padding: "4px 6px" }}
+                              value={f.folderId || ""}
+                              onChange={(e) => moveFile(f.id, e.target.value)}
+                            >
+                              <option value="">No folder</option>
+                              {folders?.map((folder) => (
+                                <option key={folder.id} value={folder.id}>{folder.name}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>{f.createdAt ? new Date(f.createdAt).toLocaleDateString() : "—"}</td>
+                          <td>{fmtSize(f.sizeBytes)}</td>
+                          <td>
+                            <div className="row" style={{ gap: 14 }}>
+                              <button className="link-btn" onClick={() => rename(f.id, f.title)}>Rename</button>
+                              <button className="link-btn danger" onClick={() => remove(f.id)}>Delete</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       {showAdd && (
         <AddFileModal
+          folders={folders}
+          defaultFolderId={typeof activeFolder === "string" && activeFolder !== "unfiled" ? activeFolder : null}
           onClose={() => setShowAdd(false)}
           onAdded={async () => {
             setShowAdd(false);
-            await load(q);
+            await loadFiles(q, activeFolder);
           }}
         />
       )}
@@ -185,6 +289,7 @@ export default function FilesPage() {
       {viewing && (
         <ViewFileModal
           file={viewing}
+          folderName={folderName(files?.find((f) => f.id === viewing.id)?.folderId)}
           onClose={() => setViewing(null)}
           onDownload={() => downloadTextFile(viewing.title, viewing.content)}
           onRename={() => rename(viewing.id, viewing.title)}
@@ -195,10 +300,38 @@ export default function FilesPage() {
   );
 }
 
-function AddFileModal({ onClose, onAdded }) {
+function FolderRow({ label, active, onClick, onRename, onDelete }) {
+  return (
+    <div
+      className="row"
+      style={{
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "6px 8px",
+        borderRadius: 6,
+        background: active ? "var(--line)" : "transparent",
+        cursor: "pointer",
+      }}
+      onClick={onClick}
+    >
+      <span style={{ fontSize: 13, fontWeight: active ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {label}
+      </span>
+      {(onRename || onDelete) && (
+        <div className="row" style={{ gap: 6 }} onClick={(e) => e.stopPropagation()}>
+          {onRename && <button className="link-btn" style={{ fontSize: 11 }} onClick={onRename}>Edit</button>}
+          {onDelete && <button className="link-btn danger" style={{ fontSize: 11 }} onClick={onDelete}>×</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddFileModal({ folders, defaultFolderId, onClose, onAdded }) {
   const [mode, setMode] = useState("upload"); // upload | paste
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [folderId, setFolderId] = useState(defaultFolderId || "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
@@ -227,7 +360,7 @@ function AddFileModal({ onClose, onAdded }) {
     }
     setBusy(true);
     try {
-      await api("/api/files", "POST", { action: "create", title, content });
+      await api("/api/files", "POST", { action: "create", title, content, folderId: folderId || null });
       onAdded();
     } catch (e2) {
       setError(e2.message);
@@ -275,7 +408,7 @@ function AddFileModal({ onClose, onAdded }) {
             </div>
           )}
 
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 14 }}>
             <label className="label">File name *</label>
             <input
               className="input"
@@ -285,6 +418,16 @@ function AddFileModal({ onClose, onAdded }) {
               autoFocus={mode === "paste"}
               required
             />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Folder</label>
+            <select className="input" value={folderId} onChange={(e) => setFolderId(e.target.value)}>
+              <option value="">No folder</option>
+              {folders?.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
           </div>
 
           <div className="row" style={{ justifyContent: "flex-end" }}>
@@ -298,14 +441,15 @@ function AddFileModal({ onClose, onAdded }) {
   );
 }
 
-function ViewFileModal({ file, onClose, onDownload, onRename, onDelete }) {
+function ViewFileModal({ file, folderName, onClose, onDownload, onRename, onDelete }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 680 }}>
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
           <h2 style={{ margin: 0 }}>{file.title}</h2>
           <button className="link-btn" onClick={onClose}>Close</button>
         </div>
+        {folderName && <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>In folder: {folderName}</p>}
         <div
           style={{
             maxHeight: 360,
@@ -316,6 +460,7 @@ function ViewFileModal({ file, onClose, onDownload, onRename, onDelete }) {
             fontSize: 13,
             lineHeight: 1.6,
             whiteSpace: "pre-wrap",
+            marginTop: 10,
             marginBottom: 16,
           }}
         >
