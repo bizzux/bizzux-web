@@ -90,10 +90,16 @@ async function saveFile({ title, folderId, file, pastedContent, accountId }) {
     return api("/api/files", "POST", { action: "create", title, folderId, content });
   }
   const contentType = EXT_MIME[ext] || file.type || "application/octet-stream";
+  // upload() posts to handleUploadUrl itself (outside the shared api()
+  // helper above), so it needs its own Authorization header — without it
+  // /api/files/blob-upload 401s and the SDK surfaces that as the generic
+  // "Failed to retrieve the client token".
+  const idToken = await auth.currentUser.getIdToken();
   const result = await upload(`files/${accountId}/${Date.now()}-${file.name}`, file, {
     access: "private",
     contentType,
     handleUploadUrl: "/api/files/blob-upload",
+    headers: { Authorization: "Bearer " + idToken },
   });
   return api("/api/files", "POST", {
     action: "create",
