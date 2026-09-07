@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -22,6 +23,15 @@ const CATEGORIES = [
     apps: [
       { key: "juicechatjunction", name: "Bizzux Shop", icon: "🏪", desc: "POS, menu, inventory, and shop management for food & retail counters.", live: true, featured: true, url: "https://shop.bizzux.com", sso: true },
       { key: "orders", name: "Bizzux Orders", icon: "📋", desc: "Take and track orders from counter, phone, or online.", live: false, featured: false },
+    ],
+  },
+  {
+    id: "productivity",
+    title: "Productivity",
+    sub: "Tools that save your team time on the busywork.",
+    apps: [
+      { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription and AI summaries with action items.", live: true, featured: true, url: "/notes", internal: true },
+      { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste transcripts and notes, name them, and search across all of them.", live: true, featured: true, url: "/files", internal: true },
     ],
   },
   {
@@ -96,6 +106,7 @@ function AppCard({ a, authState, opening, onTryNow }) {
 }
 
 export default function AllAppsPage() {
+  const router = useRouter();
   const [q, setQ] = useState("");
 
   // Mirrors dashboard/page.js's sign-in-aware "Try now" flow: a visitor
@@ -138,6 +149,10 @@ export default function AllAppsPage() {
     if (!user) return;
     if (customer === null || appsLocked) {
       setShowLockedModal(true);
+      return;
+    }
+    if (a.internal) {
+      router.push(a.url);
       return;
     }
     if (!a.sso) {

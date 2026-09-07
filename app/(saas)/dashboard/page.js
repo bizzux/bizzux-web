@@ -22,6 +22,8 @@ const APPS = [
   // right Owner/Shopkeeper role. Other apps fall back to a plain link until
   // they get the same treatment.
   { key: "juicechatjunction", name: "Bizzux Shop", icon: "🏪", desc: "POS & shop management", live: true, url: "https://shop.bizzux.com", sso: true },
+  { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription & AI summaries", live: true, url: "/notes", sso: false, internal: true },
+  { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste text files, then search across all of them", live: true, url: "/files", sso: false, internal: true },
   { key: "pos", name: "Bizzux POS", icon: "🧾", desc: "Coming soon", live: false },
   { key: "orders", name: "Bizzux Orders", icon: "📋", desc: "Coming soon", live: false },
   { key: "books", name: "Bizzux Books", icon: "📒", desc: "Coming soon", live: false },
@@ -344,6 +346,10 @@ function DashboardInner() {
   async function openApp(a) {
     if (appsLocked) {
       setShowLockedModal(true);
+      return;
+    }
+    if (a.internal) {
+      router.push(a.url);
       return;
     }
     if (!a.sso) {
