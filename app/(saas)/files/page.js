@@ -133,6 +133,9 @@ export default function FilesPage() {
   const [promptModal, setPromptModal] = useState(null); // { title, defaultValue, onSubmit } | null
   const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm } | null
   const [trash, setTrash] = useState(null);
+  const [shares, setShares] = useState(null);
+  const [shareModal, setShareModal] = useState(null); // { targetType, targetId, targetName } | null
+  const [shareResult, setShareResult] = useState(null); // { url } | null, shown after creating a link
   const folderUploadRef = useRef(null);
 
   useEffect(() => {
@@ -198,6 +201,27 @@ export default function FilesPage() {
   function switchToTrash() {
     setView("trash");
     loadTrash();
+  }
+
+  async function loadShares() {
+    try {
+      const d = await api("/api/shares", "GET");
+      setShares(d.shares || []);
+    } catch (e) {
+      setErr(e.message);
+      setShares([]);
+    }
+  }
+
+  async function createShare({ targetType, targetId, mode, password, expiresInMinutes }) {
+    const { id } = await api("/api/shares", "POST", { action: "create", targetType, targetId, mode, password, expiresInMinutes });
+    setShareModal(null);
+    setShareResult({ url: `${window.location.origin}/share/${id}` });
+  }
+
+  async function revokeShare(id) {
+    await api("/api/shares", "POST", { action: "revoke", id });
+    await loadShares();
   }
 
   async function openFile(id) {
@@ -462,6 +486,17 @@ export default function FilesPage() {
     );
   }
 
+  if (view === "shares") {
+    return (
+      <SharesView
+        shares={shares}
+        onBack={() => setView("files")}
+        onRevoke={revokeShare}
+        err={err}
+      />
+    );
+  }
+
   return (
     <div>
       <Nav />
@@ -474,6 +509,15 @@ export default function FilesPage() {
             </p>
           </div>
           <div className="row" style={{ gap: 10 }}>
+            <button
+              className="link-btn"
+              onClick={() => {
+                setView("shares");
+                loadShares();
+              }}
+            >
+              Shared links
+            </button>
             <button className="link-btn" onClick={switchToTrash}>Recycle bin</button>
             <button className="btn-outline-dark" onClick={() => folderUploadRef.current?.click()}>Upload folder</button>
             <button className="btn-primary-sm" onClick={() => setShowAdd(true)}>+ Add file</button>
@@ -517,6 +561,7 @@ export default function FilesPage() {
                   onDelete={deleteFolder}
                   onNewSubfolder={createFolder}
                   onToggleCheck={toggleSelectFolder}
+                  onShare={(id, name) => setShareModal({ targetType: "folder", targetId: id, targetName: name })}
                 />
               ))}
               <button className="link-btn" onClick={() => createFolder(null)} style={{ marginTop: 8, fontSize: 13 }}>+ New folder</button>
@@ -642,6 +687,7 @@ export default function FilesPage() {
                           <td>{fmtSize(f.sizeBytes)}</td>
                           <td>
                             <div className="row" style={{ gap: 14 }}>
+                              <button className="link-btn" onClick={() => setShareModal({ targetType: "file", targetId: f.id, targetName: f.title })}>Share</button>
                               <button className="link-btn" onClick={() => rename(f.id, f.title)}>Rename</button>
                               <button className="link-btn danger" onClick={() => removeOne(f.id)}>Delete</button>
                             </div>
@@ -706,6 +752,17 @@ export default function FilesPage() {
           onCancel={() => setConfirmModal(null)}
         />
       )}
+
+      {shareModal && (
+        <ShareModal
+          target={shareModal}
+          onClose={() => setShareModal(null)}
+          onCreate={createShare}
+          onError={(msg) => setErr(msg)}
+        />
+      )}
+
+      {shareResult && <ShareResultModal url={shareResult.url} onClose={() => setShareResult(null)} />}
     </div>
   );
 }
@@ -764,7 +821,166 @@ function ConfirmModal({ title, message, onConfirm, onCancel }) {
   );
 }
 
-function FolderRow({ label, icon, active, onClick, onRename, onDelete, onNewSubfolder, checked, onToggleCheck, style }) {
+const EXPIRY_PRESETS = [
+  { label: "1 hour", minutes: 60 },
+  { label: "1 day", minutes: 24 * 60 },
+  { label: "3 days", minutes: 3 * 24 * 60 },
+  { label: "7 days", minutes: 7 * 24 * 60 },
+  { label: "30 days", minutes: 30 * 24 * 60 },
+];
+
+function ShareModal({ target, onClose, onCreate, onError }) {
+  const [mode, setMode] = useState("view"); // "view" | "upload" — upload only offered for folders
+  const [password, setPassword] = useState("");
+  const [expiryMinutes, setExpiryMinutes] = useState(EXPIRY_PRESETS[1].minutes);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    setError("");
+    if (password.length < 4) {
+      setError("Password must be at least 4 characters");
+      return;
+    }
+    setBusy(true);
+    try {
+      await onCreate({
+        targetType: target.targetType,
+        targetId: target.targetId,
+        mode: target.targetType === "folder" ? mode : "view",
+        password,
+        expiresInMinutes: expiryMinutes,
+      });
+    } catch (e2) {
+      setError(e2.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <h2 style={{ marginBottom: 4 }}>Share "{target.targetName}"</h2>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
+          Anyone with the link and this password can access it — no Bizzux account needed on their end.
+        </p>
+        <form onSubmit={submit} noValidate>
+          {target.targetType === "folder" && (
+            <div style={{ marginBottom: 14 }}>
+              <label className="label">Access</label>
+              <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
+                <option value="view">View & download only</option>
+                <option value="upload">View, download & upload</option>
+              </select>
+            </div>
+          )}
+          <div style={{ marginBottom: 14 }}>
+            <label className="label">Password *</label>
+            <input className="input" type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 4 characters" required />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Expires after</label>
+            <select className="input" value={expiryMinutes} onChange={(e) => setExpiryMinutes(Number(e.target.value))}>
+              {EXPIRY_PRESETS.map((p) => (
+                <option key={p.minutes} value={p.minutes}>{p.label}</option>
+              ))}
+            </select>
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              The link stops working the moment this passes — or immediately if you revoke it sooner from "Shared links".
+            </p>
+          </div>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" disabled={busy}>{busy ? "Creating…" : "Create link"}</button>
+          </div>
+          {error && <p className="error">{error}</p>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ShareResultModal({ url, onClose }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      // Clipboard permission denied or unavailable — the link is still
+      // shown selected/visible below for a manual copy.
+    }
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <h2 style={{ marginBottom: 10 }}>Link created</h2>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+          Share this URL and the password with them separately (e.g. a different message) — anyone with both can access it until it expires or you revoke it.
+        </p>
+        <input className="input" readOnly value={url} onFocus={(e) => e.target.select()} style={{ marginBottom: 14, fontSize: 13 }} />
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button className="btn-outline-dark" onClick={copy}>{copied ? "Copied!" : "Copy link"}</button>
+          <button className="btn-primary" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SharesView({ shares, onBack, onRevoke, err }) {
+  return (
+    <div>
+      <Nav />
+      <div className="admin-shell">
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+          <div>
+            <h1 className="dash-heading" style={{ fontSize: 20 }}>Shared links</h1>
+            <p className="dash-sub" style={{ marginBottom: 0 }}>Every link you've created to share a file or folder externally.</p>
+          </div>
+          <button className="link-btn" onClick={onBack}>Back to files</button>
+        </div>
+
+        {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+
+        <div className="card">
+          {shares === null && <p className="muted">Loading…</p>}
+          {shares && shares.length === 0 && <p className="muted">No share links yet — use "Share" on a file or folder.</p>}
+          {shares && shares.length > 0 && (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Type</th><th>Access</th><th>Expires</th><th>Status</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {shares.map((s) => {
+                  const expired = !s.revoked && s.expiresAt && new Date(s.expiresAt) <= new Date();
+                  const statusLabel = s.revoked ? "Revoked" : expired ? "Expired" : "Active";
+                  return (
+                    <tr key={s.id}>
+                      <td>{s.targetType === "folder" ? FOLDER_ICON + " " : ""}{s.targetName}</td>
+                      <td style={{ textTransform: "capitalize" }}>{s.targetType}</td>
+                      <td style={{ textTransform: "capitalize" }}>{s.mode}</td>
+                      <td>{s.expiresAt ? new Date(s.expiresAt).toLocaleString() : "—"}</td>
+                      <td><span className={"status-pill " + (statusLabel === "Active" ? "active" : "expired")}>{statusLabel}</span></td>
+                      <td>
+                        {statusLabel === "Active" && <button className="link-btn danger" onClick={() => onRevoke(s.id)}>Revoke</button>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FolderRow({ label, icon, active, onClick, onRename, onDelete, onNewSubfolder, onShare, checked, onToggleCheck, style }) {
   return (
     <div
       className="row"
@@ -795,9 +1011,10 @@ function FolderRow({ label, icon, active, onClick, onRename, onDelete, onNewSubf
           {label}
         </span>
       </div>
-      {(onRename || onDelete || onNewSubfolder) && (
+      {(onRename || onDelete || onNewSubfolder || onShare) && (
         <div className="row" style={{ gap: 6 }} onClick={(e) => e.stopPropagation()}>
           {onNewSubfolder && <button className="link-btn" style={{ fontSize: 11 }} onClick={onNewSubfolder}>+</button>}
+          {onShare && <button className="link-btn" style={{ fontSize: 11 }} onClick={onShare}>Share</button>}
           {onRename && <button className="link-btn" style={{ fontSize: 11 }} onClick={onRename}>Edit</button>}
           {onDelete && <button className="link-btn danger" style={{ fontSize: 11 }} onClick={onDelete}>×</button>}
         </div>
@@ -806,7 +1023,7 @@ function FolderRow({ label, icon, active, onClick, onRename, onDelete, onNewSubf
   );
 }
 
-function FolderTree({ folder, depth, activeFolder, expanded, childrenOf, selectedFolders, onSelect, onToggleExpand, onRename, onDelete, onNewSubfolder, onToggleCheck }) {
+function FolderTree({ folder, depth, activeFolder, expanded, childrenOf, selectedFolders, onSelect, onToggleExpand, onRename, onDelete, onNewSubfolder, onToggleCheck, onShare }) {
   const kids = childrenOf(folder.id);
   const isExpanded = expanded.has(folder.id);
   return (
@@ -821,6 +1038,7 @@ function FolderTree({ folder, depth, activeFolder, expanded, childrenOf, selecte
         onRename={() => onRename(folder.id, folder.name)}
         onDelete={() => onDelete(folder.id, folder.name)}
         onNewSubfolder={() => onNewSubfolder(folder.id)}
+        onShare={() => onShare(folder.id, folder.name)}
         style={{ paddingLeft: 8 + depth * 16 }}
       />
       {isExpanded &&
@@ -839,6 +1057,7 @@ function FolderTree({ folder, depth, activeFolder, expanded, childrenOf, selecte
             onDelete={onDelete}
             onNewSubfolder={onNewSubfolder}
             onToggleCheck={onToggleCheck}
+            onShare={onShare}
           />
         ))}
     </>
