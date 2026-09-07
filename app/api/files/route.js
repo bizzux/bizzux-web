@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb, requireAccountWithAppsAccess } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
+import { copy } from "@vercel/blob";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,8 @@ export async function GET(req) {
         createdAt: toIso(f.createdAt),
         folderId: f.folderId || null,
         hasContent: !!f.content,
+        hasBlob: !!f.blobPath,
+        createdByEmail: f.createdByEmail || null,
         // A short snippet around the first match, so search results show
         // *why* a file matched without shipping its whole content.
         snippet: q && f.content ? snippetAround(f.content, q) : null,
@@ -132,6 +135,43 @@ export async function POST(req) {
 
       const ref = await filesCollection(acct.accountId).add(doc);
       return NextResponse.json({ id: ref.id });
+    }
+
+    if (body.action === "duplicate") {
+      const id = String(body.id || "");
+      if (!id) throw { status: 400, message: "File id is required" };
+      const ref = filesCollection(acct.accountId).doc(id);
+      const snap = await ref.get();
+      if (!snap.exists) throw { status: 404, message: "File not found" };
+      const f = snap.data();
+      const doc = {
+        title: ((f.title || "file") + " - Copy").slice(0, MAX_TITLE_LEN),
+        folderId: f.folderId || null,
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: acct.uid,
+        createdByEmail: acct.email,
+        deletedAt: null,
+        ext: f.ext || "txt",
+        sizeBytes: f.sizeBytes || 0,
+      };
+      if (f.blobPath) {
+        const copied = await copy(f.blobPath, `files/${acct.accountId}/${Date.now()}-copy-${id}`, {
+          access: "private",
+          contentType: f.contentType || "application/octet-stream",
+          // Without an explicit token, @vercel/blob tries OIDC-based auth
+          // first when the store has it enabled, which errors locally
+          // ("not enabled for the development environment") even though
+          // BLOB_READ_WRITE_TOKEN is set — force the token path instead.
+          token: process.env.BLOB_READ_WRITE_TOKEN,
+        });
+        doc.blobPath = copied.pathname;
+        doc.contentType = f.contentType || "application/octet-stream";
+        doc.content = null;
+      } else {
+        doc.content = f.content || "";
+      }
+      const newRef = await filesCollection(acct.accountId).add(doc);
+      return NextResponse.json({ id: newRef.id });
     }
 
     if (body.action === "rename") {

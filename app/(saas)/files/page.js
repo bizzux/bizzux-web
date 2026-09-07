@@ -30,9 +30,48 @@ const EXT_MIME = {
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ppt: "application/vnd.ms-powerpoint",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  svg: "image/svg+xml",
 };
 const ACCEPTED_EXT = [".txt", ...Object.keys(EXT_MIME).map((e) => "." + e)];
 const FOLDER_ICON = "📁"; // 📁
+const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"]);
+function isImageExt(ext) {
+  return IMAGE_EXTS.has((ext || "").toLowerCase());
+}
+const FILE_ICONS = {
+  pdf: "📕", doc: "📘", docx: "📘", xls: "📗", xlsx: "📗",
+  ppt: "📙", pptx: "📙", txt: "📄",
+};
+function iconFor(ext) {
+  return FILE_ICONS[(ext || "").toLowerCase()] || "📄";
+}
+
+// The download route (and the notes-audio route it's modeled on) require a
+// Bearer token, so a plain <img>/<iframe> `src` or a bare `window.open()`
+// can't authenticate — this fetches with the token and hands back a local
+// blob: URL, same pattern app/(saas)/notes/[id]/page.js uses for audio.
+async function fetchBlobUrl(id) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/files/${id}/download`, { headers: { Authorization: "Bearer " + token } });
+  if (!res.ok) throw new Error("Could not load the file");
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+function triggerBlobDownload(url, filename) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 
 // Turns a date-filter selection into ISO from/to bounds for the API.
 // "today"/"week"/"month" are rolling windows ending right now (last 24h,
@@ -136,6 +175,11 @@ export default function FilesPage() {
   const [shares, setShares] = useState(null);
   const [shareModal, setShareModal] = useState(null); // { targetType, targetId, targetName } | null
   const [shareResult, setShareResult] = useState(null); // { url } | null, shown after creating a link
+  const [sort, setSort] = useState({ field: "createdAt", dir: "desc" });
+  const [density, setDensity] = useState("list"); // "list" | "compact" | "tiles"
+  const [moveModal, setMoveModal] = useState(null); // { id } | null
+  const [detailsFile, setDetailsFile] = useState(null);
+  const [gallery, setGallery] = useState(null); // all image files, loaded lazily when Photos is opened
   const folderUploadRef = useRef(null);
 
   useEffect(() => {
@@ -279,6 +323,60 @@ export default function FilesPage() {
       await loadFiles(q, activeFolder, dateRange);
     } catch (e) {
       setErr(e.message);
+    }
+  }
+
+  async function duplicateFile(id) {
+    try {
+      await api("/api/files", "POST", { action: "duplicate", id });
+      await loadFiles(q, activeFolder, dateRange);
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  async function downloadFile(row) {
+    try {
+      if (row.hasBlob) {
+        const url = await fetchBlobUrl(row.id);
+        const filename = row.title + (row.ext ? "." + row.ext : "");
+        triggerBlobDownload(url, filename);
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+        return;
+      }
+      if (row.content !== undefined && row.content !== null) {
+        downloadTextFile(row.title, row.content);
+        return;
+      }
+      const { file } = await api(`/api/files/${row.id}`, "GET");
+      downloadTextFile(file.title, file.content || "");
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  function fileMenuItems(f) {
+    return [
+      { label: "Open", onClick: () => openFile(f.id) },
+      { label: "Download", onClick: () => downloadFile(f) },
+      { label: "Share", onClick: () => setShareModal({ targetType: "file", targetId: f.id, targetName: f.title }) },
+      { divider: true },
+      { label: "Rename", onClick: () => rename(f.id, f.title) },
+      { label: "Move to…", onClick: () => setMoveModal({ id: f.id, folderId: f.folderId }) },
+      { label: "Duplicate", onClick: () => duplicateFile(f.id) },
+      { label: "Details", onClick: () => setDetailsFile(f) },
+      { divider: true },
+      { label: "Delete", danger: true, onClick: () => removeOne(f.id) },
+    ];
+  }
+
+  async function loadGallery() {
+    try {
+      const d = await api("/api/files", "GET");
+      setGallery((d.files || []).filter((f) => isImageExt(f.ext) && f.hasBlob));
+    } catch (e) {
+      setErr(e.message);
+      setGallery([]);
     }
   }
 
@@ -450,6 +548,23 @@ export default function FilesPage() {
   const childrenOf = (id) => (folders || []).filter((f) => f.parentId === id);
   const folderName = (id) => folders?.find((f) => f.id === id)?.name;
 
+  const sortedFiles = useMemo(() => {
+    if (!files) return files;
+    const arr = [...files];
+    const dir = sort.dir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      let av, bv;
+      if (sort.field === "name") { av = a.title.toLowerCase(); bv = b.title.toLowerCase(); }
+      else if (sort.field === "size") { av = a.sizeBytes || 0; bv = b.sizeBytes || 0; }
+      else if (sort.field === "type") { av = a.ext || ""; bv = b.ext || ""; }
+      else { av = a.createdAt || ""; bv = b.createdAt || ""; }
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+    return arr;
+  }, [files, sort]);
+
   if (view === "trash") {
     return (
       <TrashView
@@ -497,6 +612,17 @@ export default function FilesPage() {
     );
   }
 
+  if (view === "gallery") {
+    return (
+      <GalleryView
+        images={gallery}
+        onBack={() => setView("files")}
+        onOpen={openFile}
+        err={err}
+      />
+    );
+  }
+
   return (
     <div>
       <Nav />
@@ -509,6 +635,15 @@ export default function FilesPage() {
             </p>
           </div>
           <div className="row" style={{ gap: 10 }}>
+            <button
+              className="link-btn"
+              onClick={() => {
+                setView("gallery");
+                loadGallery();
+              }}
+            >
+              Photos
+            </button>
             <button
               className="link-btn"
               onClick={() => {
@@ -613,6 +748,9 @@ export default function FilesPage() {
                   />
                 </>
               )}
+              <div style={{ flex: 1 }} />
+              <SortMenu sort={sort} onChange={setSort} />
+              <ViewMenu density={density} onChange={setDensity} />
             </div>
 
             {selected.size > 0 && (
@@ -646,8 +784,27 @@ export default function FilesPage() {
               {files && files.length === 0 && (
                 <p className="muted">{q ? `No files match "${q}".` : "No files here yet."}</p>
               )}
-              {files && files.length > 0 && (
-                <div style={{ overflowX: "auto" }}>
+              {files && files.length > 0 && density === "tiles" && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
+                  {sortedFiles.map((f) => (
+                    <div key={f.id} style={{ position: "relative", border: "1px solid var(--line)", borderRadius: 8, padding: 10, cursor: "pointer" }} onClick={() => openFile(f.id)}>
+                      <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2 }} onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={selected.has(f.id)} onChange={() => toggleSelect(f.id)} />
+                      </div>
+                      <div style={{ position: "absolute", top: 2, right: 2, zIndex: 2 }} onClick={(e) => e.stopPropagation()}>
+                        <RowMenu items={fileMenuItems(f)} />
+                      </div>
+                      <div style={{ width: "100%", aspectRatio: "1", marginBottom: 8 }}>
+                        <FileThumb file={f} fill />
+                      </div>
+                      <p style={{ fontSize: 12, fontWeight: 600, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.title}>{f.title}</p>
+                      <p className="muted" style={{ fontSize: 11, margin: "2px 0 0" }}>{fmtSize(f.sizeBytes)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {files && files.length > 0 && density !== "tiles" && (
+                <div style={{ overflowX: "auto", fontSize: density === "compact" ? 12 : undefined }}>
                   <table className="table">
                     <thead>
                       <tr>
@@ -658,39 +815,28 @@ export default function FilesPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {files.map((f) => (
+                      {sortedFiles.map((f) => (
                         <tr key={f.id}>
                           <td><input type="checkbox" checked={selected.has(f.id)} onChange={() => toggleSelect(f.id)} /></td>
                           <td>
-                            <button className="link-btn" onClick={() => openFile(f.id)} style={{ textAlign: "left" }}>
-                              {f.title}
-                            </button>
-                            {f.snippet && (
-                              <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>…{f.snippet}…</p>
-                            )}
+                            <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                              {density !== "compact" && <FileThumb file={f} size={28} />}
+                              <div>
+                                <button className="link-btn" onClick={() => openFile(f.id)} style={{ textAlign: "left" }}>
+                                  {f.title}
+                                </button>
+                                {f.snippet && (
+                                  <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>…{f.snippet}…</p>
+                                )}
+                              </div>
+                            </div>
                           </td>
-                          <td>
-                            <select
-                              className="input"
-                              style={{ fontSize: 12, padding: "4px 6px" }}
-                              value={f.folderId || ""}
-                              onChange={(e) => moveFile(f.id, e.target.value)}
-                            >
-                              <option value="">No folder</option>
-                              {folders?.map((folder) => (
-                                <option key={folder.id} value={folder.id}>{folder.name}</option>
-                              ))}
-                            </select>
-                          </td>
+                          <td>{folderName(f.folderId) || "—"}</td>
                           <td style={{ textTransform: "uppercase", fontSize: 12 }}>{f.ext}</td>
                           <td>{f.createdAt ? new Date(f.createdAt).toLocaleDateString() : "—"}</td>
                           <td>{fmtSize(f.sizeBytes)}</td>
                           <td>
-                            <div className="row" style={{ gap: 14 }}>
-                              <button className="link-btn" onClick={() => setShareModal({ targetType: "file", targetId: f.id, targetName: f.title })}>Share</button>
-                              <button className="link-btn" onClick={() => rename(f.id, f.title)}>Rename</button>
-                              <button className="link-btn danger" onClick={() => removeOne(f.id)}>Delete</button>
-                            </div>
+                            <RowMenu items={fileMenuItems(f)} />
                           </td>
                         </tr>
                       ))}
@@ -721,10 +867,34 @@ export default function FilesPage() {
           file={viewing}
           folderName={folderName(viewing.folderId)}
           onClose={() => setViewing(null)}
-          onDownload={() => (viewing.content ? downloadTextFile(viewing.title, viewing.content) : window.open(`/api/files/${viewing.id}/download`, "_blank"))}
+          onDownload={() => downloadFile(viewing)}
           onRename={() => rename(viewing.id, viewing.title)}
           onDelete={() => removeOne(viewing.id)}
+          onDuplicate={() => {
+            setViewing(null);
+            duplicateFile(viewing.id);
+          }}
+          onShare={() => {
+            setViewing(null);
+            setShareModal({ targetType: "file", targetId: viewing.id, targetName: viewing.title });
+          }}
         />
+      )}
+
+      {moveModal && (
+        <MoveModal
+          folders={folders}
+          currentFolderId={moveModal.folderId}
+          onCancel={() => setMoveModal(null)}
+          onMove={async (folderId) => {
+            await moveFile(moveModal.id, folderId);
+            setMoveModal(null);
+          }}
+        />
+      )}
+
+      {detailsFile && (
+        <DetailsModal file={detailsFile} folderName={folderName(detailsFile.folderId)} onClose={() => setDetailsFile(null)} />
       )}
 
       {confirmBulk && (
@@ -817,6 +987,258 @@ function ConfirmModal({ title, message, onConfirm, onCancel }) {
           <button className="btn-primary" disabled={busy} onClick={confirmClick}>{busy ? "Working…" : "Confirm"}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// OneDrive-style "⋯" more-actions menu — one trigger, closes on outside click.
+function RowMenu({ items, label }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        className="link-btn"
+        aria-label={label || "More actions"}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        style={{ fontSize: 16, padding: "2px 8px", lineHeight: 1 }}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div
+          className="card"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 30,
+            minWidth: 180, padding: 6, boxShadow: "0 8px 24px rgba(0,0,0,.18)",
+          }}
+        >
+          {items.map((it, i) =>
+            it.divider ? (
+              <div key={i} style={{ borderTop: "1px solid var(--line)", margin: "4px 2px" }} />
+            ) : (
+              <button
+                key={i}
+                type="button"
+                className={"link-btn" + (it.danger ? " danger" : "")}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 8px", fontSize: 13 }}
+                onClick={() => {
+                  setOpen(false);
+                  it.onClick();
+                }}
+              >
+                {it.label}
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Thumbnail for a file row/tile: a real preview for images (fetched
+// authenticated, once, then cached as a blob: URL), an emoji icon otherwise.
+// size in px for a fixed square thumbnail (e.g. a 28px row icon); pass
+// fill=true instead to have it stretch to whatever container sizes it
+// (tiles/gallery grid cells sized by CSS grid, not a pixel value here).
+function FileThumb({ file, size = 36, fill = false }) {
+  const [url, setUrl] = useState(null);
+  const showImage = isImageExt(file.ext) && file.hasBlob;
+  const box = fill ? { width: "100%", height: "100%" } : { width: size, height: size };
+
+  useEffect(() => {
+    if (!showImage) return;
+    let objectUrl;
+    let cancelled = false;
+    fetchBlobUrl(file.id)
+      .then((u) => {
+        if (cancelled) return;
+        objectUrl = u;
+        setUrl(u);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.id, showImage]);
+
+  if (showImage) {
+    return (
+      <div style={{ ...box, borderRadius: 6, overflow: "hidden", background: "var(--line)", flexShrink: 0 }}>
+        {url && <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...box, borderRadius: 6, background: "var(--line)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: fill ? 40 : size * 0.55 }}>
+      {iconFor(file.ext)}
+    </div>
+  );
+}
+
+function MoveModal({ folders, currentFolderId, onMove, onCancel }) {
+  const [folderId, setFolderId] = useState(currentFolderId || "");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    await onMove(folderId || null);
+    setBusy(false);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <h2 style={{ marginBottom: 14 }}>Move to</h2>
+        <form onSubmit={submit} noValidate>
+          <select className="input" value={folderId} onChange={(e) => setFolderId(e.target.value)} autoFocus style={{ marginBottom: 16 }}>
+            <option value="">No folder</option>
+            {folders?.map((f) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn-outline-dark" onClick={onCancel}>Cancel</button>
+            <button className="btn-primary" disabled={busy}>{busy ? "Moving…" : "Move"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DetailsModal({ file, folderName, onClose }) {
+  const rows = [
+    ["Name", file.title],
+    ["Type", isImageExt(file.ext) ? "Image (." + file.ext + ")" : "." + (file.ext || "txt")],
+    ["Size", fmtSize(file.sizeBytes)],
+    ["Folder", folderName || "No folder"],
+    ["Created", file.createdAt ? new Date(file.createdAt).toLocaleString() : "—"],
+    ["Created by", file.createdByEmail || "—"],
+  ];
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+          <h2 style={{ margin: 0 }}>Details</h2>
+          <button className="link-btn" onClick={onClose}>Close</button>
+        </div>
+        {rows.map(([label, value]) => (
+          <div key={label} className="row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+            <span className="muted" style={{ fontSize: 13 }}>{label}</span>
+            <span style={{ fontSize: 13, textAlign: "right", wordBreak: "break-word", maxWidth: "70%" }}>{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const SORT_FIELDS = [
+  { key: "createdAt", label: "Modified" },
+  { key: "name", label: "Name" },
+  { key: "size", label: "File size" },
+  { key: "type", label: "Type" },
+];
+
+function SortMenu({ sort, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button type="button" className="btn-outline-dark" onClick={() => setOpen((o) => !o)}>Sort</button>
+      {open && (
+        <div className="card" style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 30, minWidth: 160, padding: 6, boxShadow: "0 8px 24px rgba(0,0,0,.18)" }}>
+          {SORT_FIELDS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              className="link-btn"
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 8px", fontSize: 13, fontWeight: sort.field === f.key ? 700 : 400 }}
+              onClick={() => { onChange({ ...sort, field: f.key }); setOpen(false); }}
+            >
+              {sort.field === f.key ? "✓ " : ""}{f.label}
+            </button>
+          ))}
+          <div style={{ borderTop: "1px solid var(--line)", margin: "4px 2px" }} />
+          {[["asc", "Ascending"], ["desc", "Descending"]].map(([dir, label]) => (
+            <button
+              key={dir}
+              type="button"
+              className="link-btn"
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 8px", fontSize: 13, fontWeight: sort.dir === dir ? 700 : 400 }}
+              onClick={() => { onChange({ ...sort, dir }); setOpen(false); }}
+            >
+              {sort.dir === dir ? "✓ " : ""}{label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ViewMenu({ density, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const OPTIONS = [
+    ["list", "List"],
+    ["compact", "Compact list"],
+    ["tiles", "Tiles"],
+  ];
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button type="button" className="btn-outline-dark" onClick={() => setOpen((o) => !o)}>View</button>
+      {open && (
+        <div className="card" style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 30, minWidth: 150, padding: 6, boxShadow: "0 8px 24px rgba(0,0,0,.18)" }}>
+          {OPTIONS.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className="link-btn"
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 8px", fontSize: 13, fontWeight: density === key ? 700 : 400 }}
+              onClick={() => { onChange(key); setOpen(false); }}
+            >
+              {density === key ? "✓ " : ""}{label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -975,6 +1397,67 @@ function SharesView({ shares, onBack, onRevoke, err }) {
             </table>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// OneDrive-style "Sep 8" / "Apr 28, 2023" group header — the year is
+// dropped for dates within the current calendar year.
+function dayLabel(iso) {
+  if (!iso) return "Unknown date";
+  const d = new Date(iso);
+  const opts = d.getFullYear() === new Date().getFullYear() ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" };
+  return d.toLocaleDateString(undefined, opts);
+}
+
+function GalleryView({ images, onBack, onOpen, err }) {
+  const groups = useMemo(() => {
+    if (!images) return [];
+    const byDay = new Map();
+    for (const f of images) {
+      const key = f.createdAt ? f.createdAt.slice(0, 10) : "unknown";
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key).push(f);
+    }
+    return [...byDay.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([key, items]) => ({ label: dayLabel(items[0].createdAt), items }));
+  }, [images]);
+
+  return (
+    <div>
+      <Nav />
+      <div className="admin-shell">
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+          <div>
+            <h1 className="dash-heading" style={{ fontSize: 20 }}>Photos</h1>
+            <p className="dash-sub" style={{ marginBottom: 0 }}>Every image you've uploaded to Bizzux Files, across every folder.</p>
+          </div>
+          <button className="link-btn" onClick={onBack}>Back to files</button>
+        </div>
+
+        {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+
+        {images === null && <p className="muted">Loading…</p>}
+        {images && images.length === 0 && <p className="muted">No images yet — upload a photo from "+ Add file" to see it here.</p>}
+        {groups.map((g) => (
+          <div key={g.label} style={{ marginBottom: 22 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>{g.label}</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+              {g.items.map((f) => (
+                <div
+                  key={f.id}
+                  style={{ aspectRatio: "1", borderRadius: 8, overflow: "hidden", cursor: "pointer" }}
+                  onClick={() => onOpen(f.id)}
+                  title={f.title}
+                >
+                  <FileThumb file={f} fill />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1144,7 +1627,7 @@ function AddFileModal({ folders, accountId, defaultFolderId, onClose, onAdded })
             <div style={{ marginBottom: 14 }}>
               <input ref={fileInputRef} type="file" accept={ACCEPTED_EXT.join(",")} onChange={handleFilePicked} />
               <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                {pickedFile ? `${pickedFile.name} (${fmtSize(pickedFile.size)}) ready.` : "Accepts .txt, Word, Excel, PowerPoint, and PDF."}
+                {pickedFile ? `${pickedFile.name} (${fmtSize(pickedFile.size)}) ready.` : "Accepts .txt, Word, Excel, PowerPoint, PDF, and images."}
               </p>
             </div>
           ) : (
@@ -1193,8 +1676,33 @@ function AddFileModal({ folders, accountId, defaultFolderId, onClose, onAdded })
   );
 }
 
-function ViewFileModal({ file, folderName, onClose, onDownload, onRename, onDelete }) {
+function ViewFileModal({ file, folderName, onClose, onDownload, onRename, onDelete, onDuplicate, onShare }) {
   const isPdf = file.ext === "pdf" && file.hasBlob;
+  const isImage = isImageExt(file.ext) && file.hasBlob;
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewErr, setPreviewErr] = useState(false);
+
+  // The download route needs a Bearer token, which a plain <img>/<iframe>
+  // src can't attach — fetch it authenticated and preview a blob: URL.
+  useEffect(() => {
+    if (!isPdf && !isImage) return;
+    let objectUrl;
+    let cancelled = false;
+    setPreviewErr(false);
+    fetchBlobUrl(file.id)
+      .then((u) => {
+        if (cancelled) return;
+        objectUrl = u;
+        setPreviewUrl(u);
+      })
+      .catch(() => !cancelled && setPreviewErr(true));
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.id, isPdf, isImage]);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 680 }}>
@@ -1213,8 +1721,30 @@ function ViewFileModal({ file, folderName, onClose, onDownload, onRename, onDele
           >
             {file.content}
           </div>
+        ) : isImage ? (
+          previewErr ? (
+            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 24, textAlign: "center", marginTop: 10, marginBottom: 16 }}>
+              <p className="muted">Couldn't load this image — try downloading it instead.</p>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", marginTop: 10, marginBottom: 16 }}>
+              {previewUrl ? (
+                <img src={previewUrl} alt={file.title} style={{ maxWidth: "100%", maxHeight: 420, borderRadius: 8, border: "1px solid var(--line)" }} />
+              ) : (
+                <p className="muted">Loading preview…</p>
+              )}
+            </div>
+          )
         ) : isPdf ? (
-          <iframe src={`/api/files/${file.id}/download`} style={{ width: "100%", height: 400, border: "1px solid var(--line)", borderRadius: 8, marginTop: 10, marginBottom: 16 }} />
+          previewErr ? (
+            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 24, textAlign: "center", marginTop: 10, marginBottom: 16 }}>
+              <p className="muted">Couldn't load this PDF — try downloading it instead.</p>
+            </div>
+          ) : previewUrl ? (
+            <iframe src={previewUrl} style={{ width: "100%", height: 400, border: "1px solid var(--line)", borderRadius: 8, marginTop: 10, marginBottom: 16 }} />
+          ) : (
+            <p className="muted" style={{ marginTop: 10, marginBottom: 16 }}>Loading preview…</p>
+          )
         ) : (
           <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 24, textAlign: "center", marginTop: 10, marginBottom: 16 }}>
             <p className="muted">Preview isn't available for .{file.ext} files — download to view.</p>
@@ -1223,7 +1753,9 @@ function ViewFileModal({ file, folderName, onClose, onDownload, onRename, onDele
 
         <div className="row" style={{ gap: 14 }}>
           <button className="btn-primary-sm" onClick={onDownload}>Download</button>
+          {onShare && <button className="link-btn" onClick={onShare}>Share</button>}
           <button className="link-btn" onClick={onRename}>Rename</button>
+          {onDuplicate && <button className="link-btn" onClick={onDuplicate}>Duplicate</button>}
           <button className="link-btn danger" onClick={onDelete}>Delete</button>
         </div>
       </div>

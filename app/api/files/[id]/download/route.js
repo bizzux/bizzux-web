@@ -18,7 +18,9 @@ export async function GET(req, { params }) {
     const f = snap.data();
     if (!f.blobPath) throw { status: 404, message: "This file has no downloadable content" };
 
-    const result = await get(f.blobPath, { access: "private" });
+    // Explicit token, not env auto-detection — see the note in the
+    // duplicate-file handler in app/api/files/route.js for why.
+    const result = await get(f.blobPath, { access: "private", token: process.env.BLOB_READ_WRITE_TOKEN });
     if (!result || result.statusCode !== 200) {
       throw { status: 404, message: "File could not be found in storage" };
     }
