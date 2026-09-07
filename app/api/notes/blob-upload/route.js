@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleUpload } from "@vercel/blob/client";
-import { requireUser, resolveAccount, adminDb } from "@/lib/firebaseAdmin";
-import { canAccessApps } from "@/lib/trial";
+import { requireAccountWithAppsAccess } from "@/lib/firebaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -12,14 +11,7 @@ export const runtime = "nodejs";
 // the same limit /api/careers's resume upload stays safely under.
 export async function POST(req) {
   try {
-    const c = await requireUser(req);
-    const acct = await resolveAccount(c.uid);
-    const customer = acct.isOwner
-      ? acct.customer
-      : (await adminDb().doc("customers/" + acct.accountId).get()).data();
-    if (!canAccessApps(customer)) {
-      throw { status: 402, message: "Your trial has ended. Choose a plan to keep using Bizzux apps." };
-    }
+    const acct = await requireAccountWithAppsAccess(req);
 
     const body = await req.json();
     const jsonResponse = await handleUpload({

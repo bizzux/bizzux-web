@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, resolveAccount, adminDb } from "@/lib/firebaseAdmin";
-import { canAccessApps } from "@/lib/trial";
+import { adminDb, requireAccountWithAppsAccess } from "@/lib/firebaseAdmin";
 import { summarizeTranscript } from "@/lib/groq";
 import { FieldValue } from "firebase-admin/firestore";
 import { del } from "@vercel/blob";
@@ -15,21 +14,6 @@ function meetingsCollection(accountId) {
 function toIso(ts) {
   if (!ts) return null;
   return typeof ts.toDate === "function" ? ts.toDate().toISOString() : ts;
-}
-
-// Same defense-in-depth shape as /api/shop-sso: the UI already hides/greys
-// out the tile when canAccessApps() is false, this just stops someone from
-// hitting the API directly after their trial lapses mid-session.
-async function requireAccountWithAppsAccess(req) {
-  const c = await requireUser(req);
-  const acct = await resolveAccount(c.uid);
-  const customer = acct.isOwner
-    ? acct.customer
-    : (await adminDb().doc("customers/" + acct.accountId).get()).data();
-  if (!canAccessApps(customer)) {
-    throw { status: 402, message: "Your trial has ended. Choose a plan to keep using Bizzux apps." };
-  }
-  return { ...c, ...acct };
 }
 
 export async function GET(req) {

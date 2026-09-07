@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, resolveAccount, adminDb } from "@/lib/firebaseAdmin";
-import { canAccessApps } from "@/lib/trial";
+import { adminDb, requireAccountWithAppsAccess } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
@@ -16,18 +15,6 @@ function filesCollection(accountId) {
 function toIso(ts) {
   if (!ts) return null;
   return typeof ts.toDate === "function" ? ts.toDate().toISOString() : ts;
-}
-
-async function requireAccountWithAppsAccess(req) {
-  const c = await requireUser(req);
-  const acct = await resolveAccount(c.uid);
-  const customer = acct.isOwner
-    ? acct.customer
-    : (await adminDb().doc("customers/" + acct.accountId).get()).data();
-  if (!canAccessApps(customer)) {
-    throw { status: 402, message: "Your trial has ended. Choose a plan to keep using Bizzux apps." };
-  }
-  return { ...c, ...acct };
 }
 
 // Plain substring search across title + content, case-insensitive. Good
