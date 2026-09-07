@@ -340,8 +340,10 @@ function DashboardInner() {
   const expired = status === "trial" && remaining !== null && remaining <= 0;
   // Gates the live app tiles only — the account/dashboard itself stays
   // reachable either way. Covers an expired trial and a lapsed
-  // (past_due/cancelled) plan with the same friendly modal.
-  const appsLocked = !canAccessApps(customer);
+  // (past_due/cancelled) plan with the same friendly modal. Super Admin
+  // always bypasses this, same as /api/shop-sso already treats them as
+  // unlimited access regardless of their own account's trial/plan status.
+  const appsLocked = !isSuper && !canAccessApps(customer);
 
   async function openApp(a) {
     if (appsLocked) {

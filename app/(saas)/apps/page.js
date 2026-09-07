@@ -141,9 +141,11 @@ export default function AllAppsPage() {
   }, [user, accountId]);
 
   const authState = user === undefined ? "checking" : user === null ? "out" : "in";
+  const isSuper = me?.superAdmin === true;
   // Until the customer doc has loaded, treat access as gated so a click
-  // can't slip through before we know the real trial/plan status.
-  const appsLocked = authState === "in" ? customer === null || !canAccessApps(customer) : false;
+  // can't slip through before we know the real trial/plan status. Super
+  // Admin always bypasses this, same as /api/shop-sso and dashboard/page.js.
+  const appsLocked = isSuper ? false : authState === "in" ? customer === null || !canAccessApps(customer) : false;
 
   async function openApp(a) {
     if (!user) return;
