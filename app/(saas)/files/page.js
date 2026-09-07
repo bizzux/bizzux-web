@@ -34,6 +34,23 @@ const EXT_MIME = {
 const ACCEPTED_EXT = [".txt", ...Object.keys(EXT_MIME).map((e) => "." + e)];
 const FOLDER_ICON = "📁"; // 📁
 
+// Turns a date-filter selection into ISO from/to bounds for the API.
+// "today"/"week"/"month" are rolling windows ending right now (last 24h,
+// last 7 days, last 30 days) rather than calendar boundaries — simpler and
+// avoids timezone edge cases around "start of week/month".
+function dateBoundsFor(range) {
+  if (!range || range.preset === "all") return {};
+  if (range.preset === "custom") {
+    return {
+      from: range.from ? new Date(range.from + "T00:00:00").toISOString() : undefined,
+      to: range.to ? new Date(range.to + "T23:59:59.999").toISOString() : undefined,
+    };
+  }
+  const days = { today: 1, week: 7, month: 30 }[range.preset];
+  if (!days) return {};
+  return { from: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString() };
+}
+
 function extOf(filename) {
   const m = /\.([a-zA-Z0-9]+)$/.exec(filename || "");
   return m ? m[1].toLowerCase() : "";
@@ -100,12 +117,15 @@ export default function FilesPage() {
   // null = All files, "unfiled" = no folder, otherwise a folder id.
   const [activeFolder, setActiveFolder] = useState(null);
   const [q, setQ] = useState("");
+  const [dateRange, setDateRange] = useState({ preset: "all", from: "", to: "" });
   const [err, setErr] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const [selectedFolders, setSelectedFolders] = useState(() => new Set());
   const [confirmBulk, setConfirmBulk] = useState(null); // { label, onConfirm } | null
+  const [promptModal, setPromptModal] = useState(null); // { title, defaultValue, onSubmit } | null
+  const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm } | null
   const [trash, setTrash] = useState(null);
   const folderUploadRef = useRef(null);
 
@@ -123,11 +143,14 @@ export default function FilesPage() {
     }
   }
 
-  async function loadFiles(query, folderId) {
+  async function loadFiles(query, folderId, range) {
     try {
       const params = new URLSearchParams();
       if (query) params.set("q", query);
       if (folderId) params.set("folderId", folderId);
+      const { from, to } = dateBoundsFor(range);
+      if (from) params.set("dateFrom", from);
+      if (to) params.set("dateTo", to);
       const qs = params.toString();
       const d = await api(`/api/files${qs ? "?" + qs : ""}`, "GET");
       setFiles(d.files || []);
@@ -151,16 +174,16 @@ export default function FilesPage() {
   useEffect(() => {
     if (!user) return;
     loadFolders();
-    loadFiles(q, activeFolder);
+    loadFiles(q, activeFolder, dateRange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
-    const t = setTimeout(() => loadFiles(q, activeFolder), 300);
+    const t = setTimeout(() => loadFiles(q, activeFolder, dateRange), 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, activeFolder]);
+  }, [q, activeFolder, dateRange]);
 
   useEffect(() => {
     setSelected(new Set());
@@ -180,33 +203,50 @@ export default function FilesPage() {
     }
   }
 
-  async function rename(id, currentTitle) {
-    const title = prompt("Rename file", currentTitle);
-    if (!title || title === currentTitle) return;
-    try {
-      await api("/api/files", "POST", { action: "rename", id, title });
-      await loadFiles(q, activeFolder);
-      if (viewing?.id === id) setViewing((v) => ({ ...v, title }));
-    } catch (e) {
-      setErr(e.message);
-    }
+  function rename(id, currentTitle) {
+    setPromptModal({
+      title: "Rename file",
+      defaultValue: currentTitle,
+      onSubmit: async (title) => {
+        if (!title || title === currentTitle) {
+          setPromptModal(null);
+          return;
+        }
+        try {
+          await api("/api/files", "POST", { action: "rename", id, title });
+          setPromptModal(null);
+          await loadFiles(q, activeFolder, dateRange);
+          if (viewing?.id === id) setViewing((v) => ({ ...v, title }));
+        } catch (e) {
+          setErr(e.message);
+          setPromptModal(null);
+        }
+      },
+    });
   }
 
-  async function removeOne(id) {
-    if (!confirm("Move this file to the recycle bin?")) return;
-    try {
-      await api("/api/files", "POST", { action: "delete", id });
-      if (viewing?.id === id) setViewing(null);
-      await loadFiles(q, activeFolder);
-    } catch (e) {
-      setErr(e.message);
-    }
+  function removeOne(id) {
+    setConfirmModal({
+      title: "Move to recycle bin?",
+      message: "This file will move to the recycle bin. You can restore it from there anytime in the next 30 days.",
+      onConfirm: async () => {
+        try {
+          await api("/api/files", "POST", { action: "delete", id });
+          if (viewing?.id === id) setViewing(null);
+          setConfirmModal(null);
+          await loadFiles(q, activeFolder, dateRange);
+        } catch (e) {
+          setErr(e.message);
+          setConfirmModal(null);
+        }
+      },
+    });
   }
 
   async function moveFile(id, folderId) {
     try {
       await api("/api/files", "POST", { action: "move", id, folderId: folderId || null });
-      await loadFiles(q, activeFolder);
+      await loadFiles(q, activeFolder, dateRange);
     } catch (e) {
       setErr(e.message);
     }
@@ -232,7 +272,7 @@ export default function FilesPage() {
         await api("/api/files", "POST", { action: "deleteMany", ids });
         setSelected(new Set());
         setConfirmBulk(null);
-        await loadFiles(q, activeFolder);
+        await loadFiles(q, activeFolder, dateRange);
       },
     });
   }
@@ -242,32 +282,52 @@ export default function FilesPage() {
     try {
       await api("/api/files", "POST", { action: "moveMany", ids, folderId: folderId || null });
       setSelected(new Set());
-      await loadFiles(q, activeFolder);
+      await loadFiles(q, activeFolder, dateRange);
     } catch (e) {
       setErr(e.message);
     }
   }
 
-  async function createFolder(parentId) {
-    const name = prompt("New folder name");
-    if (!name || !name.trim()) return;
-    try {
-      await api("/api/folders", "POST", { action: "create", name: name.trim(), parentId: parentId || null });
-      await loadFolders();
-    } catch (e) {
-      setErr(e.message);
-    }
+  function createFolder(parentId) {
+    setPromptModal({
+      title: "New folder",
+      defaultValue: "",
+      onSubmit: async (name) => {
+        if (!name || !name.trim()) {
+          setPromptModal(null);
+          return;
+        }
+        try {
+          await api("/api/folders", "POST", { action: "create", name: name.trim(), parentId: parentId || null });
+          setPromptModal(null);
+          await loadFolders();
+        } catch (e) {
+          setErr(e.message);
+          setPromptModal(null);
+        }
+      },
+    });
   }
 
-  async function renameFolder(id, currentName) {
-    const name = prompt("Rename folder", currentName);
-    if (!name || name === currentName) return;
-    try {
-      await api("/api/folders", "POST", { action: "rename", id, name });
-      await loadFolders();
-    } catch (e) {
-      setErr(e.message);
-    }
+  function renameFolder(id, currentName) {
+    setPromptModal({
+      title: "Rename folder",
+      defaultValue: currentName,
+      onSubmit: async (name) => {
+        if (!name || name === currentName) {
+          setPromptModal(null);
+          return;
+        }
+        try {
+          await api("/api/folders", "POST", { action: "rename", id, name });
+          setPromptModal(null);
+          await loadFolders();
+        } catch (e) {
+          setErr(e.message);
+          setPromptModal(null);
+        }
+      },
+    });
   }
 
   function deleteFolder(id, name) {
@@ -278,7 +338,7 @@ export default function FilesPage() {
         if (activeFolder === id) setActiveFolder(null);
         setConfirmBulk(null);
         await loadFolders();
-        await loadFiles(q, activeFolder === id ? null : activeFolder);
+        await loadFiles(q, activeFolder === id ? null : activeFolder, dateRange);
       },
     });
   }
@@ -301,7 +361,7 @@ export default function FilesPage() {
         setSelectedFolders(new Set());
         setConfirmBulk(null);
         await loadFolders();
-        await loadFiles(q, activeFolder);
+        await loadFiles(q, activeFolder, dateRange);
       },
     });
   }
@@ -352,7 +412,7 @@ export default function FilesPage() {
     }
 
     await loadFolders();
-    await loadFiles(q, activeFolder);
+    await loadFiles(q, activeFolder, dateRange);
     setErr(failed > 0 ? `Uploaded ${uploaded} file(s), ${failed} failed.` : "");
   }
 
@@ -463,13 +523,46 @@ export default function FilesPage() {
           </aside>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <input
-              className="input"
-              placeholder="Search file names and contents…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              style={{ marginBottom: 16, maxWidth: 420 }}
-            />
+            <div className="row" style={{ gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+              <input
+                className="input"
+                placeholder="Search file names and contents…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                style={{ maxWidth: 420, flex: 1, minWidth: 200 }}
+              />
+              <select
+                className="input"
+                style={{ width: "auto" }}
+                value={dateRange.preset}
+                onChange={(e) => setDateRange({ preset: e.target.value, from: "", to: "" })}
+              >
+                <option value="all">All time</option>
+                <option value="today">Last 24 hours</option>
+                <option value="week">Last 7 days</option>
+                <option value="month">Last 30 days</option>
+                <option value="custom">Custom range…</option>
+              </select>
+              {dateRange.preset === "custom" && (
+                <>
+                  <input
+                    type="date"
+                    className="input"
+                    style={{ width: "auto" }}
+                    value={dateRange.from}
+                    onChange={(e) => setDateRange((r) => ({ ...r, from: e.target.value }))}
+                  />
+                  <span className="muted" style={{ alignSelf: "center" }}>to</span>
+                  <input
+                    type="date"
+                    className="input"
+                    style={{ width: "auto" }}
+                    value={dateRange.to}
+                    onChange={(e) => setDateRange((r) => ({ ...r, to: e.target.value }))}
+                  />
+                </>
+              )}
+            </div>
 
             {selected.size > 0 && (
               <div className="card" style={{ marginBottom: 12, padding: 10 }}>
@@ -566,7 +659,7 @@ export default function FilesPage() {
           onClose={() => setShowAdd(false)}
           onAdded={async () => {
             setShowAdd(false);
-            await loadFiles(q, activeFolder);
+            await loadFiles(q, activeFolder, dateRange);
           }}
         />
       )}
@@ -589,6 +682,78 @@ export default function FilesPage() {
           onCancel={() => setConfirmBulk(null)}
         />
       )}
+
+      {promptModal && (
+        <PromptModal
+          title={promptModal.title}
+          defaultValue={promptModal.defaultValue}
+          onSubmit={promptModal.onSubmit}
+          onCancel={() => setPromptModal(null)}
+        />
+      )}
+
+      {confirmModal && (
+        <ConfirmModal
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// In-app replacement for window.prompt() — a plain browser dialog looks and
+// behaves nothing like the rest of the product (unstyled, can't be themed,
+// shows the raw domain). Same shape as every other modal here.
+function PromptModal({ title, defaultValue, onSubmit, onCancel }) {
+  const [value, setValue] = useState(defaultValue || "");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    await onSubmit(value.trim());
+    setBusy(false);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <h2 style={{ marginBottom: 14 }}>{title}</h2>
+        <form onSubmit={submit} noValidate>
+          <input className="input" value={value} onChange={(e) => setValue(e.target.value)} autoFocus style={{ marginBottom: 16 }} />
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn-outline-dark" onClick={onCancel}>Cancel</button>
+            <button className="btn-primary" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// In-app replacement for window.confirm() — same reasoning as PromptModal.
+function ConfirmModal({ title, message, onConfirm, onCancel }) {
+  const [busy, setBusy] = useState(false);
+
+  async function confirmClick() {
+    setBusy(true);
+    await onConfirm();
+    setBusy(false);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <h2 style={{ marginBottom: 10 }}>{title}</h2>
+        {message && <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>{message}</p>}
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button type="button" className="btn-outline-dark" onClick={onCancel}>Cancel</button>
+          <button className="btn-primary" disabled={busy} onClick={confirmClick}>{busy ? "Working…" : "Confirm"}</button>
+        </div>
+      </div>
     </div>
   );
 }

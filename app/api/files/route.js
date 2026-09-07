@@ -36,6 +36,11 @@ export async function GET(req) {
     // folderId: omitted = every file regardless of folder; "unfiled" = only
     // files with no folder; any other value = only that folder's files.
     const folderId = params.get("folderId");
+    // dateFrom/dateTo: ISO date-times, inclusive, filtered on createdAt. The
+    // client computes these from either a quick preset (today/7d/30d) or a
+    // custom from/to range — this route just takes whatever bounds it's given.
+    const dateFrom = params.get("dateFrom") ? new Date(params.get("dateFrom")) : null;
+    const dateTo = params.get("dateTo") ? new Date(params.get("dateTo")) : null;
 
     const snap = await filesCollection(acct.accountId).orderBy("createdAt", "desc").get();
     const active = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((f) => !f.deletedAt);
@@ -46,6 +51,14 @@ export async function GET(req) {
         if (!folderId) return true;
         if (folderId === "unfiled") return !f.folderId;
         return f.folderId === folderId;
+      })
+      .filter((f) => {
+        if (!dateFrom && !dateTo) return true;
+        const created = f.createdAt?.toDate ? f.createdAt.toDate() : f.createdAt ? new Date(f.createdAt) : null;
+        if (!created) return false;
+        if (dateFrom && created < dateFrom) return false;
+        if (dateTo && created > dateTo) return false;
+        return true;
       })
       .map((f) => ({
         id: f.id,
