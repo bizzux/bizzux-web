@@ -2,9 +2,17 @@ import { NextResponse } from "next/server";
 import { requireUser, resolveAccount, adminDb } from "@/lib/firebaseAdmin";
 import { canAccessApps } from "@/lib/trial";
 import { createHmac } from "crypto";
+import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Lets the in-app "switch apps" launcher inside bizzux-notes/files/projects
+// call this cross-origin directly, instead of only ever being reachable
+// from bizzux.com's own dashboard tile.
+export async function OPTIONS() {
+  return corsPreflight();
+}
 
 // Bizzux Shop is its own, separate Firebase project (potentially one per
 // customer down the line) — this app has no Admin SDK access to it, so
@@ -95,8 +103,8 @@ export async function GET(req) {
     const sig = createHmac("sha256", secret).update(payloadB64).digest("hex");
     const token = payloadB64 + "." + sig;
 
-    return NextResponse.json({ url: `${SHOP_URL}/sso?token=${token}` });
+    return NextResponse.json({ url: `${SHOP_URL}/sso?token=${token}` }, { headers: CORS_HEADERS });
   } catch (e) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500, headers: CORS_HEADERS });
   }
 }

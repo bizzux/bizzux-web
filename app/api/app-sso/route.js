@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { requireAccountWithAppsAccess } from "@/lib/firebaseAdmin";
 import { createHmac } from "crypto";
+import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Lets the in-app "switch apps" launcher inside bizzux-notes/files/projects
+// call this cross-origin directly, instead of only ever being reachable
+// from bizzux.com's own dashboard tile.
+export async function OPTIONS() {
+  return corsPreflight();
+}
 
 // Generic SSO mint route for the split-out apps (Notes, Files, ...) that
 // share THIS project's Firebase Auth/Firestore — unlike /api/shop-sso,
@@ -35,8 +43,8 @@ export async function GET(req) {
     const sig = createHmac("sha256", secret).update(payloadB64).digest("hex");
     const token = payloadB64 + "." + sig;
 
-    return NextResponse.json({ url: `${targetUrl}/sso?token=${token}` });
+    return NextResponse.json({ url: `${targetUrl}/sso?token=${token}` }, { headers: CORS_HEADERS });
   } catch (e) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500, headers: CORS_HEADERS });
   }
 }
