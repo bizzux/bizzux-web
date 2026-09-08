@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 const TARGET_APPS = {
   notes: process.env.NOTES_APP_URL || "https://bizzux-notes.vercel.app",
   files: process.env.FILES_APP_URL || "https://bizzux-files.vercel.app",
+  projects: process.env.PROJECTS_APP_URL || "https://bizzux-projects.vercel.app",
 };
 
 export async function GET(req) {

@@ -32,6 +32,7 @@ const CATEGORIES = [
     apps: [
       { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription and AI summaries with action items.", live: true, featured: true, url: "https://bizzux-notes.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
       { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste transcripts and notes, name them, and search across all of them.", live: true, featured: true, url: "https://bizzux-files.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
+      { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Organize work into projects and track tasks on a Kanban board.", live: true, featured: true, url: "https://bizzux-projects.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
     ],
   },
   {

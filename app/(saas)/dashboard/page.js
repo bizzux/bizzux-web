@@ -24,6 +24,7 @@ const APPS = [
   { key: "juicechatjunction", name: "Bizzux Shop", icon: "🏪", desc: "POS & shop management", live: true, url: "https://shop.bizzux.com", sso: true },
   { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription & AI summaries", live: true, url: "https://bizzux-notes.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
   { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste text files, then search across all of them", live: true, url: "https://bizzux-files.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
+  { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Projects and tasks on a Kanban board", live: true, url: "https://bizzux-projects.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
   { key: "pos", name: "Bizzux POS", icon: "🧾", desc: "Coming soon", live: false },
   { key: "orders", name: "Bizzux Orders", icon: "📋", desc: "Coming soon", live: false },
   { key: "books", name: "Bizzux Books", icon: "📒", desc: "Coming soon", live: false },
