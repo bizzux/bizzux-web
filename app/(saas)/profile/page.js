@@ -8,6 +8,7 @@ import OrganizationsManager from "@/components/OrganizationsManager";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
 import { useMe } from "@/lib/useMe";
+import { roleLabel as computeRoleLabel } from "@/lib/roleLabel";
 
 // Anyone can reach their own profile; only the fields below decide what's
 // visible on it. "canManageOrgs" mirrors requireOrgManager() server-side
@@ -54,12 +55,12 @@ export default function ProfilePage() {
     );
   }
 
-  const roleLabel = me.isOwner ? "Owner" : (me.profile || "Team member");
+  const roleLabel = me.superAdmin ? "Platform " + (me.platformRole === "OWNER" ? "Owner" : "Admin") : computeRoleLabel(me);
 
   return (
     <div>
       <Nav />
-      <AccountTabs active="profile" isAccountAdmin={!!me.isAccountAdmin} isSuper={!!me.superAdmin} />
+      <AccountTabs active="profile" isAccountAdmin={!!me.isAccountAdmin} isSuper={!!me.superAdmin} roleLabel={roleLabel} />
 
       <div className="admin-shell">
         <h1 className="dash-heading" style={{ fontSize: 20 }}>My Profile</h1>

@@ -8,6 +8,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
 import { useMe } from "@/lib/useMe";
+import { roleLabel } from "@/lib/roleLabel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -34,6 +35,7 @@ export default function TeamPage() {
   const { user, me } = useMe();
   const isAdmin = me ? me.isAccountAdmin === true : null; // null = checking
   const isSuper = me?.superAdmin === true;
+  const myRoleLabel = isSuper ? "Platform " + (me?.platformRole === "OWNER" ? "Owner" : "Admin") : roleLabel(me);
   const [members, setMembers] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [err, setErr] = useState("");
@@ -62,7 +64,7 @@ export default function TeamPage() {
     return (
       <div>
         <Nav />
-        <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} />
+        <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
         <div className="admin-shell"><p className="muted">Loading…</p></div>
       </div>
     );
@@ -71,7 +73,7 @@ export default function TeamPage() {
     return (
       <div>
         <Nav />
-        <AccountTabs active="team" isAccountAdmin={false} isSuper={isSuper} />
+        <AccountTabs active="team" isAccountAdmin={false} isSuper={isSuper} roleLabel={myRoleLabel} />
         <div className="admin-shell">
           <p>You don&apos;t have access to this page.</p>
           <Link href="/dashboard" className="btn-primary-sm">Back to dashboard</Link>
@@ -103,7 +105,7 @@ export default function TeamPage() {
   return (
     <div>
       <Nav />
-      <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} />
+      <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
 
       <div className="admin-shell">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>

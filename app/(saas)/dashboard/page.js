@@ -15,6 +15,7 @@ import { IconClock } from "@/components/Icons";
 import { daysLeft, canAccessApps } from "@/lib/trial";
 import { useMe } from "@/lib/useMe";
 import { deriveVerificationFlags } from "@/lib/verification";
+import { roleLabel } from "@/lib/roleLabel";
 
 const APPS = [
   // `sso: true` means clicking this tile goes through /api/shop-sso instead
@@ -384,7 +385,7 @@ function DashboardInner() {
   return (
     <div>
       <Nav />
-      <AccountTabs active="dashboard" isAccountAdmin={isAccountAdmin} isSuper={isSuper} />
+      <AccountTabs active="dashboard" isAccountAdmin={isAccountAdmin} isSuper={isSuper} roleLabel={isSuper ? "Platform " + (me?.platformRole === "OWNER" ? "Owner" : "Admin") : roleLabel(me)} />
 
       {!isSuper && status === "trial" && !expired && remaining !== null && (
         <div className="trial-banner">

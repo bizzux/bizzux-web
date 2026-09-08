@@ -24,6 +24,7 @@ const TABS = [
   { id: "resellers", label: "Partners" },
   { id: "customers", label: "Customers" },
   { id: "organizations", label: "Add Organization" },
+  { id: "platformadmins", label: "Platform Admins" },
 ];
 
 async function api(path, method, body) {
@@ -44,6 +45,7 @@ async function api(path, method, body) {
 export default function SuperAdminPanel() {
   const [user, setUser] = useState(undefined); // undefined = checking, null = signed out
   const [isSuper, setIsSuper] = useState(null); // null = checking
+  const [platformRole, setPlatformRole] = useState(null); // "OWNER" | "ADMIN" | null
   const [tab, setTab] = useState("trial");
 
   useEffect(() => {
@@ -59,6 +61,7 @@ export default function SuperAdminPanel() {
         const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + t } });
         const d = await r.json();
         setIsSuper(d.superAdmin === true);
+        setPlatformRole(d.platformRole || null);
       } catch {
         setIsSuper(false);
       }
@@ -85,6 +88,13 @@ export default function SuperAdminPanel() {
 
   return (
     <div>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+          Signed in as <strong>{user.email}</strong>
+        </p>
+        <span className="status-pill active">{platformRole === "OWNER" ? "Platform Owner" : "Platform Admin"}</span>
+      </div>
+
       <div className="admin-tabs" role="tablist">
         {TABS.map((t) => (
           <button
@@ -105,6 +115,110 @@ export default function SuperAdminPanel() {
       {tab === "resellers" && <ResellersManager />}
       {tab === "customers" && <CustomersList />}
       {tab === "organizations" && <OrganizationsManager />}
+      {tab === "platformadmins" && <PlatformAdminsManager isOwner={platformRole === "OWNER"} />}
+    </div>
+  );
+}
+
+function PlatformAdminsManager({ isOwner }) {
+  const [admins, setAdmins] = useState(null);
+  const [err, setErr] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [actingUid, setActingUid] = useState(null);
+
+  async function load() {
+    try {
+      const d = await api("/api/admin/platform-admins", "GET");
+      setAdmins(d.admins || []);
+    } catch (e) {
+      setErr(e.message);
+      setAdmins([]);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function createAdmin(e) {
+    e.preventDefault();
+    if (!newEmail.trim()) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await api("/api/admin/platform-admins", "POST", { action: "create", email: newEmail.trim() });
+      setNewEmail("");
+      await load();
+    } catch (e2) {
+      setErr(e2.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggle(a) {
+    const action = a.status === "disabled" ? "reactivate" : "disable";
+    if (action === "disable" && !confirm(`Disable Platform Admin access for ${a.email}?`)) return;
+    setActingUid(a.uid);
+    setErr("");
+    try {
+      await api("/api/admin/platform-admins", "POST", { action, uid: a.uid });
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setActingUid(null);
+    }
+  }
+
+  if (admins === null) return <p className="muted">Loading…</p>;
+
+  return (
+    <div>
+      {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+
+      {isOwner && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3 style={{ fontSize: 15, marginBottom: 10 }}>Add a backup Platform Admin</h3>
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>
+            They must already have signed in to Bizzux at least once with this email. Platform Admins can manage the
+            platform but can never create or remove other Platform Admins, and can never become Platform Owner.
+          </p>
+          <form onSubmit={createAdmin} className="row" style={{ gap: 10 }}>
+            <input
+              className="input" type="email" placeholder="teammate@bizzux.com" value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)} style={{ maxWidth: 320 }} required
+            />
+            <button className="btn-primary-sm" disabled={busy}>{busy ? "Adding…" : "Add Platform Admin"}</button>
+          </form>
+        </div>
+      )}
+
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr><th>Email</th><th>Role</th><th>Status</th><th>Added by</th><th></th></tr>
+          </thead>
+          <tbody>
+            {admins.map((a) => (
+              <tr key={a.uid}>
+                <td>{a.email}</td>
+                <td>{a.role === "OWNER" ? "Platform Owner" : "Platform Admin"}</td>
+                <td><span className={"status-pill " + (a.status === "disabled" ? "expired" : "active")}>{a.status}</span></td>
+                <td>{a.createdBy}</td>
+                <td>
+                  {isOwner && a.role !== "OWNER" && (
+                    <button className="link-btn danger" onClick={() => toggle(a)} disabled={actingUid === a.uid}>
+                      {actingUid === a.uid ? "Working…" : a.status === "disabled" ? "Reactivate" : "Disable"}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -954,9 +1068,51 @@ function PlanAppsManager() {
   );
 }
 
+// Small "⋯" more-actions menu — same pattern used in Bizzux Files.
+function RowMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        className="link-btn"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        style={{ fontSize: 16, padding: "2px 8px" }}
+      >
+        ⋯
+      </button>
+      {open && (
+        <>
+          {/* Backdrop closes the menu on outside click without a ref/effect. */}
+          <div style={{ position: "fixed", inset: 0, zIndex: 29 }} onClick={() => setOpen(false)} />
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 30, minWidth: 170, padding: 6, boxShadow: "0 8px 24px rgba(0,0,0,.18)" }}
+          >
+            {items.map((it, i) => (
+              <button
+                key={i} type="button"
+                className={"link-btn" + (it.danger ? " danger" : "")}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 8px", fontSize: 13 }}
+                onClick={() => { setOpen(false); it.onClick(); }}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function CustomersList() {
   const [customers, setCustomers] = useState(null);
   const [extending, setExtending] = useState(null); // customer row being extended, or null
+  const [viewingAdmins, setViewingAdmins] = useState(null); // customer row, or null
+  const [err, setErr] = useState("");
+  const [busyId, setBusyId] = useState(null);
 
   async function load() {
     try {
@@ -971,33 +1127,79 @@ function CustomersList() {
     load();
   }, []);
 
+  async function resetPassword(c) {
+    if (!confirm(`Send a password-reset email to ${c.email}?`)) return;
+    setBusyId(c.id);
+    setErr("");
+    try {
+      await api("/api/admin/customers", "POST", { action: "resetPassword", id: c.id });
+      alert(`Password-reset email sent to ${c.email}.`);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function toggleSuspend(c) {
+    const suspending = c.status !== "suspended";
+    if (!confirm(suspending
+      ? `Suspend ${c.email}? They'll immediately lose access to every Bizzux app until reactivated.`
+      : `Reactivate ${c.email}?`)) return;
+    setBusyId(c.id);
+    setErr("");
+    try {
+      await api("/api/admin/customers", "POST", { action: suspending ? "suspend" : "reactivate", id: c.id });
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (customers === null) return <p className="muted">Loading…</p>;
 
   return (
     <div className="card">
+      {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
       {customers.length === 0 && <p className="muted">No signups yet.</p>}
       {customers.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th><th>Email</th><th>Mobile</th><th>Country</th>
+                <th>Organization</th><th>Owner</th><th>Email</th><th>Mobile</th><th>Country</th>
                 <th>Signed up</th><th>Status</th><th>Type</th><th>Plan</th><th>Trial ends</th><th></th>
               </tr>
             </thead>
             <tbody>
               {customers.map((c) => (
                 <tr key={c.id}>
+                  <td>{c.organizationName || "—"}</td>
                   <td>{c.fullName || "N/A"}</td>
                   <td>{c.email}</td>
                   <td>{c.phone || "N/A"}</td>
                   <td>{c.country || "N/A"}</td>
                   <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}</td>
-                  <td><span className={"status-pill " + (c.status || "trial")}>{c.status || "trial"}</span></td>
+                  <td><span className={"status-pill " + (c.status === "suspended" ? "expired" : c.status || "trial")}>{c.status || "trial"}</span></td>
                   <td>{c.customerType}</td>
                   <td>{c.planName || "N/A"}</td>
                   <td>{c.trialEndDate ? new Date(c.trialEndDate).toLocaleDateString() : "N/A"}</td>
-                  <td><button className="link-btn" onClick={() => setExtending(c)}>Extend trial</button></td>
+                  <td>
+                    <RowMenu
+                      items={[
+                        { label: "View org owner/admins", onClick: () => setViewingAdmins(c) },
+                        { label: "Extend trial", onClick: () => setExtending(c) },
+                        { label: "Reset password", onClick: () => resetPassword(c) },
+                        {
+                          label: busyId === c.id ? "Working…" : (c.status === "suspended" ? "Reactivate" : "Suspend"),
+                          danger: c.status !== "suspended",
+                          onClick: () => toggleSuspend(c),
+                        },
+                      ]}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1015,6 +1217,46 @@ function CustomersList() {
           }}
         />
       )}
+
+      {viewingAdmins && (
+        <OrgAdminsModal customer={viewingAdmins} onClose={() => setViewingAdmins(null)} />
+      )}
+    </div>
+  );
+}
+
+function OrgAdminsModal({ customer, onClose }) {
+  const [admins, setAdmins] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api(`/api/admin/customers?id=${customer.id}`, "GET");
+        setAdmins(d.admins || []);
+      } catch (e) {
+        setError(e.message);
+      }
+    })();
+  }, [customer.id]);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <h2 style={{ marginBottom: 4 }}>{customer.organizationName || customer.fullName || customer.email}</h2>
+        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>Organization Owner and Organization Admins for this account.</p>
+        {error && <p className="error">{error}</p>}
+        {!error && admins === null && <p className="muted">Loading…</p>}
+        {admins && admins.map((a, i) => (
+          <div key={i} className="row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+            <span style={{ fontSize: 13.5 }}>{a.email}</span>
+            <span className="status-pill active">{a.role}</span>
+          </div>
+        ))}
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+          <button className="btn-outline-dark" onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   );
 }

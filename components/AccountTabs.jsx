@@ -11,7 +11,7 @@ import { auth } from "@/lib/firebase";
 // there. The sub-tabs and the signed-in-as email + Sign out share one row.
 const PROFILE_SECTION_KEYS = ["profile", "dashboard", "team"];
 
-export default function AccountTabs({ active, isAccountAdmin = false, isSuper = false }) {
+export default function AccountTabs({ active, isAccountAdmin = false, isSuper = false, roleLabel = "" }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -51,6 +51,11 @@ export default function AccountTabs({ active, isAccountAdmin = false, isSuper = 
           {user?.email && (
             <span className="hidden sm:inline text-xs text-slate-700" title="Signed in as">
               {user.email}
+            </span>
+          )}
+          {roleLabel && (
+            <span className="hidden sm:inline text-[11px] font-semibold text-brand-blue bg-blue-50 rounded-full px-3 py-1">
+              {roleLabel}
             </span>
           )}
           <button
