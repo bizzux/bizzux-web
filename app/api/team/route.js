@@ -3,6 +3,7 @@ import { requireAccountAdmin, adminAuth, adminDb, sendAuthEmail } from "@/lib/fi
 import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
+import { logAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -144,6 +145,11 @@ export async function POST(req) {
         origin,
       });
 
+      await logAuditEvent({
+        action: "team.invite", actor: acct, targetType: "organization", targetId: acct.accountId,
+        details: { email, profile },
+      });
+
       return NextResponse.json({ ok: true });
     }
 
@@ -180,6 +186,12 @@ export async function POST(req) {
           .catch(() => {});
       }
       await memberRef.delete();
+
+      await logAuditEvent({
+        action: "team.remove", actor: acct, targetType: "organization", targetId: acct.accountId,
+        details: { email: snap.exists ? snap.data().email : null },
+      });
+
       return NextResponse.json({ ok: true });
     }
 

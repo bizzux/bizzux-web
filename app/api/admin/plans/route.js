@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSuperAdmin, requireOrgManager, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { createRazorpayPlan, createStripePrice } from "@/lib/gatewayPlans";
+import { logAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,7 +66,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    await requireSuperAdmin(req);
+    const c = await requireSuperAdmin(req);
     const body = await req.json();
     const { action, id } = body;
 
@@ -93,6 +94,7 @@ export async function POST(req) {
         razorpayPlanId, stripePriceId,
         createdAt: FieldValue.serverTimestamp(),
       });
+      await logAuditEvent({ action: "plan.create", actor: c, targetType: "plan", targetId: ref.id, details: { name, price, billingPeriod } });
       return NextResponse.json({ ok: true, id: ref.id, razorpayPlanId, stripePriceId });
     }
 
@@ -122,6 +124,12 @@ export async function POST(req) {
         strikePrice: strikePrice !== undefined && strikePrice !== null && strikePrice !== "" ? Number(strikePrice) : null,
         razorpayPlanId, stripePriceId,
       }, { merge: true });
+      if (changed) {
+        await logAuditEvent({
+          action: "plan.price_change", actor: c, targetType: "plan", targetId: id,
+          details: { from: existing ? { name: existing.name, price: existing.price, billingPeriod: existing.billingPeriod } : null, to: { name, price, billingPeriod } },
+        });
+      }
       return NextResponse.json({ ok: true, razorpayPlanId, stripePriceId });
     }
 
@@ -149,6 +157,7 @@ export async function POST(req) {
     if (action === "delete") {
       if (!id) throw { status: 400, message: "Plan id required" };
       await adminDb().doc("plans/" + id).delete();
+      await logAuditEvent({ action: "plan.delete", actor: c, targetType: "plan", targetId: id });
       return NextResponse.json({ ok: true });
     }
 

@@ -27,6 +27,7 @@ const TABS = [
   { id: "trial", label: "Platform Configuration" },
   { id: "platformadmins", label: "Platform Admins" },
   { id: "auditlogs", label: "Audit Logs" },
+  { id: "security", label: "Security Settings" },
 ];
 
 async function api(path, method, body) {
@@ -120,6 +121,32 @@ export default function SuperAdminPanel() {
       {tab === "organizations" && <OrganizationsManager />}
       {tab === "platformadmins" && <PlatformAdminsManager isOwner={platformRole === "OWNER"} />}
       {tab === "auditlogs" && <AuditLogsPanel />}
+      {tab === "security" && <SecuritySettingsPanel />}
+    </div>
+  );
+}
+
+function SecuritySettingsPanel() {
+  return (
+    <div className="card" style={{ maxWidth: 640 }}>
+      <h3 style={{ fontSize: 15, marginBottom: 10 }}>Multi-factor authentication</h3>
+      <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+        MFA isn't enabled yet for the Platform Owner account. Enabling it is a real decision, not just a toggle here —
+        Firebase supports phone/SMS-based MFA on the current plan at no extra setup cost, or authenticator-app (TOTP)
+        MFA, which requires upgrading this Firebase project to Google Cloud Identity Platform (a separate GCP product
+        with its own per-active-user billing). Once you pick one, this gets built and enforced on sign-in for{" "}
+        <strong>info.bizzux@gmail.com</strong>.
+      </p>
+      <div className="row" style={{ gap: 10 }}>
+        <span className="status-pill expired">Not yet enabled</span>
+      </div>
+
+      <h3 style={{ fontSize: 15, margin: "24px 0 10px" }}>Access policy</h3>
+      <ul style={{ fontSize: 13, lineHeight: 1.8, paddingLeft: 18, margin: 0 }}>
+        <li>Only one Platform Owner exists at a time — see the Platform Admins tab.</li>
+        <li>Platform Admins are created only by the Owner and can never create or remove other Platform Admins.</li>
+        <li>Every sensitive platform action is recorded in Audit Logs.</li>
+      </ul>
     </div>
   );
 }

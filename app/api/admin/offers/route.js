@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSuperAdmin, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
+import { logAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,7 +77,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    await requireSuperAdmin(req);
+    const c = await requireSuperAdmin(req);
     const body = await req.json();
     const { action, id } = body; // `id` doubles as the offer's code (the Firestore doc id)
 
@@ -91,6 +92,10 @@ export async function POST(req) {
         razorpayPlanId: "", stripePriceId: "",
         redemptionCount: 0, redeemedSubscriptionIds: [],
         createdAt: FieldValue.serverTimestamp(),
+      });
+      await logAuditEvent({
+        action: "offer.create", actor: c, targetType: "offer", targetId: v.code,
+        details: { planId: v.planId, discountType: v.discountType, discountValue: v.discountValue },
       });
       return NextResponse.json({ ok: true, id: v.code });
     }
@@ -121,12 +126,19 @@ export async function POST(req) {
         maxRedemptions: v.maxRedemptions, active: v.active,
         ...(discountChanged ? { razorpayPlanId: "", stripePriceId: "" } : {}),
       }, { merge: true });
+      if (discountChanged) {
+        await logAuditEvent({
+          action: "offer.discount_change", actor: c, targetType: "offer", targetId: id,
+          details: { from: { planId: existing.planId, discountType: existing.discountType, discountValue: existing.discountValue }, to: { planId: v.planId, discountType: v.discountType, discountValue: v.discountValue } },
+        });
+      }
       return NextResponse.json({ ok: true });
     }
 
     if (action === "delete") {
       if (!id) throw { status: 400, message: "Offer id required" };
       await adminDb().doc("offers/" + id).delete();
+      await logAuditEvent({ action: "offer.delete", actor: c, targetType: "offer", targetId: id });
       return NextResponse.json({ ok: true });
     }
 

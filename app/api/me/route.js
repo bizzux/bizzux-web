@@ -35,8 +35,14 @@ export async function GET(req) {
     // canManageOrgs mirrors requireOrgManager's gate (a platform admin, or
     // Global Admin / Admin on their own account) — used to show/hide the
     // Add Organization section on /profile.
+    const resolvedPlatformRole = platformRole || (c.isSuper ? "OWNER" : null);
+    // accountType distinguishes a Bizzux platform account from a customer
+    // organization account, per the two-layer model — a platform role
+    // always wins (a Platform Owner/Admin also happening to own a
+    // customers/ doc is still fundamentally a platform account).
+    const accountType = resolvedPlatformRole ? "PLATFORM_USER" : "ORGANIZATION_USER";
     return NextResponse.json({
-      email: c.email, superAdmin: isSuper, platformRole: platformRole || (c.isSuper ? "OWNER" : null),
+      email: c.email, superAdmin: isSuper, platformRole: resolvedPlatformRole, accountType,
       accountId, isAccountAdmin, hasAccount, profile, isOwner,
       organizationId, organizationRole,
       canManageOrgs: isSuper || isAccountAdmin,
