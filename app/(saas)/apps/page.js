@@ -30,8 +30,8 @@ const CATEGORIES = [
     title: "Productivity",
     sub: "Tools that save your team time on the busywork.",
     apps: [
-      { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription and AI summaries with action items.", live: true, featured: true, url: "/notes", internal: true },
-      { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste transcripts and notes, name them, and search across all of them.", live: true, featured: true, url: "/files", internal: true },
+      { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription and AI summaries with action items.", live: true, featured: true, url: "https://bizzux-notes.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
+      { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste transcripts and notes, name them, and search across all of them.", live: true, featured: true, url: "https://bizzux-files.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
     ],
   },
   {
@@ -164,7 +164,7 @@ export default function AllAppsPage() {
     setOpeningKey(a.key);
     try {
       const token = await user.getIdToken();
-      const r = await fetch("/api/shop-sso", { headers: { Authorization: "Bearer " + token } });
+      const r = await fetch(a.ssoEndpoint || "/api/shop-sso", { headers: { Authorization: "Bearer " + token } });
       if (r.status === 402) {
         setShowLockedModal(true);
         return;

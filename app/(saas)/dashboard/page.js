@@ -22,8 +22,8 @@ const APPS = [
   // right Owner/Shopkeeper role. Other apps fall back to a plain link until
   // they get the same treatment.
   { key: "juicechatjunction", name: "Bizzux Shop", icon: "🏪", desc: "POS & shop management", live: true, url: "https://shop.bizzux.com", sso: true },
-  { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription & AI summaries", live: true, url: "/notes", sso: false, internal: true },
-  { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste text files, then search across all of them", live: true, url: "/files", sso: false, internal: true },
+  { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription & AI summaries", live: true, url: "https://bizzux-notes.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
+  { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste text files, then search across all of them", live: true, url: "https://bizzux-files.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
   { key: "pos", name: "Bizzux POS", icon: "🧾", desc: "Coming soon", live: false },
   { key: "orders", name: "Bizzux Orders", icon: "📋", desc: "Coming soon", live: false },
   { key: "books", name: "Bizzux Books", icon: "📒", desc: "Coming soon", live: false },
@@ -361,7 +361,7 @@ function DashboardInner() {
     setOpeningKey(a.key);
     try {
       const token = await user.getIdToken();
-      const r = await fetch("/api/shop-sso", { headers: { Authorization: "Bearer " + token } });
+      const r = await fetch(a.ssoEndpoint || "/api/shop-sso", { headers: { Authorization: "Bearer " + token } });
       // The server enforces the same access rule (defense in depth, in case
       // this account's trial/plan lapsed after the page loaded) and answers
       // 402 when it does — surface the same friendly modal rather than a
