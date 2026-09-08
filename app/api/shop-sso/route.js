@@ -58,6 +58,15 @@ export async function GET(req) {
     if (!secret) throw { status: 500, message: "SHOP_SSO_SECRET is not configured" };
 
     let role;
+    // The tenant boundary Shop scopes ALL its data by — every sale, menu
+    // item, expense, etc. gets stamped with this on write and every read is
+    // filtered by it. Always the bizzux-web accountId (the organization
+    // owner's own uid), regardless of which teammate is signing in, so a
+    // whole organization's team shares one Shop tenant. A "pure" Super
+    // Admin with no customers/ or memberships/ doc of their own (who'd
+    // otherwise 404 out of resolveAccount) falls back to their own uid as a
+    // personal org — same fallback shape as requireAccountWithAppsAccess.
+    let orgId = c.uid;
     // Shop's real main tabs this account's plan allows (see lib/apps.js's
     // APP_CATALOG "features" list, edited from Admin > Plan Apps). Left
     // undefined — meaning "don't restrict" — for a Super Admin, or whenever
@@ -66,8 +75,15 @@ export async function GET(req) {
     let features;
     if (c.isSuper) {
       role = "super";
+      try {
+        const acct = await resolveAccount(c.uid);
+        orgId = acct.accountId;
+      } catch {
+        // No account of their own — keep the personal-org fallback above.
+      }
     } else {
       const acct = await resolveAccount(c.uid);
+      orgId = acct.accountId;
       role = acct.isOwner ? "owner" : PROFILE_TO_SHOP_ROLE[acct.profile] || "shopkeeper";
 
       // Defense in depth — dashboard/page.js already blocks this in the UI
@@ -96,6 +112,7 @@ export async function GET(req) {
     const payload = {
       email: c.email,
       role,
+      orgId,
       iat: Date.now(),
       ...(features ? { features } : {}),
     };
