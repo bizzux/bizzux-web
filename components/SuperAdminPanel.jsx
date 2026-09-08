@@ -16,15 +16,17 @@ import { IconTrash } from "@/components/Icons";
 // tab): someone could hold one without the other, so this shows its own
 // sign-in prompt instead of bouncing the whole page away.
 const TABS = [
-  { id: "trial", label: "Trial settings" },
-  { id: "plans", label: "Plans" },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "organizations", label: "Organizations" },
+  { id: "customers", label: "Support / Customers" },
+  { id: "plans", label: "Plans & Pricing" },
   { id: "planlimits", label: "Plan Limits" },
-  { id: "planapps", label: "Plan Apps" },
+  { id: "planapps", label: "Products / Modules" },
   { id: "offers", label: "Offers" },
   { id: "resellers", label: "Partners" },
-  { id: "customers", label: "Customers" },
-  { id: "organizations", label: "Add Organization" },
+  { id: "trial", label: "Platform Configuration" },
   { id: "platformadmins", label: "Platform Admins" },
+  { id: "auditlogs", label: "Audit Logs" },
 ];
 
 async function api(path, method, body) {
@@ -46,7 +48,7 @@ export default function SuperAdminPanel() {
   const [user, setUser] = useState(undefined); // undefined = checking, null = signed out
   const [isSuper, setIsSuper] = useState(null); // null = checking
   const [platformRole, setPlatformRole] = useState(null); // "OWNER" | "ADMIN" | null
-  const [tab, setTab] = useState("trial");
+  const [tab, setTab] = useState("dashboard");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
@@ -107,6 +109,7 @@ export default function SuperAdminPanel() {
         ))}
       </div>
 
+      {tab === "dashboard" && <PlatformDashboard />}
       {tab === "trial" && <TrialSettings />}
       {tab === "plans" && <PlansManager />}
       {tab === "planlimits" && <PlanLimitsManager />}
@@ -116,6 +119,102 @@ export default function SuperAdminPanel() {
       {tab === "customers" && <CustomersList />}
       {tab === "organizations" && <OrganizationsManager />}
       {tab === "platformadmins" && <PlatformAdminsManager isOwner={platformRole === "OWNER"} />}
+      {tab === "auditlogs" && <AuditLogsPanel />}
+    </div>
+  );
+}
+
+function PlatformDashboard() {
+  const [customers, setCustomers] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api("/api/admin/customers", "GET");
+        setCustomers(d.customers || []);
+      } catch {
+        setCustomers([]);
+      }
+    })();
+  }, []);
+
+  if (customers === null) return <p className="muted">Loading…</p>;
+
+  const counts = { trial: 0, active: 0, suspended: 0, other: 0 };
+  customers.forEach((c) => {
+    const s = c.status || "trial";
+    if (counts[s] !== undefined) counts[s]++;
+    else counts.other++;
+  });
+  const soon = customers.filter((c) => {
+    if ((c.status || "trial") !== "trial" || !c.trialEndDate) return false;
+    const days = Math.ceil((new Date(c.trialEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return days >= 0 && days <= 3;
+  }).length;
+
+  const cards = [
+    { label: "Organizations", value: customers.length },
+    { label: "Active subscriptions", value: counts.active },
+    { label: "On trial", value: counts.trial },
+    { label: "Trial ending in 3 days", value: soon },
+    { label: "Suspended", value: counts.suspended },
+  ];
+
+  return (
+    <div className="proj-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
+      {cards.map((c) => (
+        <div key={c.label} className="card">
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>{c.label}</p>
+          <p style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>{c.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AuditLogsPanel() {
+  const [logs, setLogs] = useState(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api("/api/admin/audit-logs", "GET");
+        setLogs(d.logs || []);
+      } catch (e) {
+        setErr(e.message);
+        setLogs([]);
+      }
+    })();
+  }, []);
+
+  if (logs === null) return <p className="muted">Loading…</p>;
+
+  return (
+    <div className="card">
+      {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+      {logs.length === 0 && <p className="muted">No sensitive actions logged yet.</p>}
+      {logs.length > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead>
+              <tr><th>When</th><th>Actor</th><th>Role</th><th>Action</th><th>Target</th><th>Details</th></tr>
+            </thead>
+            <tbody>
+              {logs.map((l) => (
+                <tr key={l.id}>
+                  <td>{l.createdAt ? new Date(l.createdAt).toLocaleString() : "—"}</td>
+                  <td>{l.actorEmail}</td>
+                  <td>{l.actorRole}</td>
+                  <td>{l.action}</td>
+                  <td>{l.targetType ? `${l.targetType}: ${l.targetId}` : "—"}</td>
+                  <td style={{ fontSize: 11.5, maxWidth: 260, whiteSpace: "normal" }}>{JSON.stringify(l.details)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
