@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAccountAdmin, adminAuth, adminDb, sendAuthEmail } from "@/lib/firebaseAdmin";
+import { requireAccountAdmin, adminAuth, adminDb, sendAuthEmail, generateTempPassword } from "@/lib/firebaseAdmin";
 import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
@@ -74,7 +74,7 @@ export async function GET(req) {
           email: t.email || "",
           role: t.role || "",
           profile: t.profile || DEFAULT_PROFILE,
-          status: t.status || "invited",
+          status: t.disabled ? "disabled" : (t.status || "invited"),
           isOwner: false,
           joinedAt: toIso(t.joinedAt),
           invitedAt: toIso(t.invitedAt),
@@ -108,9 +108,24 @@ export async function POST(req) {
       const dupe = await teamCollection(acct.accountId).where("email", "==", email).limit(1).get();
       if (!dupe.empty) throw { status: 409, message: "That email is already on your team" };
 
+      // "credentials" is for a teammate with no email staff can reliably
+      // reach — same rationale as /api/admin/organizations "createAccount".
+      // The account owner sets (or generates) a password directly and hands
+      // it over themselves; no email ever gets sent, and the membership is
+      // active immediately instead of sitting in "invited" waiting on a
+      // link nobody can click.
+      const loginMethod = body.loginMethod === "credentials" ? "credentials" : "email";
+      let password = "";
+
       let authUser;
       try {
-        authUser = await adminAuth().createUser({ email, emailVerified: false });
+        if (loginMethod === "credentials") {
+          password = String(body.password || "").trim() || generateTempPassword();
+          if (password.length < 8) throw { status: 400, message: "Password must be at least 8 characters" };
+          authUser = await adminAuth().createUser({ email, password, emailVerified: true });
+        } else {
+          authUser = await adminAuth().createUser({ email, emailVerified: false });
+        }
       } catch (e) {
         if (e.code === "auth/email-already-exists") {
           throw {
@@ -127,27 +142,96 @@ export async function POST(req) {
         email,
         role,
         profile,
-        status: "invited",
+        status: loginMethod === "credentials" ? "active" : "invited",
         uid: authUser.uid,
         invitedBy: acct.email,
         invitedAt: FieldValue.serverTimestamp(),
-        joinedAt: null,
+        joinedAt: loginMethod === "credentials" ? FieldValue.serverTimestamp() : null,
       });
 
-      await sendInvite({
-        accountId: acct.accountId,
-        teamMemberId: memberRef.id,
-        email,
-        firstName,
-        lastName,
-        role,
-        profile,
-        origin,
-      });
+      if (loginMethod === "email") {
+        await sendInvite({
+          accountId: acct.accountId,
+          teamMemberId: memberRef.id,
+          email,
+          firstName,
+          lastName,
+          role,
+          profile,
+          origin,
+        });
+      }
 
       await logAuditEvent({
         action: "team.invite", actor: acct, targetType: "organization", targetId: acct.accountId,
-        details: { email, profile },
+        details: { email, profile, loginMethod },
+      });
+
+      return NextResponse.json(loginMethod === "credentials" ? { ok: true, email, password } : { ok: true });
+    }
+
+    // Emails a password-reset link to an already-active teammate (distinct
+    // from "resend", which only re-sends the original join invite and
+    // refuses once someone has already joined).
+    if (body.action === "resetPasswordEmail") {
+      const id = String(body.id || "");
+      if (!id) throw { status: 400, message: "Teammate id required" };
+      const memberSnap = await adminDb().doc(`customers/${acct.accountId}/team/${id}`).get();
+      if (!memberSnap.exists) throw { status: 404, message: "Not found" };
+      const t = memberSnap.data();
+
+      await sendAuthEmail({ requestType: "PASSWORD_RESET", email: t.email, continueUrl: `${origin}/sign-in` });
+
+      await logAuditEvent({
+        action: "team.reset_password_email", actor: acct, targetType: "organization", targetId: acct.accountId,
+        details: { email: t.email },
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // Sets a teammate's password directly and hands it back to the caller,
+    // instead of emailing a reset link — for teammates with no working
+    // email on file, or one who's called the owner because they forgot
+    // their password and can't reach that inbox either.
+    if (body.action === "setPassword") {
+      const id = String(body.id || "");
+      if (!id) throw { status: 400, message: "Teammate id required" };
+      const memberSnap = await adminDb().doc(`customers/${acct.accountId}/team/${id}`).get();
+      if (!memberSnap.exists) throw { status: 404, message: "Not found" };
+      const t = memberSnap.data();
+
+      const password = String(body.password || "").trim() || generateTempPassword();
+      if (password.length < 8) throw { status: 400, message: "Password must be at least 8 characters" };
+
+      await adminAuth().updateUser(t.uid, { password });
+
+      await logAuditEvent({
+        action: "team.set_password", actor: acct, targetType: "organization", targetId: acct.accountId,
+        details: { email: t.email },
+      });
+
+      return NextResponse.json({ ok: true, password });
+    }
+
+    // Disable/enable: blocks (or restores) sign-in without deleting the
+    // teammate outright — for a temporary leave or a dispute, where losing
+    // their invite/role history would be the wrong call.
+    if (body.action === "disable" || body.action === "enable") {
+      const id = String(body.id || "");
+      if (!id) throw { status: 400, message: "Teammate id required" };
+      const memberRef = adminDb().doc(`customers/${acct.accountId}/team/${id}`);
+      const memberSnap = await memberRef.get();
+      if (!memberSnap.exists) throw { status: 404, message: "Not found" };
+      const t = memberSnap.data();
+      const disabling = body.action === "disable";
+
+      await adminAuth().updateUser(t.uid, { disabled: disabling });
+      await memberRef.update({ disabled: disabling });
+
+      await logAuditEvent({
+        action: disabling ? "team.disable" : "team.enable", actor: acct, targetType: "organization", targetId: acct.accountId,
+        details: { email: t.email },
       });
 
       return NextResponse.json({ ok: true });
@@ -184,6 +268,10 @@ export async function POST(req) {
           .doc("memberships/" + snap.data().uid)
           .delete()
           .catch(() => {});
+        // Best-effort — the membership doc above is what actually revokes
+        // access (resolveAccount() 404s without it), so a failure here
+        // (e.g. the auth user was already gone) shouldn't block removal.
+        await adminAuth().deleteUser(snap.data().uid).catch(() => {});
       }
       await memberRef.delete();
 
