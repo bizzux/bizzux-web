@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requirePlatformAdmin, adminDb, sendAuthEmail } from "@/lib/firebaseAdmin";
+import { requirePlatformAdmin, adminAuth, adminDb, sendAuthEmail, generateTempPassword } from "@/lib/firebaseAdmin";
 import { logAuditEvent } from "@/lib/audit";
 import { findCountryByPhone } from "@/lib/countryCodes";
 import { Timestamp, FieldValue } from "firebase-admin/firestore";
@@ -141,6 +141,31 @@ export async function POST(req) {
       });
 
       return NextResponse.json({ ok: true });
+    }
+
+    // Sets the account's password directly and hands it back to the
+    // Platform Admin, instead of emailing a reset link — for accounts that
+    // have no working email on file (e.g. created via
+    // /api/admin/organizations "createAccount") or whose owner has called
+    // support because they forgot it and can't reach their inbox either.
+    if (body.action === "setPassword") {
+      const id = String(body.id || "");
+      if (!id) throw { status: 400, message: "Customer id required" };
+      const ref = adminDb().doc("customers/" + id);
+      const snap = await ref.get();
+      if (!snap.exists) throw { status: 404, message: "Customer not found" };
+
+      const password = String(body.password || "").trim() || generateTempPassword();
+      if (password.length < 8) throw { status: 400, message: "Password must be at least 8 characters" };
+
+      await adminAuth().updateUser(id, { password });
+
+      await logAuditEvent({
+        action: "customer.set_password", actor: c, targetType: "organization", targetId: id,
+        details: { email: snap.data().email },
+      });
+
+      return NextResponse.json({ ok: true, password });
     }
 
     if (body.action === "suspend" || body.action === "reactivate") {

@@ -1267,6 +1267,26 @@ function CustomersList() {
     }
   }
 
+  // For accounts with no working email on file (e.g. created directly from
+  // Organizations > "Create Business Login") — sets the password right
+  // here instead of emailing a reset link nobody can receive. Also useful
+  // when a shop owner calls support because they forgot their password and
+  // can't reach whatever email is on file either.
+  async function setPassword(c) {
+    const entered = prompt(`New password for ${c.email} (leave blank to auto-generate):`);
+    if (entered === null) return; // cancelled
+    setBusyId(c.id);
+    setErr("");
+    try {
+      const d = await api("/api/admin/customers", "POST", { action: "setPassword", id: c.id, password: entered.trim() });
+      alert(`Password set for ${c.email}.\n\nNew password (shown only once):\n${d.password}`);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function toggleSuspend(c) {
     const suspending = c.status !== "suspended";
     if (!confirm(suspending
@@ -1317,7 +1337,8 @@ function CustomersList() {
                       items={[
                         { label: "View org owner/admins", onClick: () => setViewingAdmins(c) },
                         { label: "Extend trial", onClick: () => setExtending(c) },
-                        { label: "Reset password", onClick: () => resetPassword(c) },
+                        { label: "Reset password (email link)", onClick: () => resetPassword(c) },
+                        { label: "Set new password directly", onClick: () => setPassword(c) },
                         {
                           label: busyId === c.id ? "Working…" : (c.status === "suspended" ? "Reactivate" : "Suspend"),
                           danger: c.status !== "suspended",

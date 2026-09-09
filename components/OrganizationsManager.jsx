@@ -30,6 +30,16 @@ const USER_RANGES = ["1-10", "11-20", "21-50", "51-100", "101-200", "201-500", "
 const emptyOrg = {
   organizationName: "", countryCode: "", state: "", timezone: "", currency: "", userRange: "",
 };
+const emptyAccount = {
+  organizationName: "", countryCode: "", state: "", timezone: "", currency: "", userRange: "", email: "", password: "",
+};
+
+function genPassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
 
 export default function OrganizationsManager() {
   const [orgs, setOrgs] = useState(null);
@@ -113,7 +123,9 @@ export default function OrganizationsManager() {
   const statesForCountry = STATES_BY_COUNTRY[form.countryCode];
 
   return (
-    <div style={{ display: "grid", gap: 18, gridTemplateColumns: "1.1fr 1fr" }}>
+    <div style={{ display: "grid", gap: 18 }}>
+      <CreateBusinessAccount ownPlan={ownPlan} />
+      <div style={{ display: "grid", gap: 18, gridTemplateColumns: "1.1fr 1fr" }}>
       <div className="card">
         <h3 style={{ marginBottom: 5 }}>Add Organization</h3>
         <p className="muted" style={{ marginTop: 0, marginBottom: 12, fontSize: 13 }}>
@@ -241,6 +253,183 @@ export default function OrganizationsManager() {
           </div>
         ))}
       </div>
+      </div>
+    </div>
+  );
+}
+
+// Direct onboarding for a small-business login: creates a REAL customers/
+// account immediately (Firebase Auth user + customers/{uid} doc), with the
+// admin choosing (or generating) the username/password themselves, rather
+// than emailing an invite the owner may never see. See "createAccount" in
+// app/api/admin/organizations/route.js.
+function CreateBusinessAccount({ ownPlan }) {
+  const [form, setForm] = useState(emptyAccount);
+  const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [created, setCreated] = useState(null); // { email, password } shown once after creation
+
+  const timezones = useMemo(() => getTimezones(), []);
+  const currencyCodes = useMemo(() => getCurrencyCodes(), []);
+  const statesForCountry = STATES_BY_COUNTRY[form.countryCode];
+
+  function setField(field, value) {
+    setForm((f) => (field === "countryCode" ? { ...f, countryCode: value, state: "" } : { ...f, [field]: value }));
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    setErr("");
+    setCreated(null);
+    setBusy(true);
+    try {
+      const d = await api("/api/admin/organizations", "POST", { action: "createAccount", ...form });
+      setCreated({ email: d.email, password: d.password });
+      setForm(emptyAccount);
+    } catch (e2) {
+      setErr(e2.message);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="card">
+      <h3 style={{ marginBottom: 5 }}>Create Business Login</h3>
+      <p className="muted" style={{ marginTop: 0, marginBottom: 12, fontSize: 13 }}>
+        For shop owners with no email address staff can reach — set (or generate) a username and password
+        here and hand it to them directly. This creates a real, ready-to-use account immediately, no email
+        verification involved. To reset a forgotten password later, use &quot;Set new password&quot; on the
+        Support / Customers tab.
+      </p>
+
+      {created && (
+        <div style={{ background: "var(--line, #f1f5f9)", borderRadius: 8, padding: 12, marginBottom: 14 }}>
+          <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 13 }}>Account created — save these now, shown only once:</p>
+          <p style={{ margin: "0 0 2px", fontFamily: "monospace", fontSize: 13 }}>Username: {created.email}</p>
+          <p style={{ margin: 0, fontFamily: "monospace", fontSize: 13 }}>Password: {created.password}</p>
+        </div>
+      )}
+
+      <form onSubmit={submit}>
+        <div style={{ marginBottom: 10 }}>
+          <label className="label">Shop / Business Name *</label>
+          <input
+            className="input" value={form.organizationName}
+            onChange={(e) => setField("organizationName", e.target.value)} required
+          />
+        </div>
+
+        <div className="row" style={{ marginBottom: 10 }}>
+          <div style={{ flex: 1 }}>
+            <label className="label">Username (email format) *</label>
+            <input
+              className="input" type="text" value={form.email}
+              onChange={(e) => setField("email", e.target.value)}
+              placeholder="shopname@bizzux.login" required
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label className="label">Password *</label>
+            <div className="row" style={{ gap: 6 }}>
+              <input
+                className="input" type={showPassword ? "text" : "password"} value={form.password}
+                onChange={(e) => setField("password", e.target.value)}
+                placeholder="Leave blank to auto-generate" style={{ flex: 1 }}
+              />
+              <button type="button" className="link-btn" onClick={() => setField("password", genPassword())}>
+                Generate
+              </button>
+            </div>
+            {form.password && (
+              <label className="muted" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
+                <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} style={{ marginRight: 6 }} />
+                Show password
+              </label>
+            )}
+          </div>
+        </div>
+
+        <div className="row" style={{ marginBottom: 10 }}>
+          <div style={{ flex: 1 }}>
+            <label className="label">Country *</label>
+            <select
+              className="input" value={form.countryCode}
+              onChange={(e) => setField("countryCode", e.target.value)} required
+            >
+              <option value="" disabled>Select a country</option>
+              {COUNTRIES.map(([code, name]) => (
+                <option key={code} value={code}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label className="label">State</label>
+            {statesForCountry ? (
+              <select className="input" value={form.state} onChange={(e) => setField("state", e.target.value)}>
+                <option value="">Select a state</option>
+                {statesForCountry.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className="input" value={form.state} onChange={(e) => setField("state", e.target.value)}
+                placeholder={form.countryCode ? "State / Province" : "Select a country first"}
+                disabled={!form.countryCode}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="row" style={{ marginBottom: 10 }}>
+          <div style={{ flex: 1 }}>
+            <label className="label">Time zone *</label>
+            <select
+              className="input" value={form.timezone}
+              onChange={(e) => setField("timezone", e.target.value)} required
+            >
+              <option value="" disabled>Select a time zone</option>
+              {timezones.map((tz) => (
+                <option key={tz} value={tz}>{formatTimezoneLabel(tz)}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label className="label">Currency *</label>
+            <select
+              className="input" value={form.currency}
+              onChange={(e) => setField("currency", e.target.value)} required
+            >
+              <option value="" disabled>Select a currency</option>
+              {currencyCodes.map((code) => (
+                <option key={code} value={code}>{formatCurrencyLabel(code)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 10, maxWidth: 260 }}>
+          <label className="label">No of users *</label>
+          <select
+            className="input" value={form.userRange}
+            onChange={(e) => setField("userRange", e.target.value)} required
+          >
+            <option value="" disabled>Select a range</option>
+            {USER_RANGES.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+
+        <button className="btn-primary" disabled={busy || !ownPlan.label}>
+          {busy ? "Creating…" : "Create login"}
+        </button>
+        {!ownPlan.label && (
+          <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>{ownPlan.error}</p>
+        )}
+        {err && <p className="error" style={{ marginTop: 10 }}>{err}</p>}
+      </form>
     </div>
   );
 }
