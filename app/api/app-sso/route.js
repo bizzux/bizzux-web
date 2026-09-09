@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAccountWithAppsAccess } from "@/lib/firebaseAdmin";
+import { requireAccountWithAppsAccess, adminDb } from "@/lib/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 
@@ -34,6 +35,15 @@ export async function GET(req) {
     // Enforces auth + the same trial/plan gate as the app itself (defense
     // in depth), and gives us the resolved accountId/email.
     const acct = await requireAccountWithAppsAccess(req);
+
+    // Best-effort "last opened" stamp for the Super Admin Customers list's
+    // Apps Used column — .update() (not .set(merge)) so this can never
+    // create a stray customers/ doc for an account that doesn't have one
+    // (e.g. a pure Super Admin with no customer record of their own).
+    adminDb()
+      .doc("customers/" + acct.accountId)
+      .update({ ["appUsage." + appKey]: FieldValue.serverTimestamp() })
+      .catch(() => {});
 
     const secret = process.env.APP_SSO_SECRET;
     if (!secret) throw { status: 500, message: "SSO is not configured" };

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser, resolveAccount, adminDb } from "@/lib/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
 import { canAccessApps } from "@/lib/trial";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
@@ -108,6 +109,14 @@ export async function GET(req) {
         }
       }
     }
+
+    // Same best-effort "last opened" stamp app-sso does for its apps (see
+    // that route) — keyed "juicechatjunction" to match APP_CATALOG/dashboard's
+    // key for Shop, so the admin Apps Used column can use one lookup table.
+    adminDb()
+      .doc("customers/" + orgId)
+      .update({ ["appUsage.juicechatjunction"]: FieldValue.serverTimestamp() })
+      .catch(() => {});
 
     const payload = {
       email: c.email,

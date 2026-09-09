@@ -1233,9 +1233,19 @@ function RowMenu({ items }) {
   );
 }
 
+// Matches the keys appUsage.<key> is stamped with (app-sso/route.js,
+// shop-sso/route.js) to the display name shown in the Apps Used column.
+const APP_USAGE_LABELS = {
+  juicechatjunction: "Shop",
+  notes: "Notes",
+  files: "Files",
+  projects: "Projects",
+};
+
 function CustomersList() {
   const [customers, setCustomers] = useState(null);
   const [extending, setExtending] = useState(null); // customer row being extended, or null
+  const [markingPaid, setMarkingPaid] = useState(null); // customer row being marked paid, or null
   const [viewingAdmins, setViewingAdmins] = useState(null); // customer row, or null
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
@@ -1316,11 +1326,13 @@ function CustomersList() {
             <thead>
               <tr>
                 <th>Organization</th><th>Owner</th><th>Email</th><th>Mobile</th><th>Country</th>
-                <th>Signed up</th><th>Status</th><th>Type</th><th>Plan</th><th>Trial ends</th><th></th>
+                <th>Signed up</th><th>Status</th><th>Type</th><th>Plan</th><th>Apps used</th><th>Trial ends</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {customers.map((c) => (
+              {customers.map((c) => {
+                const usedKeys = Object.keys(c.appUsage || {});
+                return (
                 <tr key={c.id}>
                   <td>{c.organizationName || "—"}</td>
                   <td>{c.fullName || "N/A"}</td>
@@ -1331,12 +1343,26 @@ function CustomersList() {
                   <td><span className={"status-pill " + (c.status === "suspended" ? "expired" : c.status || "trial")}>{c.status || "trial"}</span></td>
                   <td>{c.customerType}</td>
                   <td>{c.planName || "N/A"}</td>
+                  <td>
+                    {usedKeys.length === 0 ? (
+                      <span className="muted" style={{ fontSize: 12 }}>Not used yet</span>
+                    ) : (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {usedKeys.map((k) => (
+                          <span key={k} className="status-pill active" style={{ fontSize: 11 }}>
+                            {APP_USAGE_LABELS[k] || k}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
                   <td>{c.trialEndDate ? new Date(c.trialEndDate).toLocaleDateString() : "N/A"}</td>
                   <td>
                     <RowMenu
                       items={[
                         { label: "View org owner/admins", onClick: () => setViewingAdmins(c) },
                         { label: "Extend trial", onClick: () => setExtending(c) },
+                        { label: "Mark as paid (cash / offline)", onClick: () => setMarkingPaid(c) },
                         { label: "Reset password (email link)", onClick: () => resetPassword(c) },
                         { label: "Set new password directly", onClick: () => setPassword(c) },
                         {
@@ -1348,7 +1374,8 @@ function CustomersList() {
                     />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1367,6 +1394,17 @@ function CustomersList() {
 
       {viewingAdmins && (
         <OrgAdminsModal customer={viewingAdmins} onClose={() => setViewingAdmins(null)} />
+      )}
+
+      {markingPaid && (
+        <MarkPaidModal
+          customer={markingPaid}
+          onClose={() => setMarkingPaid(null)}
+          onMarked={async () => {
+            setMarkingPaid(null);
+            await load();
+          }}
+        />
       )}
     </div>
   );
@@ -1468,6 +1506,87 @@ function ExtendTrialModal({ customer, onClose, onExtended }) {
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
             <button className="btn-primary" disabled={busy}>{busy ? "Extending…" : "Extend"}</button>
+          </div>
+          {error && <p className="error">{error}</p>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Records a payment taken outside checkout (cash handed to the shop
+// owner, bank transfer, etc.) — sets this account to "active" on the
+// chosen plan exactly like a real Razorpay/Stripe charge would (see
+// "markPaid" in app/api/admin/customers/route.js), so there's no separate
+// "was this ever actually paid" bookkeeping to reconcile later.
+function MarkPaidModal({ customer, onClose, onMarked }) {
+  const [plans, setPlans] = useState(null);
+  const [planId, setPlanId] = useState("");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api("/api/admin/plans", "GET");
+        const active = (d.plans || []).filter((p) => p.active !== false);
+        setPlans(active);
+        if (active.length) setPlanId(active[0].id);
+      } catch {
+        setPlans([]);
+      }
+    })();
+  }, []);
+
+  async function submit(e) {
+    e.preventDefault();
+    setError("");
+    if (!planId) {
+      setError("Choose a plan");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api("/api/admin/customers", "POST", { action: "markPaid", id: customer.id, planId, notes });
+      onMarked();
+    } catch (e2) {
+      setError(e2.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginBottom: 4 }}>Mark as paid</h2>
+        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>
+          {customer.email} — for a payment collected outside checkout (cash, bank transfer, etc.).
+          This activates the account on the plan below, same as a real online payment would.
+        </p>
+        <form onSubmit={submit} noValidate>
+          {plans === null && <p className="muted">Loading plans…</p>}
+          {plans && plans.length === 0 && <p className="error">No active plans configured yet — add one on the Plans &amp; Pricing tab first.</p>}
+          {plans && plans.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <label className="label">Plan *</label>
+              <select className="input" value={planId} onChange={(e) => setPlanId(e.target.value)} autoFocus>
+                {plans.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} — ₹{p.price}/{p.billingPeriod}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Notes (optional)</label>
+            <input
+              className="input" value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Cash collected by field agent, receipt #1234"
+            />
+          </div>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" disabled={busy || !plans?.length}>{busy ? "Saving…" : "Mark as paid"}</button>
           </div>
           {error && <p className="error">{error}</p>}
         </form>

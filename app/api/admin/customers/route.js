@@ -59,6 +59,7 @@ export async function GET(req) {
     const customers = snap.docs.map((d) => {
       const data = d.data();
       const country = findCountryByPhone(data.phone);
+      const appUsage = data.appUsage || {};
       return {
         id: d.id,
         email: data.email || "",
@@ -71,6 +72,11 @@ export async function GET(req) {
         planName: data.planName || null,
         createdAt: toIso(data.createdAt),
         trialEndDate: toIso(data.trialEndDate),
+        // { juicechatjunction: "2026-..." , notes: "2026-..." , ... } — every
+        // key that's ever had an SSO hand-off minted for it (see
+        // appUsage.<key> stamps in app-sso/route.js and shop-sso/route.js).
+        // Empty object means this account has never opened any app yet.
+        appUsage: Object.fromEntries(Object.entries(appUsage).map(([k, v]) => [k, toIso(v)])),
       };
     });
     customers.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -166,6 +172,50 @@ export async function POST(req) {
       });
 
       return NextResponse.json({ ok: true, password });
+    }
+
+    // Records a payment taken outside the online checkout flow (cash, bank
+    // transfer, etc.) — sets the same fields the Razorpay/Stripe webhooks
+    // set on a real charge (see app/api/webhooks/razorpay/route.js), so this
+    // account is indistinguishable from an online payer everywhere else in
+    // the app (status, plan gating, the Customers list's Type column).
+    if (body.action === "markPaid") {
+      const id = String(body.id || "");
+      if (!id) throw { status: 400, message: "Customer id required" };
+      const planId = String(body.planId || "");
+      if (!planId) throw { status: 400, message: "Choose a plan" };
+
+      const ref = adminDb().doc("customers/" + id);
+      const snap = await ref.get();
+      if (!snap.exists) throw { status: 404, message: "Customer not found" };
+
+      const planSnap = await adminDb().doc("plans/" + planId).get();
+      if (!planSnap.exists) throw { status: 400, message: "That plan no longer exists" };
+      const plan = planSnap.data();
+
+      const notes = String(body.notes || "").trim().slice(0, 300);
+
+      await ref.set(
+        {
+          status: "active",
+          subscriptionGateway: "manual",
+          planId,
+          planName: plan.name || "",
+          paymentCount: FieldValue.increment(1),
+          lastChargedAt: FieldValue.serverTimestamp(),
+          lastPaymentMethod: "manual",
+          lastPaymentNotes: notes || null,
+          lastPaymentRecordedBy: c.email,
+        },
+        { merge: true }
+      );
+
+      await logAuditEvent({
+        action: "customer.mark_paid", actor: c, targetType: "organization", targetId: id,
+        details: { planId, planName: plan.name || "", notes },
+      });
+
+      return NextResponse.json({ ok: true });
     }
 
     if (body.action === "suspend" || body.action === "reactivate") {
