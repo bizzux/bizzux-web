@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminDb } from "@/lib/firebaseAdmin";
+import { resolvePartnerRates } from "@/lib/referral";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
@@ -96,23 +97,18 @@ async function decrementOfferCycles({ uid, subscriptionId, offerCode, totalCycle
 // idempotency guard (customers/{uid}.referralCommissionPaid), same
 // resellerCommissions ledger, just sourced from a Stripe invoice's
 // amount_paid (USD cents) instead of a Razorpay payment (INR paise).
-async function creditResellerCommission({ uid, resellerId, saleAmount, subscriptionId }) {
+async function creditResellerCommission({ uid, resellerId, saleAmount, subscriptionId, promoCode }) {
   if (!uid || !resellerId || !saleAmount) return;
   const custRef = adminDb().doc("customers/" + uid);
   const resellerRef = adminDb().doc("resellers/" + resellerId);
-  const settingsRef = adminDb().doc("portalSettings/config");
+  const { commissionPercent } = await resolvePartnerRates(resellerId);
 
   try {
     await adminDb().runTransaction(async (tx) => {
-      const [custSnap, resellerSnap, settingsSnap] = await Promise.all([
-        tx.get(custRef),
-        tx.get(resellerRef),
-        tx.get(settingsRef),
-      ]);
+      const [custSnap, resellerSnap] = await Promise.all([tx.get(custRef), tx.get(resellerRef)]);
       if (!custSnap.exists || custSnap.data().referralCommissionPaid) return;
       if (!resellerSnap.exists) return;
 
-      const commissionPercent = Number((settingsSnap.exists ? settingsSnap.data() : {}).resellerCommissionPercent ?? 20);
       const commissionAmount = Math.round(Number(saleAmount) * (commissionPercent / 100));
 
       tx.set(custRef, { referralCommissionPaid: true }, { merge: true });
@@ -129,6 +125,7 @@ async function creditResellerCommission({ uid, resellerId, saleAmount, subscript
         resellerId,
         referredUid: uid,
         subscriptionId,
+        promoCode: promoCode || null,
         gateway: "stripe",
         currency: "USD",
         saleAmount,
@@ -140,6 +137,22 @@ async function creditResellerCommission({ uid, resellerId, saleAmount, subscript
     });
   } catch (e) {
     console.error("creditResellerCommission failed:", e);
+  }
+}
+
+// Mirrors the Razorpay webhook's markPromoCodeUsed — see that one for the
+// full explanation.
+async function markPromoCodeUsed(promoCode, uid, subscriptionId) {
+  if (!promoCode) return;
+  const ref = adminDb().doc("promoCodes/" + promoCode);
+  try {
+    await adminDb().runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists || snap.data().used) return;
+      tx.set(ref, { used: true, usedAt: FieldValue.serverTimestamp(), usedByUid: uid, subscriptionId }, { merge: true });
+    });
+  } catch (e) {
+    console.error("markPromoCodeUsed failed:", e);
   }
 }
 
@@ -212,13 +225,16 @@ export async function POST(req) {
           await decrementOfferCycles({ uid, subscriptionId, offerCode, totalCycles, regularPriceId });
         }
         const resellerId = invoice.subscription_details?.metadata?.resellerId;
+        const promoCode = invoice.subscription_details?.metadata?.promoCode || null;
         if (uid && resellerId && subscriptionId && invoice.amount_paid) {
           await creditResellerCommission({
             uid,
             resellerId,
             saleAmount: invoice.amount_paid / 100,
             subscriptionId,
+            promoCode,
           });
+          if (promoCode) await markPromoCodeUsed(promoCode, uid, subscriptionId);
         }
         break;
       }

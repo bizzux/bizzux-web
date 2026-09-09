@@ -168,6 +168,152 @@ function StatusCard({
   );
 }
 
+type PromoCode = { code: string; discountPercent: number; used: boolean; createdAt: string | null; usedAt: string | null };
+type Sale = { id: string; promoCode: string | null; saleAmount: number; commissionPercent: number; commissionAmount: number; status: string; createdAt: string | null };
+type Payout = { id: string; amount: number; createdAt: string | null };
+type PromoData = {
+  codes: PromoCode[]; codesGenerated: number; codesUsed: number; codesUnused: number;
+  sales: Sale[]; successfulSales: number; totalSaleAmount: number; payouts: Payout[];
+  commissionPercent: number; customerDiscountPercent: number;
+};
+
+// The one-time promo-code side of the Partner program (Sales Partner
+// module) — generate a code, send it to a lead, see it move from unused
+// to used once the referred customer pays. Sits alongside the legacy
+// persistent referral code/link above it, unchanged; a Partner can use
+// either.
+function PromoCodesPanel({ user }: { user: User }) {
+  const [data, setData] = useState<PromoData | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function load() {
+    try {
+      const token = await user.getIdToken();
+      setData(await api("/api/reseller/promo-codes", token));
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function generate() {
+    setGenerating(true);
+    setErr("");
+    try {
+      const token = await user.getIdToken();
+      await api("/api/reseller/promo-codes", token, "POST", { action: "generate" });
+      await load();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+    setGenerating(false);
+  }
+
+  if (!data) return <p className="text-center text-slate-500 mt-4">Loading your codes…</p>;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8 mt-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
+        <h2 className="text-lg font-bold">Your promo codes</h2>
+        <button
+          onClick={generate}
+          disabled={generating}
+          className="rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white text-sm font-semibold px-5 py-2 hover:opacity-90 disabled:opacity-60"
+        >
+          {generating ? "Generating…" : "+ Generate a code"}
+        </button>
+      </div>
+      <p className="text-sm text-slate-500 mb-5">
+        Each code is one-time use — give one to a lead. It carries your {data.customerDiscountPercent}% customer
+        discount and, once they pay, earns you {data.commissionPercent}% commission.
+      </p>
+
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        {[
+          ["Codes generated", data.codesGenerated],
+          ["Unused", data.codesUnused],
+          ["Used", data.codesUsed],
+        ].map(([label, value]) => (
+          <div key={label as string} className="bg-slate-50 rounded-xl p-3 text-center">
+            <div className="text-xl font-bold text-ink">{value as number}</div>
+            <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {data.codes.length > 0 && (
+        <div className="overflow-x-auto mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500 border-b border-slate-100">
+                <th className="py-2 pr-3">Code</th><th className="py-2 pr-3">Discount</th>
+                <th className="py-2 pr-3">Status</th><th className="py-2">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.codes.map((c) => (
+                <tr key={c.code} className="border-b border-slate-50">
+                  <td className="py-2 pr-3 font-mono font-semibold">{c.code}</td>
+                  <td className="py-2 pr-3">{c.discountPercent}%</td>
+                  <td className="py-2 pr-3">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.used ? "bg-slate-100 text-slate-500" : "bg-green-50 text-green-700"}`}>
+                      {c.used ? "Used" : "Unused — ready to send"}
+                    </span>
+                  </td>
+                  <td className="py-2 text-slate-500">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h3 className="text-sm font-bold mb-3">Your sales</h3>
+      {data.sales.length === 0 ? (
+        <p className="text-sm text-slate-500">No successful sales yet — generate a code and send it to a lead.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500 border-b border-slate-100">
+                <th className="py-2 pr-3">Code</th><th className="py-2 pr-3">Sale amount</th>
+                <th className="py-2 pr-3">Commission</th><th className="py-2 pr-3">Status</th><th className="py-2">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.sales.map((s) => (
+                <tr key={s.id} className="border-b border-slate-50">
+                  <td className="py-2 pr-3 font-mono">{s.promoCode || "—"}</td>
+                  <td className="py-2 pr-3">₹{s.saleAmount.toLocaleString("en-IN")}</td>
+                  <td className="py-2 pr-3 font-semibold">₹{s.commissionAmount.toLocaleString("en-IN")}</td>
+                  <td className="py-2 pr-3 capitalize">{s.status}</td>
+                  <td className="py-2 text-slate-500">{s.createdAt ? new Date(s.createdAt).toLocaleDateString() : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h3 className="text-sm font-bold mt-6 mb-3">Payout history</h3>
+      {data.payouts.length === 0 ? (
+        <p className="text-sm text-slate-500">No payouts yet.</p>
+      ) : (
+        <ul className="text-sm space-y-1.5">
+          {data.payouts.map((p) => (
+            <li key={p.id} className="flex justify-between border-b border-slate-50 py-1.5">
+              <span className="font-semibold">₹{p.amount.toLocaleString("en-IN")}</span>
+              <span className="text-slate-500">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {err && <p className="text-sm text-red-600 mt-3">{err}</p>}
+    </div>
+  );
+}
+
 export default function PartnersPage() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [rates, setRates] = useState<Rates | null>(null);
@@ -383,6 +529,7 @@ export default function PartnersPage() {
                 statTile("Total paid", `₹${reseller.paidOut.toLocaleString("en-IN")}`, IconCheck, "bg-brand-cyanDark"),
               ]}
             </div>
+            {user && <PromoCodesPanel user={user} />}
           </Container>
         </div>
       )}

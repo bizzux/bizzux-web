@@ -1621,6 +1621,8 @@ function ResellersManager() {
   const [busyId, setBusyId] = useState(null);
   const [err, setErr] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null); // reseller row awaiting confirm, or null
+  const [viewing, setViewing] = useState(null); // reseller row whose codes/commissions are shown, or null
+  const [editingRates, setEditingRates] = useState(null); // reseller row being given a per-partner rate override, or null
 
   async function load() {
     try {
@@ -1711,6 +1713,7 @@ function ResellersManager() {
               <thead>
                 <tr>
                   <th>Name</th><th>Email</th><th>Phone</th><th>Business</th><th>Code</th>
+                  <th>Rates (comm% / disc%)</th><th>Codes gen/used</th>
                   <th>Status</th><th>Referrals</th><th>Total earned</th><th>Pending payout</th><th>Actions</th>
                 </tr>
               </thead>
@@ -1722,6 +1725,11 @@ function ResellersManager() {
                     <td>{r.phone || "N/A"}</td>
                     <td>{r.businessName || "N/A"}</td>
                     <td><code>{r.referralCode}</code></td>
+                    <td>
+                      {r.commissionPercent ?? "—"} / {r.customerDiscountPercent ?? "—"}
+                      <button className="link-btn" style={{ marginLeft: 6 }} onClick={() => setEditingRates(r)}>Edit</button>
+                    </td>
+                    <td>{r.codesGenerated || 0} / {r.codesUsed || 0}</td>
                     <td><span className={"status-pill " + statusPillClass(r.status)}>{r.status}</span></td>
                     <td>{r.totalReferrals || 0}</td>
                     <td>{money(r.totalEarnings)}</td>
@@ -1743,6 +1751,7 @@ function ResellersManager() {
                         {r.pendingPayout > 0 && (
                           <button className="link-btn" disabled={busyId === r.id} onClick={() => act("markPaid", r.id)}>Mark paid</button>
                         )}
+                        <button className="link-btn" disabled={busyId === r.id} onClick={() => setViewing(r)}>View sales</button>
                         <button className="link-btn danger" disabled={busyId === r.id} onClick={() => setPendingDelete(r)}>Delete</button>
                       </div>
                     </td>
@@ -1782,6 +1791,192 @@ function ResellersManager() {
           </div>
         </div>
       )}
+
+      {editingRates && (
+        <PartnerRatesModal
+          reseller={editingRates}
+          onClose={() => setEditingRates(null)}
+          onSaved={async () => { setEditingRates(null); await load(); }}
+        />
+      )}
+
+      {viewing && (
+        <PartnerSalesModal reseller={viewing} onClose={() => setViewing(null)} onChanged={load} />
+      )}
+    </div>
+  );
+}
+
+// Per-partner override of the two global percentages (see resolvePartnerRates
+// in lib/referral.js) — leaving a field blank clears the override and falls
+// back to the global default shown in the card above.
+function PartnerRatesModal({ reseller, onClose, onSaved }) {
+  const [commissionPercent, setCommissionPercent] = useState(reseller.commissionPercent != null ? String(reseller.commissionPercent) : "");
+  const [customerDiscountPercent, setCustomerDiscountPercent] = useState(reseller.customerDiscountPercent != null ? String(reseller.customerDiscountPercent) : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/admin/resellers", "POST", {
+        action: "setPartnerRates",
+        id: reseller.id,
+        commissionPercent: commissionPercent.trim() === "" ? null : Number(commissionPercent),
+        customerDiscountPercent: customerDiscountPercent.trim() === "" ? null : Number(customerDiscountPercent),
+      });
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginBottom: 4 }}>{reseller.fullName}&apos;s rates</h2>
+        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>
+          Leave a field blank to use the global default instead.
+        </p>
+        <div className="row" style={{ marginBottom: 16 }}>
+          <div style={{ flex: 1 }}>
+            <label className="label">Commission (%)</label>
+            <input
+              className="input" type="number" min="1" max="100"
+              placeholder="Global default"
+              value={commissionPercent} onChange={(e) => setCommissionPercent(e.target.value)}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label className="label">Customer discount (%)</label>
+            <input
+              className="input" type="number" min="1" max="100"
+              placeholder="Global default"
+              value={customerDiscountPercent} onChange={(e) => setCustomerDiscountPercent(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button className="btn-outline-dark" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
+        </div>
+        {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+// One partner's promo codes and full commission ledger — "view sales
+// attributed to each partner" + "view/approve/reverse commissions" from
+// the Admin dashboard spec.
+function PartnerSalesModal({ reseller, onClose, onChanged }) {
+  const [data, setData] = useState(null); // { codes, commissions }
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState(null);
+
+  async function load() {
+    try {
+      const d = await api(`/api/admin/resellers?resellerId=${reseller.id}`, "GET");
+      setData(d);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  useEffect(() => { load(); }, []);
+
+  async function act(action, commissionId) {
+    setBusyId(commissionId);
+    setError("");
+    try {
+      await api("/api/admin/resellers", "POST", { action, commissionId });
+      await load();
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    }
+    setBusyId(null);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 720, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginBottom: 4 }}>{reseller.fullName} — sales &amp; commissions</h2>
+        {error && <p className="error" style={{ marginBottom: 10 }}>{error}</p>}
+        {!data && <p className="muted">Loading…</p>}
+        {data && (
+          <>
+            <h3 style={{ fontSize: 14, marginBottom: 8 }}>Promo codes ({data.codes.length})</h3>
+            <div style={{ overflowX: "auto", marginBottom: 20, maxHeight: 180, overflowY: "auto" }}>
+              <table className="table">
+                <thead><tr><th>Code</th><th>Discount</th><th>Status</th><th>Created</th><th>Used</th></tr></thead>
+                <tbody>
+                  {data.codes.length === 0 && <tr><td colSpan={5} className="muted">No codes generated yet.</td></tr>}
+                  {data.codes.map((c) => (
+                    <tr key={c.code}>
+                      <td><code>{c.code}</code></td>
+                      <td>{c.discountPercent}%</td>
+                      <td>{c.used ? "Used" : "Unused"}</td>
+                      <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}</td>
+                      <td>{c.usedAt ? new Date(c.usedAt).toLocaleDateString() : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <h3 style={{ fontSize: 14, marginBottom: 8 }}>Commissions ({data.commissions.length})</h3>
+            <div style={{ overflowX: "auto", maxHeight: 240, overflowY: "auto" }}>
+              <table className="table">
+                <thead><tr><th>Sale</th><th>Comm %</th><th>Commission</th><th>Code</th><th>Status</th><th>Date</th><th></th></tr></thead>
+                <tbody>
+                  {data.commissions.length === 0 && <tr><td colSpan={7} className="muted">No sales yet.</td></tr>}
+                  {data.commissions.map((c) => (
+                    <tr key={c.id}>
+                      <td>{c.currency === "USD" ? "$" : "₹"}{c.saleAmount}</td>
+                      <td>{c.commissionPercent}%</td>
+                      <td>{c.currency === "USD" ? "$" : "₹"}{c.commissionAmount}</td>
+                      <td>{c.promoCode ? <code>{c.promoCode}</code> : "—"}</td>
+                      <td><span className={"status-pill " + statusPillClass(c.status === "paid" || c.status === "approved" ? "approved" : c.status === "reversed" ? "rejected" : "pending")}>{c.status}</span></td>
+                      <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "—"}</td>
+                      <td>
+                        <div className="row" style={{ gap: 6 }}>
+                          {c.status === "pending" && (
+                            <button className="link-btn" disabled={busyId === c.id} onClick={() => act("approveCommission", c.id)}>Approve</button>
+                          )}
+                          {c.status !== "reversed" && (
+                            <button className="link-btn danger" disabled={busyId === c.id} onClick={() => act("reverseCommission", c.id)}>Reverse</button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <h3 style={{ fontSize: 14, margin: "20px 0 8px" }}>Payout history ({data.payouts.length})</h3>
+            <div style={{ overflowX: "auto", maxHeight: 140, overflowY: "auto" }}>
+              <table className="table">
+                <thead><tr><th>Amount</th><th>Date</th></tr></thead>
+                <tbody>
+                  {data.payouts.length === 0 && <tr><td colSpan={2} className="muted">No payouts recorded yet.</td></tr>}
+                  {data.payouts.map((p) => (
+                    <tr key={p.id}>
+                      <td>{money(p.amount)}</td>
+                      <td>{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+          <button className="btn-outline-dark" onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   );
 }

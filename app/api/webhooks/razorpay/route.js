@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { razorpay } from "@/lib/razorpay";
+import { resolvePartnerRates } from "@/lib/referral";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
@@ -99,23 +100,23 @@ async function decrementOfferCycles(sub) {
 // writes it, so a redelivered webhook (or the customer resubscribing
 // later) can't double-credit. Writes one entry to resellerCommissions as
 // an audit trail — Super Admin's Partners tab reads that to mark payouts.
-async function creditResellerCommission({ uid, resellerId, saleAmount, subscriptionId }) {
+async function creditResellerCommission({ uid, resellerId, saleAmount, subscriptionId, promoCode }) {
   if (!uid || !resellerId || !saleAmount) return;
   const custRef = adminDb().doc("customers/" + uid);
   const resellerRef = adminDb().doc("resellers/" + resellerId);
-  const settingsRef = adminDb().doc("portalSettings/config");
+
+  // Reads outside the transaction — resolvePartnerRates does its own two
+  // reads (resellers/{id} + portalSettings/config) and isn't itself
+  // transactional, but the actual credit below still is, so a redelivered
+  // webhook can't double-credit even if this part re-runs.
+  const { commissionPercent } = await resolvePartnerRates(resellerId);
 
   try {
     await adminDb().runTransaction(async (tx) => {
-      const [custSnap, resellerSnap, settingsSnap] = await Promise.all([
-        tx.get(custRef),
-        tx.get(resellerRef),
-        tx.get(settingsRef),
-      ]);
+      const [custSnap, resellerSnap] = await Promise.all([tx.get(custRef), tx.get(resellerRef)]);
       if (!custSnap.exists || custSnap.data().referralCommissionPaid) return;
       if (!resellerSnap.exists) return;
 
-      const commissionPercent = Number((settingsSnap.exists ? settingsSnap.data() : {}).resellerCommissionPercent ?? 20);
       const commissionAmount = Math.round(Number(saleAmount) * (commissionPercent / 100));
 
       tx.set(custRef, { referralCommissionPaid: true }, { merge: true });
@@ -132,6 +133,7 @@ async function creditResellerCommission({ uid, resellerId, saleAmount, subscript
         resellerId,
         referredUid: uid,
         subscriptionId,
+        promoCode: promoCode || null,
         gateway: "razorpay",
         currency: "INR",
         saleAmount,
@@ -143,6 +145,25 @@ async function creditResellerCommission({ uid, resellerId, saleAmount, subscript
     });
   } catch (e) {
     console.error("creditResellerCommission failed:", e);
+  }
+}
+
+// Marks a one-time Sales Partner promo code (see lib/referral.js's
+// generatePromoCode) used, exactly once — idempotent the same way
+// creditResellerCommission is, via a transaction that checks `used`
+// first, so a redelivered webhook can't flip it twice or overwrite who
+// actually redeemed it.
+async function markPromoCodeUsed(promoCode, uid, subscriptionId) {
+  if (!promoCode) return;
+  const ref = adminDb().doc("promoCodes/" + promoCode);
+  try {
+    await adminDb().runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists || snap.data().used) return;
+      tx.set(ref, { used: true, usedAt: FieldValue.serverTimestamp(), usedByUid: uid, subscriptionId }, { merge: true });
+    });
+  } catch (e) {
+    console.error("markPromoCodeUsed failed:", e);
   }
 }
 
@@ -217,7 +238,11 @@ export async function POST(req) {
                 resellerId: sub.notes.resellerId,
                 saleAmount: paymentAmountPaise / 100,
                 subscriptionId: sub.id,
+                promoCode: sub.notes.promoCode || null,
               });
+            }
+            if (sub?.notes?.promoCode) {
+              await markPromoCodeUsed(sub.notes.promoCode, uid, sub.id);
             }
           }
         }

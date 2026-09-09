@@ -11,14 +11,53 @@ export const dynamic = "force-dynamic";
 // and handles approve/reject/suspend + marking a reseller's accumulated
 // commission as paid out. The actual money transfer (bank/UPI) happens
 // outside this app — see the "markPaid" action below for why.
+function toIso(ts) {
+  if (!ts) return null;
+  return typeof ts.toDate === "function" ? ts.toDate().toISOString() : ts;
+}
+
 export async function GET(req) {
   try {
     await requireSuperAdmin(req);
-    const [resellersSnap, settingsSnap] = await Promise.all([
+    const url = new URL(req.url);
+    const resellerIdParam = url.searchParams.get("resellerId");
+
+    // Detail mode: one partner's promo codes + full commission ledger, for
+    // the "view sales / approve / reverse commissions" drill-down — not
+    // fetched for every row in the bulk list below (would be an N+1 read
+    // per partner otherwise).
+    if (resellerIdParam) {
+      const [codesSnap, commissionsSnap, payoutsSnap] = await Promise.all([
+        adminDb().collection("promoCodes").where("resellerId", "==", resellerIdParam).orderBy("createdAt", "desc").get(),
+        adminDb().collection("resellerCommissions").where("resellerId", "==", resellerIdParam).orderBy("createdAt", "desc").get(),
+        adminDb().collection("resellerPayouts").where("resellerId", "==", resellerIdParam).orderBy("createdAt", "desc").get(),
+      ]);
+      const codes = codesSnap.docs.map((d) => ({ code: d.id, ...d.data(), createdAt: toIso(d.data().createdAt), usedAt: toIso(d.data().usedAt) }));
+      const commissions = commissionsSnap.docs.map((d) => ({ id: d.id, ...d.data(), createdAt: toIso(d.data().createdAt), paidAt: toIso(d.data().paidAt) }));
+      const payouts = payoutsSnap.docs.map((d) => ({ id: d.id, ...d.data(), createdAt: toIso(d.data().createdAt) }));
+      return NextResponse.json({ codes, commissions, payouts });
+    }
+
+    const [resellersSnap, settingsSnap, allCodesSnap] = await Promise.all([
       adminDb().collection("resellers").orderBy("createdAt", "desc").get(),
       adminDb().doc("portalSettings/config").get(),
+      adminDb().collection("promoCodes").get(),
     ]);
-    const resellers = resellersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // Codes-generated/used counts per partner, computed here rather than
+    // with a separate query per row.
+    const codeCounts = {};
+    allCodesSnap.docs.forEach((d) => {
+      const data = d.data();
+      const bucket = codeCounts[data.resellerId] || (codeCounts[data.resellerId] = { generated: 0, used: 0 });
+      bucket.generated += 1;
+      if (data.used) bucket.used += 1;
+    });
+    const resellers = resellersSnap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+      codesGenerated: codeCounts[d.id]?.generated || 0,
+      codesUsed: codeCounts[d.id]?.used || 0,
+    }));
     const settings = settingsSnap.exists ? settingsSnap.data() : {};
     return NextResponse.json({
       resellers,
@@ -99,18 +138,107 @@ export async function POST(req) {
         tx.set(ref, { pendingPayout: 0, paidOut: FieldValue.increment(paidAmount) }, { merge: true });
       });
 
-      const pendingCommissions = await adminDb()
+      // Both "pending" and "approved" — approving a commission (see
+      // "approveCommission" below) is a record-keeping step, not a
+      // separate payout queue, so either status still owes this payout.
+      const owedCommissions = await adminDb()
         .collection("resellerCommissions")
         .where("resellerId", "==", id)
-        .where("status", "==", "pending")
+        .where("status", "in", ["pending", "approved"])
         .get();
       const batch = adminDb().batch();
-      pendingCommissions.docs.forEach((d) => {
+      owedCommissions.docs.forEach((d) => {
         batch.set(d.ref, { status: "paid", paidAt: FieldValue.serverTimestamp() }, { merge: true });
       });
-      if (!pendingCommissions.empty) await batch.commit();
+      if (!owedCommissions.empty) await batch.commit();
+
+      await adminDb().collection("resellerPayouts").add({
+        resellerId: id,
+        amount: paidAmount,
+        createdAt: FieldValue.serverTimestamp(),
+      });
 
       return NextResponse.json({ ok: true, paidAmount });
+    }
+
+    // Per-partner override of the two global percentages — either field
+    // can be sent as null to clear that partner's override and fall back
+    // to the global default again (see resolvePartnerRates in
+    // lib/referral.js, which every promo-code generation and commission
+    // credit already reads through instead of the global setting alone).
+    if (action === "setPartnerRates") {
+      if (!id) throw { status: 400, message: "Reseller id required" };
+      const ref = adminDb().doc("resellers/" + id);
+      const snap = await ref.get();
+      if (!snap.exists) throw { status: 404, message: "Reseller not found" };
+
+      const update = {};
+      if (body.commissionPercent === null) {
+        update.commissionPercent = FieldValue.delete();
+      } else if (body.commissionPercent !== undefined) {
+        const n = Number(body.commissionPercent);
+        if (!Number.isFinite(n) || n <= 0 || n > 100) throw { status: 400, message: "Commission must be a percent between 1 and 100" };
+        update.commissionPercent = n;
+      }
+      if (body.customerDiscountPercent === null) {
+        update.customerDiscountPercent = FieldValue.delete();
+      } else if (body.customerDiscountPercent !== undefined) {
+        const n = Number(body.customerDiscountPercent);
+        if (!Number.isFinite(n) || n <= 0 || n > 100) throw { status: 400, message: "Discount must be a percent between 1 and 100" };
+        update.customerDiscountPercent = n;
+      }
+      if (Object.keys(update).length === 0) throw { status: 400, message: "Nothing to save" };
+      await ref.set(update, { merge: true });
+      return NextResponse.json({ ok: true });
+    }
+
+    // Record-keeping only — flags a commission entry as reviewed and
+    // confirmed legitimate. Doesn't move any balance (it was already
+    // credited to pendingPayout at payment time — see creditResellerCommission
+    // in the webhook handlers); "reverse" below is the one that claws money
+    // back out.
+    if (action === "approveCommission") {
+      const commissionId = String(body.commissionId || "");
+      if (!commissionId) throw { status: 400, message: "Commission id required" };
+      const ref = adminDb().doc("resellerCommissions/" + commissionId);
+      const snap = await ref.get();
+      if (!snap.exists) throw { status: 404, message: "Commission entry not found" };
+      if (snap.data().status !== "pending") throw { status: 400, message: "Only a pending commission can be approved" };
+      await ref.set({ status: "approved", approvedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return NextResponse.json({ ok: true });
+    }
+
+    // Claws back a commission — e.g. the underlying subscription was
+    // refunded/charged-back after the commission was already credited.
+    // Subtracts it back out of the partner's totalEarnings/pendingPayout
+    // (only out of pendingPayout if it hasn't already been paid out — a
+    // reversal after payout just goes negative on paper here, matching
+    // "reverse" being a manual, judgment-call action rather than something
+    // this route tries to silently reconcile against a real payout).
+    if (action === "reverseCommission") {
+      const commissionId = String(body.commissionId || "");
+      if (!commissionId) throw { status: 400, message: "Commission id required" };
+      const ref = adminDb().doc("resellerCommissions/" + commissionId);
+
+      await adminDb().runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw { status: 404, message: "Commission entry not found" };
+        const commission = snap.data();
+        if (commission.status === "reversed") throw { status: 400, message: "Already reversed" };
+
+        const resellerRef = adminDb().doc("resellers/" + commission.resellerId);
+        tx.set(
+          resellerRef,
+          {
+            totalEarnings: FieldValue.increment(-commission.commissionAmount),
+            pendingPayout: FieldValue.increment(-commission.commissionAmount),
+          },
+          { merge: true }
+        );
+        tx.set(ref, { status: "reversed", reversedAt: FieldValue.serverTimestamp() }, { merge: true });
+      });
+
+      return NextResponse.json({ ok: true });
     }
 
     if (action === "saveSettings") {

@@ -61,7 +61,13 @@ async function resolveOfferForCheckout({ code, planId, plan, gateway, requester 
   }
 
   const cyclesRemaining = resolved.duration === "once" ? 1 : resolved.duration === "cycles" ? resolved.cyclesCount : null;
-  return { code: resolved.code, discountedPlanId, cyclesRemaining, resellerId: resolved.resellerId || null };
+  return {
+    code: resolved.code,
+    kind: resolved.kind,
+    discountedPlanId,
+    cyclesRemaining,
+    resellerId: resolved.resellerId || null,
+  };
 }
 
 export async function POST(req) {
@@ -122,7 +128,18 @@ export async function POST(req) {
 
       const notes = { uid: c.uid, planId, planName: plan.name };
       if (offerResult) {
+        // offerCode is set for every kind (offer/referral/promo) — the
+        // webhooks' decrementOfferCycles uses its mere presence (not what
+        // collection it's a key into) to know a discounted-cycle
+        // subscription needs reverting to full price once cyclesRemaining
+        // hits 0, for all three kinds alike. recordOfferRedemption, which
+        // DOES look it up in the offers/ collection specifically, already
+        // no-ops harmlessly for a referral/promo code (no matching doc).
+        // promoCode is a second, separate marker used only to mark a
+        // one-time Partner code "used" (markPromoCodeUsed) once payment
+        // succeeds — referral/offer codes don't need that at all.
         notes.offerCode = offerResult.code;
+        if (offerResult.kind === "promo") notes.promoCode = offerResult.code;
         if (offerResult.resellerId) notes.resellerId = offerResult.resellerId;
         if (offerResult.cyclesRemaining !== null) {
           notes.offerCyclesRemaining = String(offerResult.cyclesRemaining);
@@ -171,7 +188,10 @@ export async function POST(req) {
 
     const metadata = { uid: c.uid, planId, planName: plan.name };
     if (offerResult) {
+      // See the matching Razorpay branch above for why offerCode is set
+      // for every kind while promoCode is a separate, promo-only marker.
       metadata.offerCode = offerResult.code;
+      if (offerResult.kind === "promo") metadata.promoCode = offerResult.code;
       if (offerResult.resellerId) metadata.resellerId = offerResult.resellerId;
       if (offerResult.cyclesRemaining !== null) {
         metadata.offerCyclesRemaining = String(offerResult.cyclesRemaining);
