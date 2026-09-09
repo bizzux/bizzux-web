@@ -1,0 +1,17 @@
+{
+  "indexes": [
+    { "collectionGroup": "promoCodes", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "resellerId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "resellerCommissions", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "resellerId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "resellerPayouts", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "resellerId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ] }
+  ],
+  "fieldOverrides": []
+}
