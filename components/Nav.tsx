@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMe } from "@/lib/useMe";
+import { roleLabel } from "@/lib/roleLabel";
 
 // "All apps" sits first, right next to the logo, on every page. The rest
 // are the marketing tabs, always shown, signed in or not, so the menu bar
@@ -56,6 +57,10 @@ export default function Nav() {
   const { user, me } = useMe();
   const isSuper = me?.superAdmin === true;
   const signedIn = !!user;
+  // Same "who am I" wording used on Profile/Dashboard/Team's AccountTabs
+  // badge (see lib/roleLabel.js) — repeated here so it's visible on every
+  // page, not just those three, since Nav itself isn't in a shared layout.
+  const myRoleLabel = isSuper ? "Platform " + (me?.platformRole === "OWNER" ? "Owner" : "Admin") : roleLabel(me);
 
   return (
     <header className="border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-50">
@@ -77,6 +82,14 @@ export default function Nav() {
         </nav>
         <div className="flex-1" />
         <div className="flex items-center gap-3 shrink-0">
+          {signedIn && myRoleLabel && (
+            <span
+              className="hidden sm:inline text-[11px] font-semibold text-brand-blue bg-blue-50 rounded-full px-3 py-1 whitespace-nowrap"
+              title={user?.email || ""}
+            >
+              {myRoleLabel}
+            </span>
+          )}
           <div className="hidden sm:block">
             {signedIn ? (
               <NavLink href="/dashboard">Profile</NavLink>
