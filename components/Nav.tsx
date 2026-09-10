@@ -87,11 +87,12 @@ export default function Nav() {
           <Image src="/logo-transparent.png" alt="Bizzux" width={132} height={54} priority className="h-9 w-auto -translate-y-1.5" />
         </Link>
         <nav className="hidden lg:flex items-center gap-6">
-          {links.map((l) => (
-            <NavLink key={l.href} href={l.href}>
-              {l.label}
-            </NavLink>
-          ))}
+          {!isSuper &&
+            links.map((l) => (
+              <NavLink key={l.href} href={l.href}>
+                {l.label}
+              </NavLink>
+            ))}
         </nav>
         <div className="flex-1" />
         <div className="hidden lg:flex items-center gap-3 shrink-0">
@@ -104,23 +105,27 @@ export default function Nav() {
             </span>
           )}
           {signedIn ? <NavLink href="/dashboard">Profile</NavLink> : <NavLink href="/sign-in">Sign in / Sign up</NavLink>}
-          {signedIn ? (
-            <Link
-              href="/contact"
-              className="inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
-              style={{ color: "#ffffff" }}
-            >
-              Book a demo
-            </Link>
-          ) : (
-            <Link
-              href="/sign-in?mode=signup"
-              className="inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
-              style={{ color: "#ffffff" }}
-            >
-              Start Free Trial
-            </Link>
-          )}
+          {/* "Book a demo" / "Start Free Trial" are customer-acquisition
+              CTAs — hidden for a signed-in Platform Admin/Owner, who's
+              internal staff running the company, not a prospect. */}
+          {!isSuper &&
+            (signedIn ? (
+              <Link
+                href="/contact"
+                className="inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
+                style={{ color: "#ffffff" }}
+              >
+                Book a demo
+              </Link>
+            ) : (
+              <Link
+                href="/sign-in?mode=signup"
+                className="inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
+                style={{ color: "#ffffff" }}
+              >
+                Start Free Trial
+              </Link>
+            ))}
           {signedIn && isSuper && (
             <Link
               href="/admin"
@@ -173,11 +178,12 @@ export default function Nav() {
           )}
 
           <nav className="flex flex-col mb-3">
-            {links.map((l) => (
-              <Link key={l.href} href={l.href} onClick={closeMenu} className="py-2.5 text-sm font-medium text-ink border-b border-slate-50 last:border-0">
-                {l.label}
-              </Link>
-            ))}
+            {!isSuper &&
+              links.map((l) => (
+                <Link key={l.href} href={l.href} onClick={closeMenu} className="py-2.5 text-sm font-medium text-ink border-b border-slate-50 last:border-0">
+                  {l.label}
+                </Link>
+              ))}
           </nav>
 
           <div className="flex flex-col gap-2.5">
@@ -185,14 +191,16 @@ export default function Nav() {
               <>
                 <Link href="/dashboard" onClick={closeMenu} className="py-1 text-sm font-medium text-ink">Profile</Link>
                 {isSuper && <Link href="/admin" onClick={closeMenu} className="py-1 text-sm font-medium text-ink">Super Admin</Link>}
-                <Link
-                  href="/contact"
-                  onClick={closeMenu}
-                  className="h-10 inline-flex items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold"
-                  style={{ color: "#ffffff" }}
-                >
-                  Book a demo
-                </Link>
+                {!isSuper && (
+                  <Link
+                    href="/contact"
+                    onClick={closeMenu}
+                    className="h-10 inline-flex items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold"
+                    style={{ color: "#ffffff" }}
+                  >
+                    Book a demo
+                  </Link>
+                )}
                 <button
                   onClick={() => { closeMenu(); signOut(auth); }}
                   className="h-10 text-sm font-medium text-black bg-slate-200 hover:bg-slate-300 rounded-full transition-colors"

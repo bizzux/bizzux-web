@@ -32,13 +32,30 @@ function customerType(data) {
 // below (would be an N+1 read per customer otherwise).
 async function loadOrgAdmins(accountId, ownerEmail) {
   const teamSnap = await adminDb().collection("customers/" + accountId + "/team").get();
-  const admins = [{ email: ownerEmail, profile: "Admin", role: "Organization Owner", isOwner: true }];
+  const admins = [{ email: ownerEmail, profile: "Admin", role: "Organization Owner", isOwner: true, uid: accountId }];
   teamSnap.docs.forEach((d) => {
     const t = d.data();
     if (ACCOUNT_ADMIN_PROFILES.includes(t.profile) && t.status === "active") {
-      admins.push({ email: t.email, profile: t.profile, role: "Organization Admin", isOwner: false });
+      admins.push({ email: t.email, profile: t.profile, role: "Organization Admin", isOwner: false, uid: t.uid || null });
     }
   });
+
+  // Each admin/manager is their own Firebase Auth user with their own
+  // metadata.lastSignInTime — looked up individually here (only fetched on
+  // demand, for one org at a time) rather than in the bulk list below,
+  // which uses the same field but batched for every customer at once.
+  await Promise.all(
+    admins.map(async (a) => {
+      if (!a.uid) { a.lastLoginAt = null; return; } // invited but hasn't accepted/signed in yet
+      try {
+        const u = await adminAuth().getUser(a.uid);
+        a.lastLoginAt = u.metadata.lastSignInTime ? new Date(u.metadata.lastSignInTime).toISOString() : null;
+      } catch {
+        a.lastLoginAt = null;
+      }
+    })
+  );
+
   return admins;
 }
 
@@ -56,6 +73,27 @@ export async function GET(req) {
     }
 
     const snap = await adminDb().collection("customers").get();
+
+    // Firebase Auth already tracks every user's own last successful
+    // sign-in (metadata.lastSignInTime) — reused here instead of a
+    // separate write-on-login mechanism. This is the account OWNER's own
+    // login only; a manager/team member's last login is a separate person
+    // with their own uid, shown in the "View admins" modal instead (see
+    // loadOrgAdmins below) rather than fetched for every row here.
+    // getUsers() caps out at 100 identifiers per call.
+    const lastLoginByUid = new Map();
+    const uids = snap.docs.map((d) => d.id);
+    for (let i = 0; i < uids.length; i += 100) {
+      try {
+        const result = await adminAuth().getUsers(uids.slice(i, i + 100).map((uid) => ({ uid })));
+        result.users.forEach((u) => {
+          if (u.metadata.lastSignInTime) lastLoginByUid.set(u.uid, new Date(u.metadata.lastSignInTime).toISOString());
+        });
+      } catch {
+        // Best-effort — a failed chunk just leaves those rows' lastLoginAt null.
+      }
+    }
+
     const customers = snap.docs.map((d) => {
       const data = d.data();
       // Prefer the country Vercel's edge saw at signup (accurate for every
@@ -76,6 +114,7 @@ export async function GET(req) {
         planName: data.planName || null,
         createdAt: toIso(data.createdAt),
         trialEndDate: toIso(data.trialEndDate),
+        lastLoginAt: lastLoginByUid.get(d.id) || null,
         // { juicechatjunction: "2026-..." , notes: "2026-..." , ... } — every
         // key that's ever had an SSO hand-off minted for it (see
         // appUsage.<key> stamps in app-sso/route.js and shop-sso/route.js).

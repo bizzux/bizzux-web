@@ -1,5 +1,6 @@
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import FeaturedAppsGrid from "@/components/FeaturedAppsGrid";
+import SuperAdminHomeRedirect from "@/components/SuperAdminHomeRedirect";
 import {
   IconPOS,
   IconLayers, IconSpark, IconCloud, IconShield, IconCheck,
@@ -47,6 +48,7 @@ const secureItems = [
 export default function Home() {
   return (
     <>
+      <SuperAdminHomeRedirect />
       {/* Hero */}
       <section className="relative overflow-hidden bg-navy">
         <div className="absolute inset-0 opacity-40" style={{

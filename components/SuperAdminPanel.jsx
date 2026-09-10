@@ -1370,7 +1370,7 @@ function CustomersList() {
             <thead>
               <tr>
                 <th>Organization</th><th>Owner</th><th>Email</th><th>Mobile</th><th>Country</th>
-                <th>Signed up</th><th>Status</th><th>Type</th><th>Plan</th><th>Apps used</th><th>Trial ends</th><th></th>
+                <th>Signed up</th><th>Last login</th><th>Status</th><th>Type</th><th>Plan</th><th>Apps used</th><th>Trial ends</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -1384,6 +1384,7 @@ function CustomersList() {
                   <td>{c.phone || "N/A"}</td>
                   <td title={c.city || ""}>{c.country || "N/A"}</td>
                   <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}</td>
+                  <td title={c.lastLoginAt ? new Date(c.lastLoginAt).toLocaleString() : ""}>{timeAgo(c.lastLoginAt)}</td>
                   <td><span className={"status-pill " + (c.status === "suspended" ? "expired" : c.status || "trial")}>{c.status || "trial"}</span></td>
                   <td>{c.customerType}</td>
                   <td>{c.planName || "N/A"}</td>
@@ -1477,9 +1478,14 @@ function OrgAdminsModal({ customer, onClose }) {
         {error && <p className="error">{error}</p>}
         {!error && admins === null && <p className="muted">Loading…</p>}
         {admins && admins.map((a, i) => (
-          <div key={i} className="row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
-            <span style={{ fontSize: 13.5 }}>{a.email}</span>
-            <span className="status-pill active">{a.role}</span>
+          <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13.5 }}>{a.email}</span>
+              <span className="status-pill active">{a.role}</span>
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }} title={a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : ""}>
+              Last login: {timeAgo(a.lastLoginAt)}
+            </div>
           </div>
         ))}
         <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
@@ -1647,6 +1653,26 @@ function statusPillClass(status) {
 
 function money(n) {
   return `₹${Number(n || 0).toLocaleString("en-IN")}`;
+}
+
+// "3 days ago" / "2 months ago" — used for Last login, which matters more
+// as a consumption signal (is this account actually being used?) than the
+// exact timestamp, hence the relative phrasing with the real date only on
+// hover (see the `title` attribute wherever this is rendered).
+function timeAgo(iso) {
+  if (!iso) return "Never logged in";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins} min${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
 }
 
 // Super Admin -> Partners. The two percentages at the top (app/api/admin/
