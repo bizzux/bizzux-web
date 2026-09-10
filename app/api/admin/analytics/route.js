@@ -5,9 +5,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Normalizes any billing period to a monthly figure so plans on different
-// cycles (day/week/month/year) can be summed into one MRR number.
-function monthlyPrice(plan) {
+// cycles (day/week/month/year) can be summed into one MRR number. Every
+// plan doc itself is still priced monthly (billingPeriod stays "month") —
+// annual subscribers are tracked via the customer's own billingCycle (see
+// app/api/checkout/route.js and the webhook handlers), so their real
+// yearly price (plan.annualPrice, already net of the admin's annual
+// discount) is what gets divided by 12 here, not the monthly rate.
+function monthlyPrice(plan, billingCycle) {
   if (!plan) return 0;
+  if (billingCycle === "year") {
+    const annual = Number(plan.annualPrice) || Number(plan.price) * 12 || 0;
+    return annual / 12;
+  }
   const price = Number(plan.price) || 0;
   switch (plan.billingPeriod) {
     case "year":
@@ -78,7 +87,7 @@ export async function GET(req) {
         const plan = planById.get(c.planId);
         const name = c.planName || plan?.name || "Unknown plan";
         const entry = byPlan.get(c.planId) || { planId: c.planId, name, activeCount: 0, monthlyRevenue: 0 };
-        const monthly = monthlyPrice(plan);
+        const monthly = monthlyPrice(plan, c.billingCycle);
         entry.activeCount += 1;
         entry.monthlyRevenue += monthly;
         mrr += monthly;

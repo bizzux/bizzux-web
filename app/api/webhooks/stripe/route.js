@@ -187,6 +187,7 @@ export async function POST(req) {
               stripeCustomerId: session.customer || null,
               planId: session.metadata?.planId || null,
               planName: session.metadata?.planName || null,
+              billingCycle: session.metadata?.billingCycle === "year" ? "year" : "month",
               updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }

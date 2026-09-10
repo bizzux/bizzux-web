@@ -204,6 +204,7 @@ export async function POST(req) {
               subscriptionId: sub.id,
               planId: sub.notes?.planId || null,
               planName: sub.notes?.planName || null,
+              billingCycle: sub.notes?.billingCycle === "year" ? "year" : "month",
               currentPeriodEnd: sub.current_end ? new Date(sub.current_end * 1000) : null,
               updatedAt: FieldValue.serverTimestamp(),
             },

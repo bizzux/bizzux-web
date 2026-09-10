@@ -17,6 +17,7 @@ type Plan = {
   price: number;
   strikePrice?: number | null;
   billingPeriod?: string;
+  annualPrice?: number;
   description?: string;
   features?: string[];
   popular?: boolean;
@@ -87,6 +88,7 @@ function offerValue(o: ActiveOffer, plans: Plan[] | null) {
 export default function PricingPlans() {
   const router = useRouter();
   const [currency, setCurrency] = useState<"INR" | "USD">("INR");
+  const [billingCycle, setBillingCycle] = useState<"month" | "year">("month");
   const [plans, setPlans] = useState<Plan[] | null>(null); // null = loading
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [pickingId, setPickingId] = useState<string | null>(null);
@@ -132,6 +134,17 @@ export default function PricingPlans() {
   useEffect(() => {
     setTopBannerTarget(document.getElementById("pricing-top-banner"));
   }, []);
+
+  // Promo codes only apply to monthly billing for now (annual pricing is
+  // already a discount off the monthly rate) — clear any applied code when
+  // switching to Annual so a stale discount preview can't linger.
+  useEffect(() => {
+    if (billingCycle === "year") {
+      setCouponCode(null);
+      setCouponResults(null);
+      setCouponMsg(null);
+    }
+  }, [billingCycle]);
 
   useEffect(() => {
     (async () => {
@@ -273,7 +286,7 @@ export default function PricingPlans() {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ planId, gateway, couponCode: appliesHere ? couponCode : undefined }),
+        body: JSON.stringify({ planId, gateway, billingCycle, couponCode: billingCycle === "month" && appliesHere ? couponCode : undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't start checkout. Please try again.");
@@ -385,7 +398,7 @@ export default function PricingPlans() {
     <div>
       {topBannerContent && (topBannerTarget ? createPortal(topBannerContent, topBannerTarget) : topBannerContent)}
 
-      <div className="flex justify-center mb-4">
+      <div className="flex flex-wrap justify-center items-center gap-3 mb-4">
         <div className="inline-flex rounded-full border border-slate-200 p-1 bg-white">
           {(["INR", "USD"] as const).map((c) => (
             <button
@@ -399,10 +412,29 @@ export default function PricingPlans() {
             </button>
           ))}
         </div>
+        <div className="inline-flex rounded-full border border-slate-200 p-1 bg-white">
+          {([
+            { key: "month" as const, label: "Monthly" },
+            { key: "year" as const, label: "Annual" },
+          ]).map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setBillingCycle(opt.key)}
+              className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${
+                billingCycle === opt.key ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white" : "text-slate-600 hover:text-ink"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-col items-center gap-3 mb-10">
-        <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-md">
+        {billingCycle === "year" && (
+          <p className="text-xs text-slate-400">Promo codes apply to monthly billing only.</p>
+        )}
+        <div className={`flex flex-wrap items-center justify-center gap-3 w-full max-w-md ${billingCycle === "year" ? "hidden" : ""}`}>
           <div className="relative flex-1 min-w-[180px]">
             <input
               type="text"
@@ -507,7 +539,19 @@ export default function PricingPlans() {
               </div>
             )}
             <h3 className="font-semibold text-lg mb-1">{p.name}</h3>
-            {couponResults?.[p.id]?.valid ? (
+            {billingCycle === "year" ? (
+              <div className="mb-3">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-extrabold">{formatPrice(p.annualPrice ?? p.price * 12, currency)}</span>
+                  <span className="text-slate-500 text-sm">/year</span>
+                </div>
+                {typeof p.annualPrice === "number" && p.annualPrice < p.price * 12 && (
+                  <span className="inline-block mt-1 text-xs font-semibold text-brand-teal">
+                    Save {formatPrice(p.price * 12 - p.annualPrice, currency)} a year vs. paying monthly
+                  </span>
+                )}
+              </div>
+            ) : couponResults?.[p.id]?.valid ? (
               <div className="mb-3">
                 <div className="flex items-baseline gap-2">
                   <span className="text-xl font-bold text-[#FF4D00] line-through decoration-2">{formatPrice(p.price, currency)}</span>

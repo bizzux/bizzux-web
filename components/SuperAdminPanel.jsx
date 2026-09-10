@@ -460,7 +460,7 @@ function TrialSettings() {
   );
 }
 
-const emptyPlan = { name: "", price: "", billingPeriod: "month", description: "", features: "", popular: false, active: true, sortOrder: 0, razorpayPlanId: "", stripePriceId: "", strikePrice: "" };
+const emptyPlan = { name: "", price: "", billingPeriod: "month", description: "", features: "", popular: false, active: true, sortOrder: 0, razorpayPlanId: "", stripePriceId: "", strikePrice: "", annualDiscountType: "percent", annualDiscountValue: "" };
 
 function PlansManager() {
   const [plans, setPlans] = useState(null);
@@ -493,6 +493,8 @@ function PlansManager() {
       popular: !!p.popular, active: p.active !== false, sortOrder: p.sortOrder ?? 0,
       razorpayPlanId: p.razorpayPlanId || "", stripePriceId: p.stripePriceId || "",
       strikePrice: p.strikePrice ?? "",
+      annualDiscountType: p.annualDiscountType || "percent",
+      annualDiscountValue: p.annualDiscountValue ?? "",
     });
     setOriginalPricing({ price: p.price ?? "", billingPeriod: p.billingPeriod || "month" });
   }
@@ -518,6 +520,8 @@ function PlansManager() {
         sortOrder: Number(form.sortOrder) || 0,
         features: form.features.split(",").map((s) => s.trim()).filter(Boolean),
         strikePrice: form.strikePrice === "" ? null : Number(form.strikePrice),
+        annualDiscountType: form.annualDiscountType,
+        annualDiscountValue: form.annualDiscountValue === "" ? 0 : Number(form.annualDiscountValue),
         // No razorpayPlanId/stripePriceId here on purpose — the API
         // auto-creates (or reuses) both from name/price/billingPeriod. See
         // app/api/admin/plans/route.js's resolveGatewayIds().
@@ -594,6 +598,41 @@ function PlansManager() {
             </p>
           </div>
           <div style={{ marginBottom: 12 }}>
+            <label className="label">Annual discount (off 12x the monthly price above)</label>
+            <div className="row">
+              <select
+                className="input" style={{ flex: 1 }}
+                value={form.annualDiscountType}
+                onChange={(e) => setForm({ ...form, annualDiscountType: e.target.value })}
+              >
+                <option value="percent">% off</option>
+                <option value="amount">₹ off</option>
+              </select>
+              <input
+                className="input" style={{ flex: 1 }} type="number" min="0" placeholder="e.g. 15"
+                value={form.annualDiscountValue} onChange={(e) => setForm({ ...form, annualDiscountValue: e.target.value })}
+              />
+            </div>
+            {(() => {
+              const monthly = Number(form.price) || 0;
+              const base = monthly * 12;
+              const discountValue = Number(form.annualDiscountValue) || 0;
+              const annual =
+                form.annualDiscountType === "amount"
+                  ? Math.max(0, Math.round(base - discountValue))
+                  : Math.max(0, Math.round(base * (1 - discountValue / 100)));
+              const savings = base - annual;
+              const savingsPct = base > 0 ? Math.round((savings / base) * 100) : 0;
+              return (
+                <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                  {monthly > 0
+                    ? `₹${base.toLocaleString("en-IN")}/year → ₹${annual.toLocaleString("en-IN")}/year — customer saves ₹${savings.toLocaleString("en-IN")} (${savingsPct}%). Most SaaS apps offer 15–20% off (roughly 2 months free) for annual billing.`
+                    : "Enter the monthly price above to see the annual price preview."}
+                </p>
+              );
+            })()}
+          </div>
+          <div style={{ marginBottom: 12 }}>
             <label className="label">Description</label>
             <input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
@@ -655,6 +694,11 @@ function PlansManager() {
                 Stripe {p.stripePriceId ? "✓" : "not set up yet"}
               </span>
             </div>
+            {p.annualPrice > 0 && (
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                Annual: ₹{p.annualPrice.toLocaleString("en-IN")}/year ({p.annualDiscountValue || 0}{p.annualDiscountType === "amount" ? "₹" : "%"} off ₹{(p.price * 12).toLocaleString("en-IN")})
+              </div>
+            )}
             <div className="row" style={{ marginTop: 6 }}>
               <button className="link-btn" onClick={() => edit(p)}>Edit</button>
               <button className="link-btn danger" onClick={() => remove(p.id)}>Delete</button>

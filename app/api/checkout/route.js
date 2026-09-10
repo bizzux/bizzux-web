@@ -73,11 +73,12 @@ async function resolveOfferForCheckout({ code, planId, plan, gateway, requester 
 export async function POST(req) {
   try {
     const c = await requireUser(req);
-    const { planId, gateway, couponCode } = await req.json();
+    const { planId, gateway, couponCode, billingCycle } = await req.json();
     if (!planId) throw { status: 400, message: "Plan id required" };
     if (gateway !== "razorpay" && gateway !== "stripe") {
       throw { status: 400, message: "Unknown payment gateway" };
     }
+    const annual = billingCycle === "year";
 
     const planSnap = await adminDb().doc("plans/" + planId).get();
     if (!planSnap.exists || planSnap.data().active === false) {
@@ -89,8 +90,11 @@ export async function POST(req) {
     const custSnap = await custRef.get();
     const customer = custSnap.exists ? custSnap.data() : {};
 
+    // Promo/referral codes are a discount off the monthly plan only —
+    // annual pricing is already its own discount (see Admin → Plans), so
+    // stacking the two is skipped rather than designed for right now.
     let offerResult = null;
-    if (couponCode && String(couponCode).trim()) {
+    if (!annual && couponCode && String(couponCode).trim()) {
       offerResult = await resolveOfferForCheckout({
         code: couponCode, planId, plan, gateway,
         requester: { uid: c.uid, paymentCount: customer.paymentCount || 0 },
@@ -98,11 +102,15 @@ export async function POST(req) {
     }
 
     if (gateway === "razorpay") {
-      const razorpayPlanId = offerResult ? offerResult.discountedPlanId : plan.razorpayPlanId;
+      const razorpayPlanId = annual
+        ? plan.annualRazorpayPlanId
+        : offerResult ? offerResult.discountedPlanId : plan.razorpayPlanId;
       if (!razorpayPlanId) {
         throw {
           status: 400,
-          message: `Razorpay isn't set up for the ${plan.name} plan yet. Add its Razorpay Plan ID in Admin → Plans.`,
+          message: annual
+            ? `Annual billing isn't set up for the ${plan.name} plan yet. Add an annual discount in Admin → Plans.`
+            : `Razorpay isn't set up for the ${plan.name} plan yet. Add its Razorpay Plan ID in Admin → Plans.`,
         };
       }
 
@@ -126,7 +134,7 @@ export async function POST(req) {
         }
       }
 
-      const notes = { uid: c.uid, planId, planName: plan.name };
+      const notes = { uid: c.uid, planId, planName: plan.name, billingCycle: annual ? "year" : "month" };
       if (offerResult) {
         // offerCode is set for every kind (offer/referral/promo) — the
         // webhooks' decrementOfferCycles uses its mere presence (not what
@@ -150,9 +158,9 @@ export async function POST(req) {
       const subscription = await razorpay().subscriptions.create({
         plan_id: razorpayPlanId,
         customer_notify: 1,
-        // ~10 years of monthly cycles — Razorpay subscriptions need a finite
+        // ~10 years of cycles — Razorpay subscriptions need a finite
         // total_count; this is effectively "runs until cancelled".
-        total_count: 120,
+        total_count: annual ? 10 : 120,
         notes,
       });
 
@@ -163,6 +171,7 @@ export async function POST(req) {
             subscriptionId: subscription.id,
             planId,
             planName: plan.name,
+            billingCycle: annual ? "year" : "month",
           },
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -178,15 +187,19 @@ export async function POST(req) {
     }
 
     // Stripe
-    const stripePriceId = offerResult ? offerResult.discountedPlanId : plan.stripePriceId;
+    const stripePriceId = annual
+      ? plan.annualStripePriceId
+      : offerResult ? offerResult.discountedPlanId : plan.stripePriceId;
     if (!stripePriceId) {
       throw {
         status: 400,
-        message: `Stripe isn't set up for the ${plan.name} plan yet. Add its Stripe Price ID in Admin → Plans.`,
+        message: annual
+          ? `Annual billing isn't set up for the ${plan.name} plan yet. Add an annual discount in Admin → Plans.`
+          : `Stripe isn't set up for the ${plan.name} plan yet. Add its Stripe Price ID in Admin → Plans.`,
       };
     }
 
-    const metadata = { uid: c.uid, planId, planName: plan.name };
+    const metadata = { uid: c.uid, planId, planName: plan.name, billingCycle: annual ? "year" : "month" };
     if (offerResult) {
       // See the matching Razorpay branch above for why offerCode is set
       // for every kind while promoCode is a separate, promo-only marker.

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSuperAdmin, requireOrgManager, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
-import { createRazorpayPlan, createStripePrice } from "@/lib/gatewayPlans";
+import { createRazorpayPlan, createStripePrice, computeDiscountedPrice, annualBasePrice } from "@/lib/gatewayPlans";
 import { logAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -49,6 +49,31 @@ async function resolveGatewayIds({ planFields, overrides, existing, changed }) {
   return { razorpayPlanId, stripePriceId };
 }
 
+// Every plan is stored monthly; "buy annually" is offered as a discount off
+// 12x that monthly price rather than a second plan doc an admin has to
+// create and keep in sync by hand. This computes that annual price and
+// auto-creates/reuses its own Razorpay Plan + Stripe Price the same way
+// resolveGatewayIds() does for the regular monthly one above — so an annual
+// subscriber is billed a real recurring yearly amount at the gateway, not
+// just charged the monthly plan 12 months early.
+async function resolveAnnualPricing({ name, price, annualDiscountType, annualDiscountValue, existing }) {
+  const annualPrice = computeDiscountedPrice(annualBasePrice(price), annualDiscountType || "percent", annualDiscountValue || 0);
+  const changed = !existing || Number(existing.annualPrice) !== annualPrice;
+
+  const { razorpayPlanId, stripePriceId } = await resolveGatewayIds({
+    planFields: { name: `${name} (Annual)`, price: annualPrice, billingPeriod: "year" },
+    overrides: {},
+    existing: { razorpayPlanId: existing?.annualRazorpayPlanId, stripePriceId: existing?.annualStripePriceId },
+    changed,
+  });
+
+  return {
+    annualPrice,
+    annualRazorpayPlanId: razorpayPlanId,
+    annualStripePriceId: stripePriceId,
+  };
+}
+
 // Read is available to anyone who can manage organizations (Super Admin,
 // Global Admin, Admin) since the Add Organization form needs this list for
 // its "Profile (plan)" dropdown. Writing/managing plans themselves — price,
@@ -71,7 +96,7 @@ export async function POST(req) {
     const { action, id } = body;
 
     if (action === "create") {
-      const { name, price, billingPeriod, description, features, popular, active, sortOrder, limits, strikePrice } = body;
+      const { name, price, billingPeriod, description, features, popular, active, sortOrder, limits, strikePrice, annualDiscountType, annualDiscountValue } = body;
       if (!name || price === undefined) throw { status: 400, message: "Name and price are required" };
 
       const { razorpayPlanId, stripePriceId } = await resolveGatewayIds({
@@ -79,6 +104,9 @@ export async function POST(req) {
         overrides: { razorpayPlanId: body.razorpayPlanId, stripePriceId: body.stripePriceId },
         existing: null,
         changed: true,
+      });
+      const { annualPrice, annualRazorpayPlanId, annualStripePriceId } = await resolveAnnualPricing({
+        name, price, annualDiscountType, annualDiscountValue, existing: null,
       });
 
       const ref = await adminDb().collection("plans").add({
@@ -92,6 +120,10 @@ export async function POST(req) {
         // billing math. null/omitted means no strike-through is shown.
         strikePrice: strikePrice !== undefined && strikePrice !== null && strikePrice !== "" ? Number(strikePrice) : null,
         razorpayPlanId, stripePriceId,
+        // "Pay annually" pricing — see resolveAnnualPricing() above.
+        annualDiscountType: annualDiscountType === "amount" ? "amount" : "percent",
+        annualDiscountValue: Number(annualDiscountValue) || 0,
+        annualPrice, annualRazorpayPlanId, annualStripePriceId,
         createdAt: FieldValue.serverTimestamp(),
       });
       await logAuditEvent({ action: "plan.create", actor: c, targetType: "plan", targetId: ref.id, details: { name, price, billingPeriod } });
@@ -100,7 +132,7 @@ export async function POST(req) {
 
     if (action === "update") {
       if (!id) throw { status: 400, message: "Plan id required" };
-      const { name, price, billingPeriod, description, features, popular, active, sortOrder, strikePrice } = body;
+      const { name, price, billingPeriod, description, features, popular, active, sortOrder, strikePrice, annualDiscountType, annualDiscountValue } = body;
 
       const existingSnap = await adminDb().doc("plans/" + id).get();
       const existing = existingSnap.exists ? existingSnap.data() : null;
@@ -116,6 +148,9 @@ export async function POST(req) {
         existing,
         changed,
       });
+      const { annualPrice, annualRazorpayPlanId, annualStripePriceId } = await resolveAnnualPricing({
+        name, price, annualDiscountType, annualDiscountValue, existing,
+      });
 
       await adminDb().doc("plans/" + id).set({
         name, price: Number(price), billingPeriod: billingPeriod || "month",
@@ -123,6 +158,9 @@ export async function POST(req) {
         popular: !!popular, active: active !== false, sortOrder: Number(sortOrder) || 0,
         strikePrice: strikePrice !== undefined && strikePrice !== null && strikePrice !== "" ? Number(strikePrice) : null,
         razorpayPlanId, stripePriceId,
+        annualDiscountType: annualDiscountType === "amount" ? "amount" : "percent",
+        annualDiscountValue: Number(annualDiscountValue) || 0,
+        annualPrice, annualRazorpayPlanId, annualStripePriceId,
       }, { merge: true });
       if (changed) {
         await logAuditEvent({
