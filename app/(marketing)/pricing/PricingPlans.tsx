@@ -541,14 +541,27 @@ export default function PricingPlans() {
             <h3 className="font-semibold text-lg mb-1">{p.name}</h3>
             {billingCycle === "year" ? (
               <div className="mb-3">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-extrabold">{formatPrice(p.annualPrice ?? p.price * 12, currency)}</span>
-                  <span className="text-slate-500 text-sm">/year</span>
-                </div>
-                {typeof p.annualPrice === "number" && p.annualPrice < p.price * 12 && (
-                  <span className="inline-block mt-1 text-xs font-semibold text-brand-teal">
-                    Save {formatPrice(p.price * 12 - p.annualPrice, currency)} a year vs. paying monthly
-                  </span>
+                {typeof p.annualPrice === "number" && p.annualPrice < p.price * 12 ? (
+                  <>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xl font-bold text-[#FF4D00] line-through decoration-2">{formatPrice(p.price * 12, currency)}</span>
+                      <span className="text-3xl font-extrabold">{formatPrice(p.annualPrice, currency)}</span>
+                      <span className="text-slate-500 text-sm">/year</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="inline-block rounded-full bg-brand-gradient text-white text-[11px] font-bold px-3 py-1 tracking-wide uppercase">
+                        Best value
+                      </span>
+                      <span className="text-xs font-semibold text-brand-teal">
+                        Save {formatPrice(p.price * 12 - p.annualPrice, currency)} a year
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-extrabold">{formatPrice(p.annualPrice ?? p.price * 12, currency)}</span>
+                    <span className="text-slate-500 text-sm">/year</span>
+                  </div>
                 )}
               </div>
             ) : couponResults?.[p.id]?.valid ? (
