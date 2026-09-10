@@ -37,26 +37,31 @@ export const dynamic = "force-dynamic";
 // gets stamped onto notes/metadata below (resellerId) so the payment
 // webhooks know who to credit a commission to once the sale goes through.
 async function resolveOfferForCheckout({ code, planId, plan, gateway, requester }) {
-  const resolved = await resolveCode(code, planId, requester);
+  const resolved = await resolveCode(code, { ...plan, id: planId }, requester);
   if (!resolved.valid) throw { status: 400, message: resolved.error };
 
   const discountedPrice = computeDiscountedPrice(plan.price, resolved.discountType, resolved.discountValue);
   const planFields = { name: `${plan.name} (${resolved.code})`, price: discountedPrice, billingPeriod: plan.billingPeriod };
 
+  // Cached per underlying plan id — a code scoped to "one app" or "all
+  // apps" can be redeemed against several different-priced plans (e.g.
+  // Essential vs Premium), each needing its OWN discounted gateway
+  // plan/price, not one shared id for the whole code.
+  const cached = resolved.discountedPlans?.[planId] || {};
   let discountedPlanId;
   if (gateway === "razorpay") {
-    discountedPlanId = resolved.razorpayPlanId;
+    discountedPlanId = cached.razorpayPlanId;
     if (!discountedPlanId) {
       discountedPlanId = await createRazorpayPlan(planFields);
       if (!discountedPlanId) throw { status: 500, message: "Couldn't set up that discount right now. Please try again shortly." };
-      await resolved.ref.set({ razorpayPlanId: discountedPlanId }, { merge: true });
+      await resolved.ref.set({ discountedPlans: { [planId]: { razorpayPlanId: discountedPlanId } } }, { merge: true });
     }
   } else {
-    discountedPlanId = resolved.stripePriceId;
+    discountedPlanId = cached.stripePriceId;
     if (!discountedPlanId) {
       discountedPlanId = await createStripePrice(planFields);
       if (!discountedPlanId) throw { status: 500, message: "Couldn't set up that discount right now. Please try again shortly." };
-      await resolved.ref.set({ stripePriceId: discountedPlanId }, { merge: true });
+      await resolved.ref.set({ discountedPlans: { [planId]: { stripePriceId: discountedPlanId } } }, { merge: true });
     }
   }
 

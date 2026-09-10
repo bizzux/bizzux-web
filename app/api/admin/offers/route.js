@@ -27,7 +27,19 @@ function validateOffer(body) {
   if (!CODE_RE.test(code)) {
     throw { status: 400, message: "Code must be 3-32 characters: letters, numbers, - or _" };
   }
-  if (!body.planId) throw { status: 400, message: "A plan is required" };
+
+  // What this code applies to: one specific plan (today's original
+  // behavior), any plan under one app, or any plan platform-wide.
+  const scope = ["plan", "app", "all"].includes(body.scope) ? body.scope : "plan";
+  let planId = null;
+  let appKey = null;
+  if (scope === "plan") {
+    if (!body.planId) throw { status: 400, message: "A plan is required" };
+    planId = body.planId;
+  } else if (scope === "app") {
+    if (!body.appKey) throw { status: 400, message: "An app is required" };
+    appKey = body.appKey;
+  }
 
   const discountType = body.discountType === "flat" ? "flat" : "percent";
   const discountValue = Number(body.discountValue);
@@ -59,7 +71,7 @@ function validateOffer(body) {
   }
 
   return {
-    code, planId: body.planId, discountType, discountValue, duration, cyclesCount,
+    code, scope, planId, appKey, discountType, discountValue, duration, cyclesCount,
     expiresAt, maxRedemptions, active: body.active !== false,
   };
 }
@@ -89,13 +101,13 @@ export async function POST(req) {
 
       await ref.set({
         ...v,
-        razorpayPlanId: "", stripePriceId: "",
+        discountedPlans: {},
         redemptionCount: 0, redeemedSubscriptionIds: [],
         createdAt: FieldValue.serverTimestamp(),
       });
       await logAuditEvent({
         action: "offer.create", actor: c, targetType: "offer", targetId: v.code,
-        details: { planId: v.planId, discountType: v.discountType, discountValue: v.discountValue },
+        details: { scope: v.scope, planId: v.planId, appKey: v.appKey, discountType: v.discountType, discountValue: v.discountValue },
       });
       return NextResponse.json({ ok: true, id: v.code });
     }
@@ -111,20 +123,24 @@ export async function POST(req) {
       // the discount/plan/rules on the same code.
       const v = validateOffer({ ...body, code: id });
 
-      // If the discount shape or the plan it applies to changed, the
-      // cached discounted Razorpay Plan / Stripe Price no longer matches
-      // — clear them so the next redemption creates fresh ones at the
-      // correct price instead of silently applying a stale discount.
+      // If the discount shape or what it applies to changed, the cached
+      // discounted Razorpay Plans / Stripe Prices (keyed per underlying
+      // plan id — see resolveOfferForCheckout in app/api/checkout/route.js)
+      // no longer match — clear them so the next redemption creates fresh
+      // ones at the correct price instead of silently applying a stale
+      // discount.
       const discountChanged =
+        (existing.scope || "plan") !== v.scope ||
         existing.planId !== v.planId ||
+        existing.appKey !== v.appKey ||
         existing.discountType !== v.discountType ||
         Number(existing.discountValue) !== v.discountValue;
 
       await ref.set({
-        planId: v.planId, discountType: v.discountType, discountValue: v.discountValue,
+        scope: v.scope, planId: v.planId, appKey: v.appKey, discountType: v.discountType, discountValue: v.discountValue,
         duration: v.duration, cyclesCount: v.cyclesCount, expiresAt: v.expiresAt,
         maxRedemptions: v.maxRedemptions, active: v.active,
-        ...(discountChanged ? { razorpayPlanId: "", stripePriceId: "" } : {}),
+        ...(discountChanged ? { discountedPlans: FieldValue.delete() } : {}),
       }, { merge: true });
       if (discountChanged) {
         await logAuditEvent({

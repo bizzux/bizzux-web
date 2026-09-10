@@ -46,12 +46,18 @@ export async function POST(req) {
     // locally / off Vercel, so this stays null there.
     const ipCountry = req.headers.get("x-vercel-ip-country-name") || null;
     const ipCity = req.headers.get("x-vercel-ip-city") ? decodeURIComponent(req.headers.get("x-vercel-ip-city")) : null;
+    // Region is a state/province NAME for India specifically (Vercel's edge
+    // resolves it that way for IN) and an ISO subdivision code elsewhere
+    // (e.g. "CA" for California) — good enough to tell Bangalore/Karnataka
+    // apart from Chennai/Tamil Nadu apart from Singapore at a glance.
+    const ipRegion = req.headers.get("x-vercel-ip-country-region") || null;
 
     await ref.set({
       email: c.email,
       fullName: fullName || null,
       phone: phone || null,
       signupCountry: ipCountry,
+      signupRegion: ipRegion,
       signupCity: ipCity,
       createdAt: FieldValue.serverTimestamp(),
       trialStartDate: now,

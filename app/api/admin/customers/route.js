@@ -108,6 +108,7 @@ export async function GET(req) {
         organizationName: data.organizationName || data.companyName || null,
         phone: data.phone || null,
         country,
+        region: data.signupRegion || null,
         city: data.signupCity || null,
         status: data.status || "trial",
         customerType: customerType(data),

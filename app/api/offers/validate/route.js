@@ -28,19 +28,21 @@ export async function POST(req) {
       return NextResponse.json({ valid: false, error: "Missing code or plan" }, { status: 400 });
     }
 
-    const custSnap = await adminDb().doc("customers/" + c.uid).get();
+    const [custSnap, planSnap] = await Promise.all([
+      adminDb().doc("customers/" + c.uid).get(),
+      adminDb().doc("plans/" + planId).get(),
+    ]);
     const paymentCount = custSnap.exists ? custSnap.data().paymentCount || 0 : 0;
-
-    const resolved = await resolveCode(code, planId, { uid: c.uid, paymentCount });
-    if (!resolved.valid) {
-      return NextResponse.json({ valid: false, error: resolved.error });
-    }
-
-    const planSnap = await adminDb().doc("plans/" + planId).get();
     if (!planSnap.exists) {
       return NextResponse.json({ valid: false, error: "Plan not found." });
     }
     const plan = planSnap.data();
+
+    const resolved = await resolveCode(code, { ...plan, id: planId }, { uid: c.uid, paymentCount });
+    if (!resolved.valid) {
+      return NextResponse.json({ valid: false, error: resolved.error });
+    }
+
     const discountedPrice = computeDiscountedPrice(plan.price, resolved.discountType, resolved.discountValue);
 
     return NextResponse.json({

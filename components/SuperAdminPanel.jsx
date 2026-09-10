@@ -460,7 +460,7 @@ function TrialSettings() {
   );
 }
 
-const emptyPlan = { name: "", price: "", billingPeriod: "month", description: "", features: "", popular: false, active: true, sortOrder: 0, razorpayPlanId: "", stripePriceId: "", strikePrice: "", annualDiscountType: "percent", annualDiscountValue: "" };
+const emptyPlan = { name: "", price: "", billingPeriod: "month", description: "", features: "", popular: false, active: true, sortOrder: 0, razorpayPlanId: "", stripePriceId: "", strikePrice: "", annualDiscountType: "percent", annualDiscountValue: "", appKey: "juicechatjunction" };
 
 function PlansManager() {
   const [plans, setPlans] = useState(null);
@@ -495,6 +495,7 @@ function PlansManager() {
       strikePrice: p.strikePrice ?? "",
       annualDiscountType: p.annualDiscountType || "percent",
       annualDiscountValue: p.annualDiscountValue ?? "",
+      appKey: p.appKey || "juicechatjunction",
     });
     setOriginalPricing({ price: p.price ?? "", billingPeriod: p.billingPeriod || "month" });
   }
@@ -522,6 +523,7 @@ function PlansManager() {
         strikePrice: form.strikePrice === "" ? null : Number(form.strikePrice),
         annualDiscountType: form.annualDiscountType,
         annualDiscountValue: form.annualDiscountValue === "" ? 0 : Number(form.annualDiscountValue),
+        appKey: form.appKey,
         // No razorpayPlanId/stripePriceId here on purpose — the API
         // auto-creates (or reuses) both from name/price/billingPeriod. See
         // app/api/admin/plans/route.js's resolveGatewayIds().
@@ -556,6 +558,18 @@ function PlansManager() {
       <div className="card">
         <h3 style={{ marginBottom: 14 }}>{editingId ? "Edit plan" : "Add a plan"}</h3>
         <form onSubmit={submit}>
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">App</label>
+            <select className="input" value={form.appKey} onChange={(e) => setForm({ ...form, appKey: e.target.value })}>
+              {APP_CATALOG.map((a) => (
+                <option key={a.key} value={a.key}>{a.icon} {a.name}</option>
+              ))}
+            </select>
+            <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+              Which app this plan sells access to. Each app can have its own plans and prices — pricing isn&apos;t
+              shared across apps.
+            </p>
+          </div>
           <div style={{ marginBottom: 12 }}>
             <label className="label">Name</label>
             <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -681,6 +695,10 @@ function PlansManager() {
           <div key={p.id} style={{ borderBottom: "1px solid var(--line)", padding: "12px 0" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <strong>
+                <span className="muted" style={{ fontWeight: 400, fontSize: 12.5, marginRight: 6 }}>
+                  {APP_CATALOG.find((a) => a.key === (p.appKey || "juicechatjunction"))?.icon || ""}{" "}
+                  {APP_CATALOG.find((a) => a.key === (p.appKey || "juicechatjunction"))?.name || p.appKey}
+                </span>
                 {p.name} ({p.strikePrice > p.price && <span style={{ textDecoration: "line-through", opacity: 0.6 }}>₹{p.strikePrice}</span>}{" "}
                 ₹{p.price}/{p.billingPeriod})
               </strong>
@@ -711,7 +729,7 @@ function PlansManager() {
 }
 
 const emptyOffer = {
-  code: "", planId: "", discountType: "percent", discountValue: "",
+  code: "", scope: "plan", planId: "", appKey: "juicechatjunction", discountType: "percent", discountValue: "",
   duration: "forever", cyclesCount: "", expiresAt: "", maxRedemptions: "", active: true,
 };
 
@@ -754,7 +772,8 @@ function OffersManager() {
   function edit(o) {
     setEditingId(o.id);
     setForm({
-      code: o.id, planId: o.planId || "", discountType: o.discountType || "percent",
+      code: o.id, scope: o.scope || "plan", planId: o.planId || "", appKey: o.appKey || "juicechatjunction",
+      discountType: o.discountType || "percent",
       discountValue: o.discountValue ?? "", duration: o.duration || "forever",
       cyclesCount: o.cyclesCount ?? "", expiresAt: o.expiresAt ? o.expiresAt.slice(0, 10) : "",
       maxRedemptions: o.maxRedemptions ?? "", active: o.active !== false,
@@ -768,7 +787,10 @@ function OffersManager() {
     setErr("");
     try {
       const payload = {
-        code: form.code, planId: form.planId, discountType: form.discountType,
+        code: form.code, scope: form.scope,
+        planId: form.scope === "plan" ? form.planId : undefined,
+        appKey: form.scope === "app" ? form.appKey : undefined,
+        discountType: form.discountType,
         discountValue: Number(form.discountValue), duration: form.duration,
         cyclesCount: form.duration === "cycles" ? Number(form.cyclesCount) : undefined,
         expiresAt: form.expiresAt || null,
@@ -815,12 +837,30 @@ function OffersManager() {
             {editingId && <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>The code itself can&apos;t be changed once created. Delete and re-add if you need a different one.</p>}
           </div>
           <div style={{ marginBottom: 12 }}>
-            <label className="label">Plan</label>
-            <select className="input" value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} required>
-              <option value="" disabled>Select a plan</option>
-              {plans.map((p) => <option key={p.id} value={p.id}>{p.name} (₹{p.price}/{p.billingPeriod})</option>)}
+            <label className="label">Applies to</label>
+            <select className="input" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })}>
+              <option value="plan">One specific plan</option>
+              <option value="app">Any plan under one app</option>
+              <option value="all">All apps, any plan</option>
             </select>
           </div>
+          {form.scope === "plan" && (
+            <div style={{ marginBottom: 12 }}>
+              <label className="label">Plan</label>
+              <select className="input" value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })} required>
+                <option value="" disabled>Select a plan</option>
+                {plans.map((p) => <option key={p.id} value={p.id}>{p.name} (₹{p.price}/{p.billingPeriod})</option>)}
+              </select>
+            </div>
+          )}
+          {form.scope === "app" && (
+            <div style={{ marginBottom: 12 }}>
+              <label className="label">App</label>
+              <select className="input" value={form.appKey} onChange={(e) => setForm({ ...form, appKey: e.target.value })} required>
+                {APP_CATALOG.map((a) => <option key={a.key} value={a.key}>{a.icon} {a.name}</option>)}
+              </select>
+            </div>
+          )}
           <div className="row" style={{ marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
               <label className="label">Discount type</label>
@@ -879,6 +919,12 @@ function OffersManager() {
         {offers.length === 0 && <p className="muted">No offers yet.</p>}
         {offers.map((o) => {
           const plan = plans.find((p) => p.id === o.planId);
+          const scope = o.scope || "plan";
+          const app = APP_CATALOG.find((a) => a.key === o.appKey);
+          const appliesTo =
+            scope === "all" ? "all apps, any plan" :
+            scope === "app" ? `any plan under ${app ? app.name : o.appKey}` :
+            (plan ? plan.name : "(deleted plan)");
           return (
             <div key={o.id} style={{ borderBottom: "1px solid var(--line)", padding: "12px 0" }}>
               <div className="row" style={{ justifyContent: "space-between" }}>
@@ -886,7 +932,7 @@ function OffersManager() {
                 {o.active === false && <span className="muted" style={{ fontSize: 12 }}>inactive</span>}
               </div>
               <p className="muted" style={{ margin: "4px 0", fontSize: 13 }}>
-                {discountLabel(o)} on {plan ? plan.name : "(deleted plan)"}, {durationLabel(o)}
+                {discountLabel(o)} on {appliesTo}, {durationLabel(o)}
               </p>
               <div className="row" style={{ gap: 12 }}>
                 <span className="muted" style={{ fontSize: 12 }}>
@@ -1369,8 +1415,8 @@ function CustomersList() {
           <table className="table">
             <thead>
               <tr>
-                <th>Organization</th><th>Owner</th><th>Email</th><th>Mobile</th><th>Country</th>
-                <th>Signed up</th><th>Last login</th><th>Status</th><th>Type</th><th>Plan</th><th>Apps used</th><th>Trial ends</th><th></th>
+                <th>Organization</th><th>Owner</th><th>Email</th><th>Mobile</th><th>Location</th>
+                <th>Signed up</th><th>Customer for</th><th>Last login</th><th>Status</th><th>Type</th><th>Plan</th><th>Apps used</th><th>Trial ends</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -1382,8 +1428,18 @@ function CustomersList() {
                   <td>{c.fullName || "N/A"}</td>
                   <td>{c.email}</td>
                   <td>{c.phone || "N/A"}</td>
-                  <td title={c.city || ""}>{c.country || "N/A"}</td>
+                  <td>
+                    {c.city || c.region ? (
+                      <>
+                        <div>{[c.city, c.region].filter(Boolean).join(", ")}</div>
+                        {c.country && <div className="muted" style={{ fontSize: 11.5 }}>{c.country}</div>}
+                      </>
+                    ) : (
+                      c.country || "N/A"
+                    )}
+                  </td>
                   <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}</td>
+                  <td title={c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}>{c.createdAt ? timeAgo(c.createdAt) : "N/A"}</td>
                   <td title={c.lastLoginAt ? new Date(c.lastLoginAt).toLocaleString() : ""}>{timeAgo(c.lastLoginAt)}</td>
                   <td><span className={"status-pill " + (c.status === "suspended" ? "expired" : c.status || "trial")}>{c.status || "trial"}</span></td>
                   <td>{c.customerType}</td>

@@ -96,7 +96,7 @@ export async function POST(req) {
     const { action, id } = body;
 
     if (action === "create") {
-      const { name, price, billingPeriod, description, features, popular, active, sortOrder, limits, strikePrice, annualDiscountType, annualDiscountValue } = body;
+      const { name, price, billingPeriod, description, features, popular, active, sortOrder, limits, strikePrice, annualDiscountType, annualDiscountValue, appKey } = body;
       if (!name || price === undefined) throw { status: 400, message: "Name and price are required" };
 
       const { razorpayPlanId, stripePriceId } = await resolveGatewayIds({
@@ -114,6 +114,11 @@ export async function POST(req) {
         description: description || "", features: Array.isArray(features) ? features : [],
         popular: !!popular, active: active !== false, sortOrder: Number(sortOrder) || 0,
         limits: limits && typeof limits === "object" ? limits : {},
+        // Which app this plan sells access to (lib/apps.js's APP_CATALOG
+        // keys) — "juicechatjunction" (Bizzux Shop's key everywhere else in
+        // this codebase) is the default so existing Shop plans and any
+        // caller that doesn't pass this keep working unchanged.
+        appKey: appKey || "juicechatjunction",
         // Marketing-only "was" price shown crossed out next to the real price
         // on the pricing page (see PricingPlans.tsx) to make an ongoing
         // discount visible at a glance. Purely cosmetic — never used for
@@ -132,7 +137,7 @@ export async function POST(req) {
 
     if (action === "update") {
       if (!id) throw { status: 400, message: "Plan id required" };
-      const { name, price, billingPeriod, description, features, popular, active, sortOrder, strikePrice, annualDiscountType, annualDiscountValue } = body;
+      const { name, price, billingPeriod, description, features, popular, active, sortOrder, strikePrice, annualDiscountType, annualDiscountValue, appKey } = body;
 
       const existingSnap = await adminDb().doc("plans/" + id).get();
       const existing = existingSnap.exists ? existingSnap.data() : null;
@@ -157,6 +162,7 @@ export async function POST(req) {
         description: description || "", features: Array.isArray(features) ? features : [],
         popular: !!popular, active: active !== false, sortOrder: Number(sortOrder) || 0,
         strikePrice: strikePrice !== undefined && strikePrice !== null && strikePrice !== "" ? Number(strikePrice) : null,
+        appKey: appKey || existing?.appKey || "juicechatjunction",
         razorpayPlanId, stripePriceId,
         annualDiscountType: annualDiscountType === "amount" ? "amount" : "percent",
         annualDiscountValue: Number(annualDiscountValue) || 0,
