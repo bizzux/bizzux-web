@@ -17,6 +17,7 @@ import { IconTrash } from "@/components/Icons";
 // sign-in prompt instead of bouncing the whole page away.
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "business", label: "Business Health" },
   { id: "organizations", label: "Organizations" },
   { id: "customers", label: "Support / Customers" },
   { id: "plans", label: "Plans & Pricing" },
@@ -111,6 +112,7 @@ export default function SuperAdminPanel() {
       </div>
 
       {tab === "dashboard" && <PlatformDashboard />}
+      {tab === "business" && <BusinessHealthPanel isOwner={platformRole === "OWNER"} />}
       {tab === "trial" && <TrialSettings />}
       {tab === "plans" && <PlansManager />}
       {tab === "planlimits" && <PlanLimitsManager />}
@@ -147,6 +149,156 @@ function SecuritySettingsPanel() {
         <li>Platform Admins are created only by the Owner and can never create or remove other Platform Admins.</li>
         <li>Every sensitive platform action is recorded in Audit Logs.</li>
       </ul>
+    </div>
+  );
+}
+
+// Super Admin -> Business Health. Bizzux's OWN running costs and breakeven
+// math (salaries, rent, hosting, domain, tools) against real MRR pulled
+// live from the customers/plans data — not anything a Bizzux customer ever
+// sees, purely for the Platform Owner (and staff, so everyone's aligned on
+// the same reality) to manage Bizzux as a business. See
+// app/api/admin/business-costs/route.js — viewing is open to any Platform
+// Admin, editing the cost figures is Owner-only.
+function BusinessHealthPanel({ isOwner }) {
+  const [data, setData] = useState(null);
+  const [recurring, setRecurring] = useState([]);
+  const [oneTime, setOneTime] = useState([]);
+  const [assumedAvgRevenue, setAssumedAvgRevenue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function load() {
+    try {
+      const d = await api("/api/admin/business-costs", "GET");
+      setData(d);
+      setRecurring(d.recurring.length ? d.recurring : [{ label: "", amount: "" }]);
+      setOneTime(d.oneTime.length ? d.oneTime : [{ label: "", amount: "" }]);
+      setAssumedAvgRevenue(d.assumedAvgRevenue ? String(d.assumedAvgRevenue) : "");
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+  useEffect(() => { load(); }, []);
+
+  function setLine(list, setList, idx, field, value) {
+    setList(list.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+  }
+  function addLine(list, setList) {
+    setList([...list, { label: "", amount: "" }]);
+  }
+  function removeLine(list, setList, idx) {
+    setList(list.length > 1 ? list.filter((_, i) => i !== idx) : [{ label: "", amount: "" }]);
+  }
+
+  async function save() {
+    setSaving(true);
+    setErr("");
+    try {
+      await api("/api/admin/business-costs", "POST", {
+        recurring: recurring.filter((r) => r.label.trim()),
+        oneTime: oneTime.filter((r) => r.label.trim()),
+        assumedAvgRevenue: Number(assumedAvgRevenue) || 0,
+      });
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    }
+    setSaving(false);
+  }
+
+  if (data === null) return <p className="muted">Loading…</p>;
+  const s = data.summary;
+
+  function CostRows({ list, setList, unitLabel }) {
+    return (
+      <>
+        {list.map((r, i) => (
+          <div className="row" key={i} style={{ gap: 10, marginBottom: 8 }}>
+            <input
+              className="input" style={{ flex: 2 }} placeholder={unitLabel}
+              value={r.label} disabled={!isOwner}
+              onChange={(e) => setLine(list, setList, i, "label", e.target.value)}
+            />
+            <input
+              className="input" style={{ flex: 1 }} type="number" min="0" placeholder="₹/month"
+              value={r.amount} disabled={!isOwner}
+              onChange={(e) => setLine(list, setList, i, "amount", e.target.value)}
+            />
+            {isOwner && (
+              <button type="button" className="btn-ghost" onClick={() => removeLine(list, setList, i)}>✕</button>
+            )}
+          </div>
+        ))}
+        {isOwner && (
+          <button type="button" className="link-btn" onClick={() => addLine(list, setList)}>+ Add line</button>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div>
+      <div className="proj-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, marginBottom: 20 }}>
+        {[
+          { label: "Current MRR", value: money(s.mrr) },
+          { label: "Total monthly cost", value: money(s.totalMonthlyCost) },
+          { label: s.monthlyProfitOrLoss >= 0 ? "Monthly profit" : "Monthly loss", value: money(Math.abs(s.monthlyProfitOrLoss)) },
+          { label: "Active paying customers", value: s.activeCount },
+          { label: "Avg revenue / customer", value: s.avgRevenuePerCustomer > 0 ? money(s.avgRevenuePerCustomer) : (s.effectiveAvgRevenue > 0 ? money(s.effectiveAvgRevenue) + " (assumed)" : "—") },
+          { label: "Customers needed to break even", value: s.customersToBreakeven ?? "—" },
+        ].map((c) => (
+          <div key={c.label} className="card">
+            <div className="muted" style={{ fontSize: 12.5 }}>{c.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{c.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {s.customersToBreakeven != null && (
+        <p className="muted" style={{ marginBottom: 20 }}>
+          {s.activeCount >= s.customersToBreakeven
+            ? `Past breakeven — ${s.activeCount} active customers against ${s.customersToBreakeven} needed.`
+            : `${s.customersShortOfBreakeven} more paying customer${s.customersShortOfBreakeven === 1 ? "" : "s"} needed to break even, at ~${money(s.effectiveAvgRevenue)}/customer/month.`}
+        </p>
+      )}
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <p className="section-title" style={{ marginTop: 0 }}>Recurring monthly costs</p>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          Salaries, office rent, hosting, domains, Firebase/Vercel plans, tools — anything that recurs every month.
+        </p>
+        <CostRows list={recurring} setList={setRecurring} unitLabel="e.g. Sales person salary" />
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <p className="section-title" style={{ marginTop: 0 }}>One-time / capital costs</p>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          Equipment, setup costs — tracked for reference, not counted in the monthly breakeven math below.
+        </p>
+        <CostRows list={oneTime} setList={setOneTime} unitLabel="e.g. Laptop" />
+        <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>Total invested: <strong>{money(s.totalOneTime)}</strong></p>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <p className="section-title" style={{ marginTop: 0 }}>Assumed avg. revenue per customer (₹/month)</p>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          Used for planning before there's enough real paying-customer data to compute this automatically —
+          ignored once real MRR/customer data is available.
+        </p>
+        <input
+          className="input" style={{ maxWidth: 200 }} type="number" min="0" placeholder="e.g. 1000"
+          value={assumedAvgRevenue} disabled={!isOwner}
+          onChange={(e) => setAssumedAvgRevenue(e.target.value)}
+        />
+      </div>
+
+      {isOwner ? (
+        <button className="btn-primary" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save"}</button>
+      ) : (
+        <p className="muted">Only the Platform Owner can edit these figures.</p>
+      )}
+      {err && <p className="error" style={{ marginTop: 10 }}>{err}</p>}
     </div>
   );
 }
