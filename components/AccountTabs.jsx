@@ -47,14 +47,14 @@ export default function AccountTabs({ active, isAccountAdmin = false, isSuper = 
             </Link>
           ))}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4 flex-wrap justify-end">
           {user?.email && (
-            <span className="hidden sm:inline text-xs text-slate-700" title="Signed in as">
+            <span className="text-xs text-slate-700 truncate max-w-[45vw] sm:max-w-none" title="Signed in as">
               {user.email}
             </span>
           )}
           {roleLabel && (
-            <span className="hidden sm:inline text-[11px] font-semibold text-brand-blue bg-blue-50 rounded-full px-3 py-1">
+            <span className="text-[11px] font-semibold text-brand-blue bg-blue-50 rounded-full px-3 py-1 whitespace-nowrap">
               {roleLabel}
             </span>
           )}
