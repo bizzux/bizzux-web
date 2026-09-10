@@ -1,18 +1,10 @@
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import FeaturedAppsGrid from "@/components/FeaturedAppsGrid";
 import {
-  IconPOS, IconMenu, IconBox, IconWallet, IconUsers, IconChart,
+  IconPOS,
   IconLayers, IconSpark, IconCloud, IconShield, IconCheck,
   IconStore, IconArrowRight, IconWhatsApp,
 } from "@/components/Icons";
-
-const featuredApps = [
-  { icon: IconStore, name: "Bizzux Shop", desc: "POS, menu, inventory and shop management for food & retail counters.", live: true },
-  { icon: IconPOS, name: "Bizzux POS", desc: "A fast, simple point-of-sale for any counter or checkout.", live: false },
-  { icon: IconMenu, name: "Bizzux Orders", desc: "Take and track orders from counter, phone or online.", live: false },
-  { icon: IconWallet, name: "Bizzux Books", desc: "Accounting and invoicing for small, growing businesses.", live: false },
-  { icon: IconBox, name: "Bizzux Inventory", desc: "Stock, materials and supply tracking in real time.", live: false },
-  { icon: IconUsers, name: "Bizzux CRM", desc: "Track leads, customers and follow-ups without spreadsheets.", live: false },
-];
 
 const platformFeatures = [
   "Point of sale and payment tracking",
@@ -113,22 +105,7 @@ export default function Home() {
                   Explore all apps <IconArrowRight className="w-4 h-4" />
                 </a>
               </div>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-8">
-                {featuredApps.map((a) => (
-                  <div key={a.name} className="flex gap-4">
-                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center shrink-0 ${a.live ? "bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white" : "bg-slate-100 text-slate-400"}`}>
-                      <a.icon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-base">{a.name}</span>
-                        {!a.live && <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">Soon</span>}
-                      </div>
-                      <p className="text-sm text-slate-500 mt-1 leading-relaxed">{a.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <FeaturedAppsGrid />
             </div>
           </div>
         </Container>
