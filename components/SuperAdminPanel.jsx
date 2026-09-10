@@ -1489,6 +1489,7 @@ function CustomersList() {
   const [extending, setExtending] = useState(null); // customer row being extended, or null
   const [markingPaid, setMarkingPaid] = useState(null); // customer row being marked paid, or null
   const [viewingAdmins, setViewingAdmins] = useState(null); // customer row, or null
+  const [viewingActivity, setViewingActivity] = useState(null); // customer row, or null
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
 
@@ -1614,6 +1615,7 @@ function CustomersList() {
                     <RowMenu
                       items={[
                         { label: "View org owner/admins", onClick: () => setViewingAdmins(c) },
+                        { label: "View Shop activity", onClick: () => setViewingActivity(c) },
                         { label: "Extend trial", onClick: () => setExtending(c) },
                         { label: "Mark as paid (cash / offline)", onClick: () => setMarkingPaid(c) },
                         { label: "Reset password (email link)", onClick: () => resetPassword(c) },
@@ -1649,6 +1651,10 @@ function CustomersList() {
         <OrgAdminsModal customer={viewingAdmins} onClose={() => setViewingAdmins(null)} />
       )}
 
+      {viewingActivity && (
+        <CustomerActivityModal customer={viewingActivity} onClose={() => setViewingActivity(null)} />
+      )}
+
       {markingPaid && (
         <MarkPaidModal
           customer={markingPaid}
@@ -1659,6 +1665,74 @@ function CustomersList() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// Usage/engagement visibility ONLY — never the customer's actual sales,
+// purchase or expense amounts. See app/api/admin/customer-activity/route.js
+// and bizzux-shop's app/api/admin/activity/route.js for why: this answers
+// "is this customer actually using Shop, and for what" for churn-risk and
+// product-usage purposes, without the trust/privacy cost of Bizzux staff
+// reading a customer's real financial data.
+function ActivityRow({ label, data }) {
+  return (
+    <div className="row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+      <span style={{ fontSize: 13.5 }}>{label}</span>
+      <span className="muted" style={{ fontSize: 13, textAlign: "right" }}>
+        {data.lastAt ? timeAgo(data.lastAt) : "Never"} · {data.last30Days} in last 30 days
+      </span>
+    </div>
+  );
+}
+
+function CustomerActivityModal({ customer, onClose }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api(`/api/admin/customer-activity?id=${customer.id}`, "GET");
+        setData(d);
+      } catch (e) {
+        setError(e.message);
+      }
+    })();
+  }, [customer.id]);
+
+  const modules = data && [
+    ["Menu", data.usesMenu], ["Inventory", data.usesInventory],
+    ["Reservations", data.usesReservations], ["CapEx", data.usesCapex],
+  ];
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <h2 style={{ marginBottom: 4 }}>{customer.organizationName || customer.fullName || customer.email}</h2>
+        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>
+          Usage only — sales/purchase/expense amounts are never shown here.
+        </p>
+        {error && <p className="error">{error}</p>}
+        {!error && data === null && <p className="muted">Loading…</p>}
+        {data && (
+          <>
+            <ActivityRow label="🧾 Sales" data={data.sales} />
+            <ActivityRow label="🛒 Purchases" data={data.purchases} />
+            <ActivityRow label="🧺 Expenses" data={data.expenses} />
+            <div className="row" style={{ marginTop: 14, gap: 6, flexWrap: "wrap" }}>
+              {modules.map(([label, used]) => (
+                <span key={label} className={"status-pill " + (used ? "active" : "")} style={!used ? { opacity: 0.5 } : undefined}>
+                  {used ? "✓" : "—"} {label}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+          <button className="btn-outline-dark" onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   );
 }
