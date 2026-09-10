@@ -1382,7 +1382,7 @@ function CustomersList() {
                   <td>{c.fullName || "N/A"}</td>
                   <td>{c.email}</td>
                   <td>{c.phone || "N/A"}</td>
-                  <td>{c.country || "N/A"}</td>
+                  <td title={c.city || ""}>{c.country || "N/A"}</td>
                   <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}</td>
                   <td><span className={"status-pill " + (c.status === "suspended" ? "expired" : c.status || "trial")}>{c.status || "trial"}</span></td>
                   <td>{c.customerType}</td>

@@ -58,7 +58,10 @@ export async function GET(req) {
     const snap = await adminDb().collection("customers").get();
     const customers = snap.docs.map((d) => {
       const data = d.data();
-      const country = findCountryByPhone(data.phone);
+      // Prefer the country Vercel's edge saw at signup (accurate for every
+      // account, not just ones with a phone number) — falls back to the
+      // phone-code guess for accounts created before this was added.
+      const country = data.signupCountry || findCountryByPhone(data.phone)?.name || null;
       const appUsage = data.appUsage || {};
       return {
         id: d.id,
@@ -66,7 +69,8 @@ export async function GET(req) {
         fullName: data.fullName || null,
         organizationName: data.organizationName || data.companyName || null,
         phone: data.phone || null,
-        country: country?.name || null,
+        country,
+        city: data.signupCity || null,
         status: data.status || "trial",
         customerType: customerType(data),
         planName: data.planName || null,

@@ -39,10 +39,20 @@ export async function POST(req) {
     const now = Timestamp.now();
     const trialEndDate = Timestamp.fromMillis(now.toMillis() + trialDays * 24 * 60 * 60 * 1000);
 
+    // Vercel stamps these on every request at the edge — no third-party
+    // lookup call, no extra permission prompt, works for 100% of signups
+    // (unlike the phone-code guess in lib/countryCodes.js, which only
+    // covers people who entered a mobile number). Absent when running
+    // locally / off Vercel, so this stays null there.
+    const ipCountry = req.headers.get("x-vercel-ip-country-name") || null;
+    const ipCity = req.headers.get("x-vercel-ip-city") ? decodeURIComponent(req.headers.get("x-vercel-ip-city")) : null;
+
     await ref.set({
       email: c.email,
       fullName: fullName || null,
       phone: phone || null,
+      signupCountry: ipCountry,
+      signupCity: ipCity,
       createdAt: FieldValue.serverTimestamp(),
       trialStartDate: now,
       trialEndDate,
