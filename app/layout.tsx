@@ -6,6 +6,7 @@ import "@fontsource/inter/700.css";
 import "@fontsource/inter/800.css";
 import "./globals.css";
 import "./bzx-app.css";
+import UpdateToast from "@/components/UpdateToast";
 
 // tailwind.config.ts's `sans` stack points at --font-inter, but nothing
 // used to actually define that variable — it was silently falling back to
@@ -43,7 +44,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen font-sans bg-white text-ink">{children}</body>
+      <body className="min-h-screen font-sans bg-white text-ink">
+        {children}
+        <UpdateToast />
+      </body>
     </html>
   );
 }
