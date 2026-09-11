@@ -30,15 +30,6 @@ const APPS = [
   // part of the shared Bizzux customer data), so it's a plain link rather
   // than an SSO hand-off like the apps above.
   { key: "paisatrack", name: "PaisaTrack", icon: "💸", desc: "Auto-tracks spending from GPay, PhonePe, bank apps & SMS", live: true, url: "https://paisatrack.bizzux.com" },
-  { key: "pos", name: "Bizzux POS", icon: "🧾", desc: "Coming soon", live: false },
-  { key: "orders", name: "Bizzux Orders", icon: "📋", desc: "Coming soon", live: false },
-  { key: "books", name: "Bizzux Books", icon: "📒", desc: "Coming soon", live: false },
-  { key: "payroll", name: "Bizzux Payroll", icon: "💰", desc: "Coming soon", live: false },
-  { key: "inventory", name: "Bizzux Inventory", icon: "📦", desc: "Coming soon", live: false },
-  { key: "vendors", name: "Bizzux Vendors", icon: "🚚", desc: "Coming soon", live: false },
-  { key: "crm", name: "Bizzux CRM", icon: "👥", desc: "Coming soon", live: false },
-  { key: "support", name: "Bizzux Support", icon: "🎧", desc: "Coming soon", live: false },
-  { key: "sites", name: "Bizzux Sites", icon: "🌐", desc: "Coming soon", live: false },
 ];
 
 function VerifyEmailGate({ user }) {

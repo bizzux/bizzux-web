@@ -15,6 +15,9 @@ import { useMe } from "@/lib/useMe";
 // — needed here so an already-signed-in visitor's "Try now" click can open
 // the app directly (see openApp() below) instead of only ever linking to
 // sign-up.
+// Only real, working apps — no "coming soon" placeholders (removed
+// entirely rather than shown locked/disabled, per the call to keep this
+// page to what's actually usable today).
 const CATEGORIES = [
   {
     id: "retail-food",
@@ -22,7 +25,6 @@ const CATEGORIES = [
     sub: "Run the day-to-day of your shop, counter, or kitchen.",
     apps: [
       { key: "juicechatjunction", name: "Bizzux Shop", icon: "🏪", desc: "POS, menu, inventory, and shop management for food & retail counters.", live: true, featured: true, url: "https://shop.bizzux.com", sso: true },
-      { key: "orders", name: "Bizzux Orders", icon: "📋", desc: "Take and track orders from counter, phone, or online.", live: false, featured: false },
     ],
   },
   {
@@ -36,46 +38,11 @@ const CATEGORIES = [
     ],
   },
   {
-    id: "point-of-sale",
-    title: "Point of Sale",
-    sub: "Fast checkout tools for counters and storefronts.",
-    apps: [
-      { key: "pos", name: "Bizzux POS", icon: "🧾", desc: "A fast, simple point-of-sale for any counter or checkout.", live: false, featured: true },
-    ],
-  },
-  {
     id: "finance",
     title: "Finance",
     sub: "Keep the books straight without the busywork.",
     apps: [
-      { key: "books", name: "Bizzux Books", icon: "📒", desc: "Accounting and invoicing for small, growing businesses.", live: false, featured: true },
-      { key: "payroll", name: "Bizzux Payroll", icon: "💰", desc: "Simple payroll for small teams, done in minutes.", live: false, featured: false },
-    ],
-  },
-  {
-    id: "operations",
-    title: "Operations",
-    sub: "Track what's coming in and going out.",
-    apps: [
-      { key: "inventory", name: "Bizzux Inventory", icon: "📦", desc: "Stock, materials, and supply tracking in real time.", live: false, featured: false },
-      { key: "vendors", name: "Bizzux Vendors", icon: "🚚", desc: "Manage vendors, purchase orders, and payments.", live: false, featured: false },
-    ],
-  },
-  {
-    id: "customers",
-    title: "Customers",
-    sub: "Keep every relationship organized in one place.",
-    apps: [
-      { key: "crm", name: "Bizzux CRM", icon: "👥", desc: "Track leads, customers, and follow-ups without spreadsheets.", live: false, featured: true },
-      { key: "support", name: "Bizzux Support", icon: "🎧", desc: "A simple helpdesk to manage customer questions.", live: false, featured: false },
-    ],
-  },
-  {
-    id: "online",
-    title: "Online Presence",
-    sub: "Get your business online without hiring a developer.",
-    apps: [
-      { key: "sites", name: "Bizzux Sites", icon: "🌐", desc: "A simple website builder made for small businesses.", live: false, featured: false },
+      { key: "paisatrack", name: "PaisaTrack", icon: "💸", desc: "Auto-tracks personal spending from GPay, PhonePe, bank apps & SMS — no manual entry.", live: true, featured: true, url: "https://paisatrack.bizzux.com" },
     ],
   },
 ];
