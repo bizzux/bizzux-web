@@ -90,7 +90,7 @@ export default function Nav() {
               center sits well below the true center of its h-9 box — nudge
               it up so the "bizzux" text lines up with the nav tabs' text
               instead of the box's geometric center. */}
-          <Image src="/logo-transparent.png" alt="Bizzux" width={132} height={54} priority className="h-9 w-auto -translate-y-1.5" />
+          <Image src="/logo-transparent.png" alt="Bizzux" width={132} height={54} priority className="h-11 w-auto -translate-y-2" />
         </Link>
         <nav className="hidden lg:flex items-center gap-6">
           {!isSuper &&

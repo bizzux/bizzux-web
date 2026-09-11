@@ -98,9 +98,12 @@ export default function UpdateToast() {
           ✨
         </div>
         <div className="flex-1">
-          <p className="text-sm font-semibold text-slate-900">A new version of Bizzux is ready</p>
+          <p className="text-sm font-semibold text-slate-900">
+            Update available{newVersion.current ? " — build " + newVersion.current.slice(0, 7) : ""}
+          </p>
           <p className="mt-0.5 text-xs text-slate-500">
-            Includes the latest fixes and improvements. Refresh whenever it suits you.
+            Bizzux has the latest fixes and improvements ready. Click Update to install it now — the
+            page will reload. Your work is saved as you go, so nothing is lost.
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -108,7 +111,7 @@ export default function UpdateToast() {
               onClick={() => window.location.reload()}
               className="rounded-lg bg-gradient-to-br from-brand-tealDark to-brand-blueDark px-3 py-1.5 text-xs font-semibold text-white"
             >
-              Refresh now
+              Update now
             </button>
             <button
               type="button"
