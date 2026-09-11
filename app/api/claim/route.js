@@ -14,7 +14,7 @@ export async function POST(req) {
   try {
     const c = await requireUser(req);
     const twoFactor = await getTwoFactorSettings(c.uid);
-    const twoFactorFields = { twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null };
+    const twoFactorFields = { twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null, twoFactorRequired: !!twoFactor.required };
 
     const ref = adminDb().doc("customers/" + c.uid);
     const existing = await ref.get();

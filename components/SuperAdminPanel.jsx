@@ -1484,6 +1484,208 @@ const APP_USAGE_LABELS = {
   projects: "Projects",
 };
 
+const DETAIL_TABS = [["account", "Account"], ["team", "Team"], ["activity", "Shop activity"]];
+
+// The "click a user, see everything" panel — Account/Team/Shop activity
+// tabs replace what used to be scattered across separate popups (View org
+// admins, View Shop activity, Extend trial, Mark paid, Set password),
+// modeled on how tools like Microsoft 365 admin center show one person's
+// full picture in a single slide-over instead of a dropdown of one-off
+// actions. Quick actions live inline per tab instead of a "⋯" menu.
+function CustomerDetailPanel({ customer, onClose, onChanged }) {
+  const [tab, setTab] = useState("account");
+  const [admins, setAdmins] = useState(null);
+  const [activity, setActivity] = useState(null);
+  const [err, setErr] = useState("");
+  const [busyUid, setBusyUid] = useState(null);
+  const [showExtend, setShowExtend] = useState(false);
+  const [showMarkPaid, setShowMarkPaid] = useState(false);
+  const [showSetPassword, setShowSetPassword] = useState(false);
+
+  async function loadAdmins() {
+    try {
+      const d = await api(`/api/admin/customers?id=${customer.id}`, "GET");
+      setAdmins(d.admins || []);
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+  useEffect(() => {
+    loadAdmins();
+    (async () => {
+      try {
+        setActivity(await api(`/api/admin/customer-activity?id=${customer.id}`, "GET"));
+      } catch (e) {
+        setErr(e.message);
+      }
+    })();
+  }, [customer.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function revokeSessions(uid) {
+    if (!confirm("Sign this person out of every device right now?")) return;
+    setBusyUid(uid);
+    try {
+      await api("/api/admin/customers", "POST", { action: "revokeSessions", uid });
+    } catch (e) {
+      setErr(e.message);
+    }
+    setBusyUid(null);
+  }
+
+  async function toggleRequire2fa(uid, required) {
+    setBusyUid(uid);
+    try {
+      await api("/api/admin/two-factor", "POST", { uid, required });
+      await loadAdmins();
+    } catch (e) {
+      setErr(e.message);
+    }
+    setBusyUid(null);
+  }
+
+  async function toggleSuspend() {
+    const suspending = customer.status !== "suspended";
+    if (!confirm(suspending ? `Suspend ${customer.email}? They'll immediately lose access to every Bizzux app.` : `Reactivate ${customer.email}?`)) return;
+    try {
+      await api("/api/admin/customers", "POST", { action: suspending ? "suspend" : "reactivate", id: customer.id });
+      onChanged && onChanged();
+      onClose();
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  async function resetPasswordEmail() {
+    if (!confirm(`Email a password reset link to ${customer.email}?`)) return;
+    try {
+      await api("/api/admin/customers", "POST", { action: "resetPassword", id: customer.id });
+      alert("Reset email sent.");
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  return (
+    <>
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640, width: "100%" }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <h2 style={{ marginBottom: 2 }}>{customer.organizationName || customer.email}</h2>
+              <p className="muted" style={{ margin: 0, fontSize: 13 }}>{customer.email}</p>
+            </div>
+            <span className={"status-pill " + (customer.status === "suspended" ? "expired" : customer.status || "trial")}>
+              {customer.status || "trial"}
+            </span>
+          </div>
+
+          <div className="admin-tabs" role="tablist" style={{ marginTop: 14, marginBottom: 14 }}>
+            {DETAIL_TABS.map(([id, label]) => (
+              <button
+                key={id} type="button" role="tab" aria-selected={tab === id}
+                className={"admin-tab" + (tab === id ? " active" : "")}
+                onClick={() => setTab(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {err && <p className="error">{err}</p>}
+
+          {tab === "account" && (
+            <div>
+              <div className="row" style={{ gap: 22, flexWrap: "wrap", marginBottom: 16 }}>
+                <div><div className="label">Plan</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.planName || "N/A"}</div></div>
+                <div><div className="label">Signed up</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.createdAt ? new Date(customer.createdAt).toLocaleDateString() : "N/A"}</div></div>
+                <div><div className="label">Last login</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{timeAgo(customer.lastLoginAt)}</div></div>
+                <div><div className="label">Trial ends</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.trialEndDate ? new Date(customer.trialEndDate).toLocaleDateString() : "N/A"}</div></div>
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <button className="btn-small" onClick={() => setShowExtend(true)}>Extend trial</button>
+                <button className="btn-small" onClick={() => setShowMarkPaid(true)}>Mark as paid</button>
+                <button className="btn-small" onClick={resetPasswordEmail}>Reset password (email link)</button>
+                <button className="btn-small" onClick={() => setShowSetPassword(true)}>Set new password directly</button>
+                <button className="btn-small" disabled={busyUid === customer.id} onClick={() => revokeSessions(customer.id)}>Sign out of all devices</button>
+                <button className="btn-ghost" onClick={toggleSuspend}>{customer.status === "suspended" ? "Reactivate" : "Suspend"}</button>
+              </div>
+            </div>
+          )}
+
+          {tab === "team" && (
+            <div>
+              {admins === null && <p className="muted">Loading…</p>}
+              {admins && admins.map((a, i) => (
+                <div key={i} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 13.5 }}>{a.email}</span>
+                    <span className="status-pill active">{a.role}</span>
+                  </div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }} title={a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : ""}>
+                    Last login: {timeAgo(a.lastLoginAt)} · 2FA: {a.twoFactorEnabled ? "on" : "off"}
+                  </div>
+                  {a.uid && (
+                    <div className="row" style={{ gap: 14, marginTop: 6, flexWrap: "wrap" }}>
+                      <button className="link-btn" disabled={busyUid === a.uid} onClick={() => revokeSessions(a.uid)}>Sign out of all devices</button>
+                      <label className="muted" style={{ fontSize: 12 }}>
+                        <input
+                          type="checkbox" checked={!!a.twoFactorRequired} disabled={busyUid === a.uid}
+                          onChange={(e) => toggleRequire2fa(a.uid, e.target.checked)} style={{ marginRight: 6 }}
+                        />
+                        Require 2FA
+                      </label>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+                <AddTeamMemberForm accountId={customer.id} onDone={loadAdmins} />
+              </div>
+            </div>
+          )}
+
+          {tab === "activity" && (
+            <div>
+              {!activity && <p className="muted">Loading…</p>}
+              {activity && (
+                <>
+                  <p className="muted" style={{ marginTop: 0, marginBottom: 12, fontSize: 12.5 }}>
+                    Usage only — sales/purchase/expense amounts are never shown here.
+                  </p>
+                  <ActivityRow label="🧾 Sales" data={activity.sales} />
+                  <ActivityRow label="🛒 Purchases" data={activity.purchases} />
+                  <ActivityRow label="🧺 Expenses" data={activity.expenses} />
+                  <div className="row" style={{ marginTop: 14, gap: 6, flexWrap: "wrap" }}>
+                    {[["Menu", activity.usesMenu], ["Inventory", activity.usesInventory], ["Reservations", activity.usesReservations], ["CapEx", activity.usesCapex]].map(([label, used]) => (
+                      <span key={label} className={"status-pill " + (used ? "active" : "")} style={!used ? { opacity: 0.5 } : undefined}>
+                        {used ? "✓" : "—"} {label}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="row" style={{ justifyContent: "flex-end", marginTop: 18 }}>
+            <button className="btn-outline-dark" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+
+      {showExtend && (
+        <ExtendTrialModal customer={customer} onClose={() => setShowExtend(false)} onExtended={async () => { setShowExtend(false); onChanged && onChanged(); }} />
+      )}
+      {showMarkPaid && (
+        <MarkPaidModal customer={customer} onClose={() => setShowMarkPaid(false)} onMarked={async () => { setShowMarkPaid(false); onChanged && onChanged(); }} />
+      )}
+      {showSetPassword && (
+        <SetPasswordModal customer={customer} onClose={() => setShowSetPassword(false)} />
+      )}
+    </>
+  );
+}
+
 function CustomersList() {
   const [customers, setCustomers] = useState(null);
   const [extending, setExtending] = useState(null); // customer row being extended, or null
@@ -1491,6 +1693,7 @@ function CustomersList() {
   const [viewingAdmins, setViewingAdmins] = useState(null); // customer row, or null
   const [viewingActivity, setViewingActivity] = useState(null); // customer row, or null
   const [settingPassword, setSettingPassword] = useState(null); // customer row, or null
+  const [viewingDetail, setViewingDetail] = useState(null); // customer row, or null
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
 
@@ -1563,7 +1766,11 @@ function CustomersList() {
                 const usedKeys = Object.keys(c.appUsage || {});
                 return (
                 <tr key={c.id}>
-                  <td>{c.organizationName || "—"}</td>
+                  <td>
+                    <button type="button" className="link-btn" style={{ textAlign: "left" }} onClick={() => setViewingDetail(c)}>
+                      {c.organizationName || c.email}
+                    </button>
+                  </td>
                   <td>{c.fullName || "N/A"}</td>
                   <td>{c.email}</td>
                   <td>{c.phone || "N/A"}</td>
@@ -1643,6 +1850,10 @@ function CustomersList() {
 
       {settingPassword && (
         <SetPasswordModal customer={settingPassword} onClose={() => setSettingPassword(null)} />
+      )}
+
+      {viewingDetail && (
+        <CustomerDetailPanel customer={viewingDetail} onClose={() => setViewingDetail(null)} onChanged={load} />
       )}
 
       {markingPaid && (

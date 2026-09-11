@@ -54,12 +54,21 @@ async function loadOrgAdmins(accountId, ownerEmail) {
   // which uses the same field but batched for every customer at once.
   await Promise.all(
     admins.map(async (a) => {
-      if (!a.uid) { a.lastLoginAt = null; return; } // invited but hasn't accepted/signed in yet
+      if (!a.uid) { a.lastLoginAt = null; a.twoFactorEnabled = false; a.twoFactorRequired = false; return; } // invited but hasn't accepted/signed in yet
       try {
         const u = await adminAuth().getUser(a.uid);
         a.lastLoginAt = u.metadata.lastSignInTime ? new Date(u.metadata.lastSignInTime).toISOString() : null;
       } catch {
         a.lastLoginAt = null;
+      }
+      try {
+        const tfSnap = await adminDb().doc("twoFactor/" + a.uid).get();
+        const tf = tfSnap.exists ? tfSnap.data() : {};
+        a.twoFactorEnabled = !!tf.enabled;
+        a.twoFactorRequired = !!tf.required;
+      } catch {
+        a.twoFactorEnabled = false;
+        a.twoFactorRequired = false;
       }
     })
   );
@@ -226,6 +235,20 @@ export async function POST(req) {
       });
 
       return NextResponse.json({ ok: true, password });
+    }
+
+    // Force-logs-out a person from every device/tab immediately, without
+    // touching their password — for a lost/stolen device, a departing
+    // employee, or just "make the new password take effect right now"
+    // instead of waiting for their current session to expire on its own.
+    // Takes a raw uid (not necessarily the account owner) so it works for
+    // any team member shown in the org detail panel too.
+    if (body.action === "revokeSessions") {
+      const uid = String(body.uid || body.id || "");
+      if (!uid) throw { status: 400, message: "User id required" };
+      await adminAuth().revokeRefreshTokens(uid);
+      await logAuditEvent({ action: "customer.revoke_sessions", actor: c, targetType: "user", targetId: uid });
+      return NextResponse.json({ ok: true });
     }
 
     // Records a payment taken outside the online checkout flow (cash, bank

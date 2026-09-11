@@ -304,6 +304,8 @@ function DashboardInner() {
     if (!me) return;
     if (me.mustChangePassword) {
       router.replace("/change-password");
+    } else if (me.twoFactorRequired && !me.twoFactorEnabled) {
+      router.replace("/setup-2fa");
     } else if (me.twoFactorEnabled && sessionStorage.getItem("2fa_verified") !== "true") {
       router.replace("/verify-2fa");
     }

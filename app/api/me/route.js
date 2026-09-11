@@ -57,7 +57,7 @@ export async function GET(req) {
       email: c.email, superAdmin: isSuper, platformRole: resolvedPlatformRole, accountType,
       accountId, isAccountAdmin, hasAccount, profile, isOwner,
       organizationId, organizationRole, mustChangePassword,
-      twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null,
+      twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null, twoFactorRequired: !!twoFactor.required,
       canManageOrgs: isSuper || isAccountAdmin,
     });
   } catch {

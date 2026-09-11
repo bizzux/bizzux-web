@@ -57,6 +57,8 @@ export default function LoginPage() {
     const result = await claimAccount(extra);
     if (result?.mustChangePassword) {
       router.push("/change-password");
+    } else if (result?.twoFactorRequired && !result?.twoFactorEnabled) {
+      router.push("/setup-2fa");
     } else if (result?.twoFactorEnabled && sessionStorage.getItem("2fa_verified") !== "true") {
       router.push("/verify-2fa");
     } else {
