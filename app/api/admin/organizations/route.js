@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOrgManager, adminAuth, adminDb, generateTempPassword } from "@/lib/firebaseAdmin";
 import { COUNTRIES } from "@/lib/countries";
+import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -168,6 +169,65 @@ export async function POST(req) {
       });
 
       return NextResponse.json({ ok: true, uid: authUser.uid, email, password });
+    }
+
+    // Adds a team member (Organization Admin, Manager, Staff/Shopkeeper,
+    // Viewer/Auditor) directly to an EXISTING customer account, with the
+    // same "admin sets a username/password, hands it over directly" flow
+    // as createAccount above — for a non-technical owner who can't be
+    // expected to run their own team-invite flow, or simply doesn't have a
+    // teammate with a real, reliably-checked email address. Writes both
+    // customers/{accountId}/team/{id} (what the owner's own /team page
+    // lists) and memberships/{uid} (what resolveAccount() actually reads
+    // to know this uid's accountId/profile at sign-in) — the credentials
+    // path in /api/team/route.js's own "invite" action was missing that
+    // second write, which would have left a credentials-created teammate
+    // unable to ever sign in; this route does it correctly from the start.
+    if (body.action === "createTeamMember") {
+      const accountId = String(body.accountId || "").trim();
+      if (!accountId) throw { status: 400, message: "Choose which organization this login belongs to" };
+      const accountSnap = await adminDb().doc("customers/" + accountId).get();
+      if (!accountSnap.exists) throw { status: 404, message: "Organization not found" };
+
+      const firstName = String(body.firstName || "").trim().slice(0, 60);
+      if (!firstName) throw { status: 400, message: "Name is required" };
+      const profile = PROFILE_VALUES.includes(body.profile) ? body.profile : DEFAULT_PROFILE;
+
+      const email = String(body.email || "").trim().toLowerCase().slice(0, 200);
+      if (!EMAIL_RE.test(email)) {
+        throw { status: 400, message: "Enter a login username in email format (e.g. name@bizzux.login) — it doesn't need to be a real inbox" };
+      }
+
+      const password = String(body.password || "").trim() || generateTempPassword();
+      if (password.length < 8) throw { status: 400, message: "Password must be at least 8 characters" };
+      const mustChangePassword = body.mustChangePassword !== false;
+
+      let authUser;
+      try {
+        authUser = await adminAuth().createUser({ email, password, emailVerified: true, displayName: firstName });
+      } catch (e) {
+        if (e.code === "auth/email-already-exists") {
+          throw { status: 409, message: "That login username is already in use by another account." };
+        }
+        throw e;
+      }
+
+      const memberRef = await adminDb().collection("customers/" + accountId + "/team").add({
+        firstName, lastName: "", email, role: profile, profile,
+        status: "active", uid: authUser.uid,
+        invitedBy: c.email, invitedAt: FieldValue.serverTimestamp(), joinedAt: FieldValue.serverTimestamp(),
+      });
+
+      await adminDb().doc("memberships/" + authUser.uid).set({
+        accountId, profile, role: profile, email, joinedAt: FieldValue.serverTimestamp(), mustChangePassword,
+      });
+
+      await logAuditEvent({
+        action: "organization.create_team_member", actor: c, targetType: "organization", targetId: accountId,
+        details: { email, profile },
+      });
+
+      return NextResponse.json({ ok: true, uid: authUser.uid, teamMemberId: memberRef.id, email, password });
     }
 
     // create (the only other supported action)

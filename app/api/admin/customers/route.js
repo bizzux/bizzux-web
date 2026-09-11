@@ -35,8 +35,16 @@ async function loadOrgAdmins(accountId, ownerEmail) {
   const admins = [{ email: ownerEmail, profile: "Admin", role: "Organization Owner", isOwner: true, uid: accountId }];
   teamSnap.docs.forEach((d) => {
     const t = d.data();
-    if (ACCOUNT_ADMIN_PROFILES.includes(t.profile) && t.status === "active") {
-      admins.push({ email: t.email, profile: t.profile, role: "Organization Admin", isOwner: false, uid: t.uid || null });
+    // Every active teammate, not just Global Admin/Admin — a Manager or
+    // Staff/Shopkeeper login an admin created on the customer's behalf
+    // (see /api/admin/organizations's createTeamMember) should show up
+    // here too, not just look like it vanished.
+    if (t.status === "active") {
+      admins.push({
+        email: t.email, profile: t.profile,
+        role: ACCOUNT_ADMIN_PROFILES.includes(t.profile) ? "Organization Admin" : t.profile,
+        isOwner: false, uid: t.uid || null,
+      });
     }
   });
 

@@ -149,6 +149,16 @@ export async function POST(req) {
         joinedAt: loginMethod === "credentials" ? FieldValue.serverTimestamp() : null,
       });
 
+      if (loginMethod === "credentials") {
+        // Mirrors what /api/team/accept writes once an email-invited
+        // teammate accepts — without this, resolveAccount() has nothing to
+        // find for this uid (no customers/ doc, no memberships/ doc) and a
+        // credentials-created teammate could never actually sign in.
+        await adminDb().doc("memberships/" + authUser.uid).set({
+          accountId: acct.accountId, profile, role, email, joinedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
       if (loginMethod === "email") {
         await sendInvite({
           accountId: acct.accountId,

@@ -1808,26 +1808,103 @@ function SetPasswordModal({ customer, onClose }) {
   );
 }
 
+const TEAM_PROFILES = ["Global Admin", "Admin", "Manager", "Staff/Shopkeeper", "Viewer/Auditor"];
+
+// Adds a team member directly to this org — for a non-technical owner who
+// can't be expected to run their own /team invite flow, or has no
+// teammate with a real, reliably-checked email address. Same
+// "admin sets a username/password, hands it over" pattern as Create
+// Business Login (OrganizationsManager.jsx), just targeting an EXISTING
+// account instead of provisioning a new one. See "createTeamMember" in
+// app/api/admin/organizations/route.js.
+function AddTeamMemberForm({ accountId, onDone }) {
+  const [firstName, setFirstName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [profile, setProfile] = useState("Manager");
+  const [mustChangePassword, setMustChangePassword] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [created, setCreated] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const d = await api("/api/admin/organizations", "POST", {
+        action: "createTeamMember", accountId, firstName, email, password, profile, mustChangePassword,
+      });
+      setCreated({ email: d.email, password: d.password });
+      setFirstName(""); setEmail(""); setPassword("");
+      onDone && onDone();
+    } catch (e2) {
+      setError(e2.message);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      {created && (
+        <div style={{ background: "var(--line, #f1f5f9)", borderRadius: 8, padding: 10, marginBottom: 10 }}>
+          <p style={{ margin: "0 0 4px", fontWeight: 600, fontSize: 12.5 }}>Login created — save now, shown only once:</p>
+          <p style={{ margin: "0 0 2px", fontFamily: "monospace", fontSize: 12.5 }}>Username: {created.email}</p>
+          <p style={{ margin: 0, fontFamily: "monospace", fontSize: 12.5 }}>Password: {created.password}</p>
+        </div>
+      )}
+      <form onSubmit={submit}>
+        <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+          <input className="input" style={{ flex: 1 }} placeholder="Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+          <select className="input" style={{ flex: 1 }} value={profile} onChange={(e) => setProfile(e.target.value)}>
+            {TEAM_PROFILES.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+        <div className="row" style={{ gap: 8, marginBottom: 4 }}>
+          <input className="input" style={{ flex: 1 }} placeholder="username@bizzux.login" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input
+            className="input" style={{ flex: 1 }} type={showPassword ? "text" : "password"}
+            placeholder="Leave blank to auto-generate" value={password} onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        {password && (
+          <label className="muted" style={{ fontSize: 12, display: "block", marginBottom: 4 }}>
+            <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} style={{ marginRight: 6 }} />
+            Show password
+          </label>
+        )}
+        <label className="muted" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
+          <input type="checkbox" checked={mustChangePassword} onChange={(e) => setMustChangePassword(e.target.checked)} style={{ marginRight: 6 }} />
+          Require them to set their own password on first login
+        </label>
+        {error && <p className="error" style={{ fontSize: 12.5 }}>{error}</p>}
+        <button className="btn-small" disabled={busy}>{busy ? "Creating…" : "+ Create login"}</button>
+      </form>
+    </div>
+  );
+}
+
 function OrgAdminsModal({ customer, onClose }) {
   const [admins, setAdmins] = useState(null);
   const [error, setError] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const d = await api(`/api/admin/customers?id=${customer.id}`, "GET");
-        setAdmins(d.admins || []);
-      } catch (e) {
-        setError(e.message);
-      }
-    })();
-  }, [customer.id]);
+  async function load() {
+    try {
+      const d = await api(`/api/admin/customers?id=${customer.id}`, "GET");
+      setAdmins(d.admins || []);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  useEffect(() => { load(); }, [customer.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
         <h2 style={{ marginBottom: 4 }}>{customer.organizationName || customer.fullName || customer.email}</h2>
-        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>Organization Owner and Organization Admins for this account.</p>
+        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>Everyone with a login on this account.</p>
         {error && <p className="error">{error}</p>}
         {!error && admins === null && <p className="muted">Loading…</p>}
         {admins && admins.map((a, i) => (
@@ -1841,6 +1918,15 @@ function OrgAdminsModal({ customer, onClose }) {
             </div>
           </div>
         ))}
+
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+          {showAddForm ? (
+            <AddTeamMemberForm accountId={customer.id} onDone={load} />
+          ) : (
+            <button className="link-btn" onClick={() => setShowAddForm(true)}>+ Add a team member (Manager, Staff, etc.)</button>
+          )}
+        </div>
+
         <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
           <button className="btn-outline-dark" onClick={onClose}>Close</button>
         </div>
