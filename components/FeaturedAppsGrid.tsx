@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMe } from "@/lib/useMe";
 import {
-  IconStore, IconLayers, IconDatabase, IconChart,
+  IconStore, IconLayers, IconDatabase, IconChart, IconPOS,
 } from "@/components/Icons";
 
 // Defined here (a Client Component) rather than passed in as a prop from
@@ -18,6 +18,7 @@ import {
 // gated) vs the shared /api/app-sso?app=... (not plan-gated) for the rest.
 const featuredApps = [
   { icon: IconStore, name: "Bizzux Shop", desc: "POS, menu, inventory and shop management for food & retail counters.", ssoKey: "shop" },
+  { icon: IconPOS, name: "Bizzux POS", desc: "A dedicated, no-frills billing counter — new sale, sales history, and menu only.", ssoKey: "pos" },
   { icon: IconLayers, name: "Bizzux Notes", desc: "Live meeting transcription and AI summaries — free for any account.", ssoKey: "notes" },
   { icon: IconDatabase, name: "Bizzux Files", desc: "Upload, search and manage files across all your documents.", ssoKey: "files" },
   { icon: IconChart, name: "Bizzux Projects", desc: "Projects and tasks on a simple Kanban board.", ssoKey: "projects" },
@@ -42,7 +43,10 @@ export default function FeaturedAppsGrid() {
     setOpeningKey(a.ssoKey);
     try {
       const token = await user.getIdToken();
-      const endpoint = a.ssoKey === "shop" ? "/api/shop-sso" : `/api/app-sso?app=${a.ssoKey}`;
+      const endpoint =
+        a.ssoKey === "shop" ? "/api/shop-sso" :
+        a.ssoKey === "pos" ? "/api/pos-sso" :
+        `/api/app-sso?app=${a.ssoKey}`;
       const r = await fetch(endpoint, { headers: { Authorization: "Bearer " + token } });
       const d = await r.json();
       if (r.status === 402) {

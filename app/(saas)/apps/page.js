@@ -25,6 +25,7 @@ const CATEGORIES = [
     sub: "Run the day-to-day of your shop, counter, or kitchen.",
     apps: [
       { key: "juicechatjunction", name: "Bizzux Shop", icon: "🏪", desc: "POS, menu, inventory, and shop management for food & retail counters.", live: true, featured: true, url: "https://shop.bizzux.com", sso: true },
+      { key: "pos", name: "Bizzux POS", icon: "🧾", desc: "A dedicated, no-frills billing counter — new sale, sales history, and menu only.", live: true, featured: true, url: "https://pos.bizzux.com", sso: true, ssoEndpoint: "/api/pos-sso" },
     ],
   },
   {
