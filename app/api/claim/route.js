@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { deriveVerificationSettings, deriveVerificationFlags } from "@/lib/verification";
+import { getTwoFactorSettings } from "@/lib/twoFactor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,10 +13,13 @@ export const dynamic = "force-dynamic";
 export async function POST(req) {
   try {
     const c = await requireUser(req);
+    const twoFactor = await getTwoFactorSettings(c.uid);
+    const twoFactorFields = { twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null };
+
     const ref = adminDb().doc("customers/" + c.uid);
     const existing = await ref.get();
     if (existing.exists) {
-      return NextResponse.json({ ok: true, created: false, mustChangePassword: !!existing.data().mustChangePassword, ...deriveVerificationFlags(existing.data()) });
+      return NextResponse.json({ ok: true, created: false, mustChangePassword: !!existing.data().mustChangePassword, ...twoFactorFields, ...deriveVerificationFlags(existing.data()) });
     }
 
     // Team members (not the account owner) never get a customers/ doc of
@@ -25,7 +29,7 @@ export async function POST(req) {
     // branch below and get an accidental blank customer/trial record.
     const memSnap = await adminDb().doc("memberships/" + c.uid).get();
     if (memSnap.exists) {
-      return NextResponse.json({ ok: true, created: false, mustChangePassword: !!memSnap.data().mustChangePassword });
+      return NextResponse.json({ ok: true, created: false, mustChangePassword: !!memSnap.data().mustChangePassword, ...twoFactorFields });
     }
 
     let body = {};
@@ -85,7 +89,7 @@ export async function POST(req) {
       ...(verifyMobileRequired ? { phoneVerified: false } : {}),
     });
 
-    return NextResponse.json({ ok: true, created: true, verifyEmailRequired, verifyMobileRequired, mustChangePassword: false });
+    return NextResponse.json({ ok: true, created: true, verifyEmailRequired, verifyMobileRequired, mustChangePassword: false, ...twoFactorFields });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }

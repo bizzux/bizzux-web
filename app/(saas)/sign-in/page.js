@@ -55,7 +55,13 @@ export default function LoginPage() {
 
   async function afterAuth(extra) {
     const result = await claimAccount(extra);
-    router.push(result?.mustChangePassword ? "/change-password" : "/dashboard");
+    if (result?.mustChangePassword) {
+      router.push("/change-password");
+    } else if (result?.twoFactorEnabled && sessionStorage.getItem("2fa_verified") !== "true") {
+      router.push("/verify-2fa");
+    } else {
+      router.push("/dashboard");
+    }
   }
 
   async function handleGoogleSignIn() {

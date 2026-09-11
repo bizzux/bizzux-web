@@ -9,6 +9,7 @@ import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
 import { useMe } from "@/lib/useMe";
 import { roleLabel as computeRoleLabel } from "@/lib/roleLabel";
+import TwoFactorSettings from "@/components/TwoFactorSettings";
 
 // Anyone can reach their own profile; only the fields below decide what's
 // visible on it. "canManageOrgs" mirrors requireOrgManager() server-side
@@ -121,6 +122,12 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        <TwoFactorSettings
+          enabled={!!me.twoFactorEnabled}
+          method={me.twoFactorMethod}
+          onChanged={() => window.location.reload()}
+        />
 
         {me.canManageOrgs && (
           <>

@@ -301,7 +301,12 @@ function DashboardInner() {
   // after sign-in (app/(saas)/sign-in/page.js) only covers the moment of
   // signing in itself.
   useEffect(() => {
-    if (me?.mustChangePassword) router.replace("/change-password");
+    if (!me) return;
+    if (me.mustChangePassword) {
+      router.replace("/change-password");
+    } else if (me.twoFactorEnabled && sessionStorage.getItem("2fa_verified") !== "true") {
+      router.replace("/verify-2fa");
+    }
   }, [me, router]);
 
   // Does NOT swallow errors on purpose — OnboardingModal's onDone call

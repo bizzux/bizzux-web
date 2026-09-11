@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, resolveAccount, resolvePlatformRole } from "@/lib/firebaseAdmin";
 import { ACCOUNT_ADMIN_PROFILES } from "@/lib/roles";
+import { getTwoFactorSettings } from "@/lib/twoFactor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,10 +48,16 @@ export async function GET(req) {
     // always wins (a Platform Owner/Admin also happening to own a
     // customers/ doc is still fundamentally a platform account).
     const accountType = resolvedPlatformRole ? "PLATFORM_USER" : "ORGANIZATION_USER";
+    // Keyed on the uid alone (twoFactor/{uid}), not nested under
+    // customers/memberships — so this works identically for an
+    // organization owner, a team member, or a Platform Admin/Owner who has
+    // no customers/ doc at all. See lib/twoFactor.js.
+    const twoFactor = await getTwoFactorSettings(c.uid);
     return NextResponse.json({
       email: c.email, superAdmin: isSuper, platformRole: resolvedPlatformRole, accountType,
       accountId, isAccountAdmin, hasAccount, profile, isOwner,
       organizationId, organizationRole, mustChangePassword,
+      twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null,
       canManageOrgs: isSuper || isAccountAdmin,
     });
   } catch {
