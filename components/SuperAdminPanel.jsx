@@ -1490,6 +1490,7 @@ function CustomersList() {
   const [markingPaid, setMarkingPaid] = useState(null); // customer row being marked paid, or null
   const [viewingAdmins, setViewingAdmins] = useState(null); // customer row, or null
   const [viewingActivity, setViewingActivity] = useState(null); // customer row, or null
+  const [settingPassword, setSettingPassword] = useState(null); // customer row, or null
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
 
@@ -1525,21 +1526,6 @@ function CustomersList() {
   // here instead of emailing a reset link nobody can receive. Also useful
   // when a shop owner calls support because they forgot their password and
   // can't reach whatever email is on file either.
-  async function setPassword(c) {
-    const entered = prompt(`New password for ${c.email} (leave blank to auto-generate):`);
-    if (entered === null) return; // cancelled
-    setBusyId(c.id);
-    setErr("");
-    try {
-      const d = await api("/api/admin/customers", "POST", { action: "setPassword", id: c.id, password: entered.trim() });
-      alert(`Password set for ${c.email}.\n\nNew password (shown only once):\n${d.password}`);
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   async function toggleSuspend(c) {
     const suspending = c.status !== "suspended";
     if (!confirm(suspending
@@ -1619,7 +1605,7 @@ function CustomersList() {
                         { label: "Extend trial", onClick: () => setExtending(c) },
                         { label: "Mark as paid (cash / offline)", onClick: () => setMarkingPaid(c) },
                         { label: "Reset password (email link)", onClick: () => resetPassword(c) },
-                        { label: "Set new password directly", onClick: () => setPassword(c) },
+                        { label: "Set new password directly", onClick: () => setSettingPassword(c) },
                         {
                           label: busyId === c.id ? "Working…" : (c.status === "suspended" ? "Reactivate" : "Suspend"),
                           danger: c.status !== "suspended",
@@ -1653,6 +1639,10 @@ function CustomersList() {
 
       {viewingActivity && (
         <CustomerActivityModal customer={viewingActivity} onClose={() => setViewingActivity(null)} />
+      )}
+
+      {settingPassword && (
+        <SetPasswordModal customer={settingPassword} onClose={() => setSettingPassword(null)} />
       )}
 
       {markingPaid && (
@@ -1731,6 +1721,87 @@ function CustomerActivityModal({ customer, onClose }) {
         )}
         <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
           <button className="btn-outline-dark" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function genPassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+// Reset, never reveal — Firebase Auth (like every real system) never
+// stores a password in a form that could be shown back to an admin, only
+// an irreversible hash. This is the actual answer to "customer forgot
+// their password": set a new one (typed or generated) and hand it over,
+// same as AWS/Google Workspace/GitHub all do it.
+function SetPasswordModal({ customer, onClose }) {
+  const [password, setPasswordValue] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      const d = await api("/api/admin/customers", "POST", {
+        action: "setPassword", id: customer.id, password: password.trim(), mustChangePassword,
+      });
+      setResult(d.password);
+    } catch (e) {
+      setError(e.message);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+        <h2 style={{ marginBottom: 4 }}>Set new password</h2>
+        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>{customer.email}</p>
+
+        {result ? (
+          <div style={{ background: "var(--line, #f1f5f9)", borderRadius: 8, padding: 12, marginBottom: 14 }}>
+            <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 13 }}>Password set — save this now, shown only once:</p>
+            <p style={{ margin: 0, fontFamily: "monospace", fontSize: 13 }}>{result}</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 10 }}>
+              <label className="label">New password</label>
+              <div className="row" style={{ gap: 6 }}>
+                <input
+                  className="input" type={showPassword ? "text" : "password"} value={password}
+                  onChange={(e) => setPasswordValue(e.target.value)}
+                  placeholder="Leave blank to auto-generate" style={{ flex: 1 }}
+                />
+                <button type="button" className="link-btn" onClick={() => setPasswordValue(genPassword())}>Generate</button>
+              </div>
+              {password && (
+                <label className="muted" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
+                  <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} style={{ marginRight: 6 }} />
+                  Show password
+                </label>
+              )}
+              <label className="muted" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
+                <input type="checkbox" checked={mustChangePassword} onChange={(e) => setMustChangePassword(e.target.checked)} style={{ marginRight: 6 }} />
+                Require them to set their own password on next login
+              </label>
+            </div>
+            {error && <p className="error">{error}</p>}
+          </>
+        )}
+
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 16, gap: 8 }}>
+          <button className="btn-outline-dark" onClick={onClose}>{result ? "Close" : "Cancel"}</button>
+          {!result && <button className="btn-primary" disabled={busy} onClick={save}>{busy ? "Saving…" : "Set password"}</button>}
         </div>
       </div>
     </div>

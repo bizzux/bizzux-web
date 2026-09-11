@@ -15,6 +15,7 @@ export async function GET(req) {
     let isOwner = true;
     let organizationId = null;
     let organizationRole = null;
+    let mustChangePassword = false;
     try {
       const acct = await resolveAccount(c.uid);
       accountId = acct.accountId;
@@ -23,6 +24,11 @@ export async function GET(req) {
       isOwner = acct.isOwner;
       organizationId = acct.organizationId;
       organizationRole = acct.organizationRole;
+      // Admin-created logins (Create Business Login, or an admin-created
+      // team member) can be flagged to force a password change on first
+      // sign-in — checked again here (not just right after sign-in) so a
+      // bookmarked /dashboard link can't skip it. See /change-password.
+      mustChangePassword = !!(acct.customer?.mustChangePassword || acct.membership?.mustChangePassword);
     } catch {
       // /api/claim hasn't run yet for this sign-in (e.g. right after
       // Google sign-in, before the client calls it) — no account yet.
@@ -44,7 +50,7 @@ export async function GET(req) {
     return NextResponse.json({
       email: c.email, superAdmin: isSuper, platformRole: resolvedPlatformRole, accountType,
       accountId, isAccountAdmin, hasAccount, profile, isOwner,
-      organizationId, organizationRole,
+      organizationId, organizationRole, mustChangePassword,
       canManageOrgs: isSuper || isAccountAdmin,
     });
   } catch {

@@ -110,6 +110,10 @@ export async function POST(req) {
 
       const password = String(body.password || "").trim() || generateTempPassword();
       if (password.length < 8) throw { status: 400, message: "Password must be at least 8 characters" };
+      // Defaults to true — a temp/admin-set password should get replaced
+      // by one only the shop owner knows, unless the admin explicitly
+      // opts out for this login.
+      const mustChangePassword = body.mustChangePassword !== false;
 
       const ownPlan = await resolveOwnPlan(c);
       if (!ownPlan) {
@@ -155,6 +159,7 @@ export async function POST(req) {
         verifyMobileRequired: false,
         createdByAdmin: true,
         createdByAdminEmail: c.email,
+        mustChangePassword,
       });
 
       await logAuditEvent({

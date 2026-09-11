@@ -207,8 +207,10 @@ export async function POST(req) {
 
       const password = String(body.password || "").trim() || generateTempPassword();
       if (password.length < 8) throw { status: 400, message: "Password must be at least 8 characters" };
+      const mustChangePassword = body.mustChangePassword !== false;
 
       await adminAuth().updateUser(id, { password });
+      await ref.set({ mustChangePassword }, { merge: true });
 
       await logAuditEvent({
         action: "customer.set_password", actor: c, targetType: "organization", targetId: id,

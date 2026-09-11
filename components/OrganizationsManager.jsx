@@ -32,6 +32,7 @@ const emptyOrg = {
 };
 const emptyAccount = {
   organizationName: "", countryCode: "", state: "", timezone: "", currency: "", userRange: "", email: "", password: "",
+  mustChangePassword: true,
 };
 
 function genPassword() {
@@ -347,6 +348,14 @@ function CreateBusinessAccount({ ownPlan }) {
                 Show password
               </label>
             )}
+            <label className="muted" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
+              <input
+                type="checkbox" checked={form.mustChangePassword}
+                onChange={(e) => setField("mustChangePassword", e.target.checked)}
+                style={{ marginRight: 6 }}
+              />
+              Require them to set their own password on first login
+            </label>
           </div>
         </div>
 

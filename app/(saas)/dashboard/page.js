@@ -26,6 +26,10 @@ const APPS = [
   { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription & AI summaries", live: true, url: "https://bizzux-notes.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
   { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste text files, then search across all of them", live: true, url: "https://bizzux-files.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
   { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Projects and tasks on a Kanban board", live: true, url: "https://bizzux-projects.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
+  // Personal finance tracker — its own separate Firebase project/auth (not
+  // part of the shared Bizzux customer data), so it's a plain link rather
+  // than an SSO hand-off like the apps above.
+  { key: "paisatrack", name: "PaisaTrack", icon: "💸", desc: "Auto-tracks spending from GPay, PhonePe, bank apps & SMS", live: true, url: "https://paisatrack.bizzux.com" },
   { key: "pos", name: "Bizzux POS", icon: "🧾", desc: "Coming soon", live: false },
   { key: "orders", name: "Bizzux Orders", icon: "📋", desc: "Coming soon", live: false },
   { key: "books", name: "Bizzux Books", icon: "📒", desc: "Coming soon", live: false },
@@ -291,6 +295,14 @@ function DashboardInner() {
   useEffect(() => {
     if (user === null) router.push("/sign-in");
   }, [user, router]);
+
+  // Catches a bookmarked/direct /dashboard visit after an admin-created
+  // login was flagged to force a password change — the redirect right
+  // after sign-in (app/(saas)/sign-in/page.js) only covers the moment of
+  // signing in itself.
+  useEffect(() => {
+    if (me?.mustChangePassword) router.replace("/change-password");
+  }, [me, router]);
 
   // Does NOT swallow errors on purpose — OnboardingModal's onDone call
   // needs the real error (e.g. a Firestore permission message) to bubble up

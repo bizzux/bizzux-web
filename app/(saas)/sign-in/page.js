@@ -54,8 +54,8 @@ export default function LoginPage() {
   }
 
   async function afterAuth(extra) {
-    await claimAccount(extra);
-    router.push("/dashboard");
+    const result = await claimAccount(extra);
+    router.push(result?.mustChangePassword ? "/change-password" : "/dashboard");
   }
 
   async function handleGoogleSignIn() {

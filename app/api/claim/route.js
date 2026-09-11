@@ -15,7 +15,17 @@ export async function POST(req) {
     const ref = adminDb().doc("customers/" + c.uid);
     const existing = await ref.get();
     if (existing.exists) {
-      return NextResponse.json({ ok: true, created: false, ...deriveVerificationFlags(existing.data()) });
+      return NextResponse.json({ ok: true, created: false, mustChangePassword: !!existing.data().mustChangePassword, ...deriveVerificationFlags(existing.data()) });
+    }
+
+    // Team members (not the account owner) never get a customers/ doc of
+    // their own — their record lives in memberships/{uid} instead (see
+    // resolveAccount in lib/firebaseAdmin.js). Without this check, a team
+    // member signing in here would fall through to the "brand new owner"
+    // branch below and get an accidental blank customer/trial record.
+    const memSnap = await adminDb().doc("memberships/" + c.uid).get();
+    if (memSnap.exists) {
+      return NextResponse.json({ ok: true, created: false, mustChangePassword: !!memSnap.data().mustChangePassword });
     }
 
     let body = {};
@@ -68,10 +78,14 @@ export async function POST(req) {
       onboarded: false,
       verifyEmailRequired,
       verifyMobileRequired,
+      // A normal self-signup always chooses their own password — forcing
+      // a change makes sense only for admin-created logins (see
+      // app/api/admin/organizations & .../customers's setPassword action).
+      mustChangePassword: false,
       ...(verifyMobileRequired ? { phoneVerified: false } : {}),
     });
 
-    return NextResponse.json({ ok: true, created: true, verifyEmailRequired, verifyMobileRequired });
+    return NextResponse.json({ ok: true, created: true, verifyEmailRequired, verifyMobileRequired, mustChangePassword: false });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
