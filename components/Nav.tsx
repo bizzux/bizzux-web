@@ -7,6 +7,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useMe } from "@/lib/useMe";
 import { roleLabel } from "@/lib/roleLabel";
+import LiveClock from "@/components/LiveClock";
 
 // "All apps" sits first, right next to the logo, on every page. The rest
 // are the marketing tabs, always shown, signed in or not, so the menu bar
@@ -65,6 +66,11 @@ export default function Nav() {
   // page, not just those three, since Nav itself isn't in a shared layout.
   const myRoleLabel = isSuper ? "Platform " + (me?.platformRole === "OWNER" ? "Owner" : "Admin") : roleLabel(me);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // No dedicated "name" field comes back from /api/me — Firebase's own
+  // displayName (set for Google sign-ins) is the best real name available;
+  // everyone else falls back to the readable part of their email rather
+  // than showing nothing.
+  const firstName = user?.displayName?.split(" ")[0] || user?.email?.split("@")[0];
 
   // One breakpoint (lg) splits the ENTIRE right-side group — role badge,
   // Profile/Sign in, CTA, Super Admin, Sign out — from the desktop row into
@@ -163,6 +169,14 @@ export default function Nav() {
           )}
         </button>
       </div>
+
+      {signedIn && (
+        <div className="border-t border-slate-50 bg-slate-50/60 px-6 py-1.5">
+          <div className="max-w-7xl mx-auto">
+            <LiveClock name={firstName} />
+          </div>
+        </div>
+      )}
 
       {mobileOpen && (
         <div className="lg:hidden border-t border-slate-100 bg-white px-6 py-4 max-h-[calc(100vh-4rem)] overflow-y-auto">
