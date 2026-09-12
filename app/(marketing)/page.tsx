@@ -64,42 +64,38 @@ export default function Home() {
     <>
       <SuperAdminHomeRedirect />
       {/* Hero — light, two-column: pitch + real CTAs/nav pills on the left,
-          the owner photo on a warm gradient panel (with two floating notes)
-          on the right. Every piece of text here is real markup, not part
-          of an image, so it's selectable, linkable and indexable. */}
+          the owner photo (its own shop background baked in, fading to
+          transparent on its left edge) filling the right column directly —
+          no card/panel wrapper needed since the photo already blends into
+          the page. Kept short on purpose: Featured Apps needs to be the
+          next thing a visitor sees, not something they scroll to find. */}
       <section className="relative overflow-hidden bg-white">
-        <div className="absolute inset-0" style={{
-          background: "radial-gradient(55% 50% at 15% 15%, rgba(18,166,149,0.10) 0%, transparent 60%), radial-gradient(50% 50% at 90% 10%, rgba(33,89,212,0.10) 0%, transparent 60%)"
-        }} />
-        <Container className="relative !max-w-7xl pt-10 pb-12 md:pt-16 md:pb-16">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+        <Container className="relative !max-w-7xl pt-6 pb-4 md:pt-8 md:pb-4">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-center">
             <div>
-              <div className="text-brand-teal font-semibold text-xs tracking-widest uppercase mb-4">
+              <div className="text-brand-teal font-semibold text-xs tracking-widest uppercase mb-3">
                 — Smart business. Brighter tomorrow.
               </div>
-              <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight leading-tight text-ink">
-                Run Your Business.
-                <br />
-                Build What&apos;s Next.
-                <br />
+              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight leading-tight text-ink">
+                Run Your Business. Build What&apos;s Next.{" "}
                 <span className="bg-gradient-to-r from-brand-tealDark to-brand-blueDark bg-clip-text text-transparent">
                   All Under One Roof.
                 </span>
               </h1>
-              <p className="mt-5 text-slate-600 max-w-lg">
+              <p className="mt-3 text-slate-600 max-w-lg text-sm md:text-base">
                 Manage sales, inventory, expenses, customers, POS and more with Bizzux. Powerful business apps,
                 now with AI, to help you work smarter and grow faster.
               </p>
-              <div className="mt-7 flex flex-wrap gap-4">
+              <div className="mt-4 flex flex-wrap gap-3">
                 <CTAButton href="/apps">Explore Bizzux Platform</CTAButton>
                 <CTAButton href="/contact" variant="secondary">Book a Demo</CTAButton>
               </div>
-              <div className="mt-7 flex flex-wrap gap-2.5">
+              <div className="mt-4 flex flex-wrap gap-2">
                 {heroQuickLinks.map((l) => (
                   <a
                     key={l.label}
                     href="/apps"
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-3.5 py-1.5 text-sm text-slate-700 hover:border-brand-teal hover:text-brand-blue transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-3 py-1 text-xs md:text-sm text-slate-700 hover:border-brand-teal hover:text-brand-blue transition-colors"
                   >
                     <l.icon className="w-3.5 h-3.5" />
                     {l.label}
@@ -108,17 +104,17 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="relative">
-              <div className="relative rounded-[2rem] bg-gradient-to-br from-amber-50 via-orange-50 to-teal-50 overflow-hidden aspect-[4/5] flex items-end justify-center">
+            <div className="relative hidden lg:block">
+              <div className="relative overflow-hidden aspect-[16/10] flex items-end justify-end">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/images/hero-owner.png"
                   alt="A Bizzux shop owner, smiling, with a POS tablet on her counter"
-                  className="w-[92%] h-auto object-contain object-bottom drop-shadow-xl"
+                  className="absolute inset-0 w-full h-full object-cover object-right"
                 />
               </div>
 
-              <div className="absolute top-5 right-[-0.5rem] md:right-[-1rem] bg-white rounded-2xl shadow-lg shadow-slate-900/10 border border-slate-100 px-4 py-3 flex items-center gap-3 max-w-[200px]">
+              <div className="absolute top-3 right-2 bg-white rounded-2xl shadow-lg shadow-slate-900/10 border border-slate-100 px-4 py-3 flex items-center gap-3 max-w-[200px]">
                 <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white flex items-center justify-center shrink-0">
                   <IconChart className="w-4.5 h-4.5" />
                 </div>
@@ -126,7 +122,7 @@ export default function Home() {
               </div>
 
               <div
-                className="absolute top-16 left-[-0.5rem] md:left-[-1.5rem] text-brand-blue text-sm font-medium italic -rotate-6 select-none hidden sm:block"
+                className="absolute bottom-4 left-2 text-brand-blue text-sm font-medium italic -rotate-6 select-none"
                 style={{ fontFamily: "cursive" }}
               >
                 More time for what you love
@@ -136,11 +132,11 @@ export default function Home() {
         </Container>
       </section>
 
-      {/* Featured apps */}
-      <div className="px-6 mt-4 md:mt-6 relative z-10">
+      {/* Featured apps — right under the hero, no scroll needed to reach it */}
+      <div className="px-6 relative z-10">
         <Container className="!px-0 !max-w-7xl">
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-8 md:p-10">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-7">
+          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-6 md:p-7">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-5">
               <span className="text-sm font-bold tracking-wide uppercase text-slate-500">Featured apps</span>
               <a
                 href="/apps"
