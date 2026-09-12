@@ -105,12 +105,13 @@ export default function Home() {
             </div>
 
             <div className="relative hidden lg:block">
-              <div className="relative overflow-hidden aspect-[16/10] flex items-end justify-end">
+              <div className="relative overflow-hidden aspect-[4/3] flex items-end justify-end">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/images/hero-owner.png"
                   alt="A Bizzux shop owner, smiling, with a POS tablet on her counter"
-                  className="absolute inset-0 w-full h-full object-cover object-right"
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ objectPosition: "right top" }}
                 />
               </div>
 
