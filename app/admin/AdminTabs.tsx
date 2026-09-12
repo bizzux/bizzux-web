@@ -8,6 +8,8 @@ import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
 import { IconDownload } from "@/components/Icons";
 import { useMe } from "@/lib/useMe";
+import AdminTeamPanel from "@/components/AdminTeamPanel";
+import AdminReviewsPanel from "@/components/AdminReviewsPanel";
 
 // Super Admin (SaaS) is the default/first tab, so SuperAdminPanel is
 // imported normally — it's needed on the very first render either way.
@@ -49,7 +51,7 @@ export default function AdminTabs() {
   const { user, me } = useMe();
   const isSuper = me ? me.superAdmin === true : null; // null = checking role
   const isAccountAdmin = me?.isAccountAdmin === true;
-  const [tab, setTab] = useState<"saas" | "career" | "analytics">("saas");
+  const [tab, setTab] = useState<"saas" | "career" | "analytics" | "team" | "reviews">("saas");
   const [apps, setApps] = useState<Application[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -134,7 +136,11 @@ export default function AdminTabs() {
           <div>
             <h1 className="text-xl font-bold">Super Admin</h1>
             <p className="text-sm text-slate-500">
-              {tab === "saas" ? "Bizzux SaaS platform" : tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` : "Subscriptions and revenue across every organization"}
+              {tab === "saas" ? "Bizzux SaaS platform" :
+               tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` :
+               tab === "team" ? "CEO and staff shown on bizzux.com/about" :
+               tab === "reviews" ? "Public reviews submitted from the About page" :
+               "Subscriptions and revenue across every organization"}
             </p>
           </div>
 
@@ -156,6 +162,18 @@ export default function AdminTabs() {
             onClick={() => setTab("analytics")}
           >
             Analytics
+          </button>
+          <button
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "team" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
+            onClick={() => setTab("team")}
+          >
+            Team
+          </button>
+          <button
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "reviews" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
+            onClick={() => setTab("reviews")}
+          >
+            Reviews
           </button>
           </div>
         </div>
@@ -258,6 +276,10 @@ export default function AdminTabs() {
         )}
 
         {tab === "analytics" && <AnalyticsPanel user={user} />}
+
+        {tab === "team" && <AdminTeamPanel />}
+
+        {tab === "reviews" && <AdminReviewsPanel />}
       </div>
       </section>
     </>

@@ -1,6 +1,8 @@
 import Image from "next/image";
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import type { Metadata } from "next";
+import { adminDb } from "@/lib/firebaseAdmin";
+import ReviewForm from "@/components/ReviewForm";
 
 export const metadata: Metadata = {
   title: "About | Bizzux",
@@ -14,7 +16,56 @@ const beliefs = [
   "Security, ownership and scalability should be built in from the beginning.",
 ];
 
-export default function AboutPage() {
+type TeamMember = {
+  id: string;
+  name: string;
+  role?: string;
+  bio?: string;
+  photoUrl?: string | null;
+  isCEO?: boolean;
+};
+
+type Review = {
+  id: string;
+  name: string;
+  photoUrl?: string | null;
+  rating: number;
+  text: string;
+};
+
+// Rendered server-side with the Admin SDK, same pattern the homepage's
+// generateMetadata already uses — no client fetch/loading state needed for
+// content that's the same for every visitor, and it's managed from
+// /admin (Team / Reviews tabs, Platform Owner/Admin only).
+async function getTeam(): Promise<TeamMember[]> {
+  try {
+    const snap = await adminDb().collection("team").orderBy("order", "asc").get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as TeamMember);
+  } catch {
+    return [];
+  }
+}
+
+async function getApprovedReviews(): Promise<Review[]> {
+  try {
+    // Filtering in JS instead of where("status","==","approved").orderBy
+    // ("createdAt") avoids needing a composite Firestore index just for
+    // this one query — fine at this volume (a marketing site's reviews),
+    // and status/order can change without touching Firestore config.
+    const snap = await adminDb().collection("reviews").orderBy("createdAt", "desc").limit(50).get();
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }) as Review & { status?: string })
+      .filter((r) => r.status === "approved")
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+export default async function AboutPage() {
+  const [team, reviews] = await Promise.all([getTeam(), getApprovedReviews()]);
+  const ceo = team.find((m) => m.isCEO);
+  const staff = team.filter((m) => !m.isCEO);
   return (
     <>
       <section className="pt-14 pb-14 bg-navy text-white relative overflow-hidden">
@@ -60,6 +111,69 @@ export default function AboutPage() {
               </div>
             ))}
           </div>
+        </Container>
+      </section>
+
+      {team.length > 0 && (
+        <section className="py-14 border-t border-slate-100">
+          <Container>
+            <h2 className="text-2xl font-bold mb-8 text-center">The people behind Bizzux</h2>
+
+            {ceo && (
+              <div className="max-w-sm mx-auto mb-10 text-center">
+                <div className="w-28 h-28 rounded-full overflow-hidden bg-slate-100 mx-auto mb-4 border-4 border-white shadow-lg">
+                  {ceo.photoUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={ceo.photoUrl} alt={ceo.name} className="w-full h-full object-cover" />
+                  )}
+                </div>
+                <p className="font-bold text-lg">{ceo.name}</p>
+                <p className="text-brand-blue text-sm font-semibold mb-2">{ceo.role || "Founder & CEO"}</p>
+                {ceo.bio && <p className="text-slate-600 text-sm max-w-xs mx-auto">{ceo.bio}</p>}
+              </div>
+            )}
+
+            {staff.length > 0 && (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {staff.map((m) => (
+                  <div key={m.id} className="text-center">
+                    <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 mx-auto mb-3">
+                      {m.photoUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.photoUrl} alt={m.name} className="w-full h-full object-cover" />
+                      )}
+                    </div>
+                    <p className="font-semibold text-sm">{m.name}</p>
+                    <p className="text-slate-500 text-xs">{m.role}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Container>
+        </section>
+      )}
+
+      <section className="py-14 bg-slate-50 border-t border-slate-100">
+        <Container>
+          <h2 className="text-2xl font-bold mb-8 text-center">What people say</h2>
+          {reviews.length > 0 && (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-10">
+              {reviews.map((r) => (
+                <div key={r.id} className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
+                  <p className="text-amber-400 mb-2">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</p>
+                  <p className="text-slate-700 text-sm mb-4">&ldquo;{r.text}&rdquo;</p>
+                  <div className="flex items-center gap-2">
+                    {r.photoUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.photoUrl} alt="" className="w-7 h-7 rounded-full" />
+                    )}
+                    <span className="text-xs font-semibold text-slate-600">{r.name}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <ReviewForm />
         </Container>
       </section>
 
