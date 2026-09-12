@@ -63,7 +63,7 @@ export default function FeaturedAppsGrid() {
   }
 
   return (
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-8">
+    <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-5">
       {apps.map((a) => {
         const Icon = a.icon;
         return (
@@ -73,18 +73,16 @@ export default function FeaturedAppsGrid() {
             tabIndex={0}
             onClick={() => openApp(a)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openApp(a); } }}
-            className="flex gap-4 cursor-pointer group -m-2 p-2 rounded-lg hover:bg-slate-50 transition-colors"
+            className="cursor-pointer group rounded-xl border border-slate-100 p-5 hover:border-brand-teal hover:shadow-sm transition-all"
           >
-            <div className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white">
+            <div className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white mb-4">
               <Icon className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-base group-hover:text-brand-blue transition-colors">{a.name}</span>
-                {openingKey === a.ssoKey && <span className="text-xs text-slate-400">Opening…</span>}
-              </div>
-              <p className="text-sm text-slate-500 mt-1 leading-relaxed">{a.desc}</p>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-sm group-hover:text-brand-blue transition-colors">{a.name}</span>
+              {openingKey === a.ssoKey && <span className="text-xs text-slate-400">Opening…</span>}
             </div>
+            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{a.desc}</p>
           </div>
         );
       })}

@@ -2,10 +2,24 @@ import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import FeaturedAppsGrid from "@/components/FeaturedAppsGrid";
 import SuperAdminHomeRedirect from "@/components/SuperAdminHomeRedirect";
 import {
-  IconPOS,
+  IconPOS, IconBox, IconWallet, IconDatabase,
   IconLayers, IconSpark, IconCloud, IconShield, IconCheck,
-  IconStore, IconArrowRight, IconWhatsApp,
+  IconArrowRight, IconChart,
 } from "@/components/Icons";
+
+// Quick-jump pills under the hero CTAs — every one of these is a real
+// module inside the platform (see app/(saas)/apps), so they all just point
+// at /apps rather than a dead anchor; a signed-out visitor lands on the
+// apps overview and picks up the sign-up flow from there same as the main
+// CTA does.
+const heroQuickLinks = [
+  { icon: IconPOS, label: "POS" },
+  { icon: IconBox, label: "Inventory" },
+  { icon: IconWallet, label: "Billing" },
+  { icon: IconSpark, label: "AI Apps" },
+  { icon: IconDatabase, label: "Files" },
+  { icon: IconChart, label: "Projects" },
+];
 
 const platformFeatures = [
   "Point of sale and payment tracking",
@@ -49,66 +63,94 @@ export default function Home() {
   return (
     <>
       <SuperAdminHomeRedirect />
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-navy">
-        <div className="absolute inset-0 opacity-40" style={{
-          background: "radial-gradient(60% 50% at 20% 20%, rgba(18,166,149,0.35) 0%, transparent 60%), radial-gradient(50% 50% at 85% 30%, rgba(33,89,212,0.35) 0%, transparent 60%)"
+      {/* Hero — light, two-column: pitch + real CTAs/nav pills on the left,
+          the owner photo on a warm gradient panel (with two floating notes)
+          on the right. Every piece of text here is real markup, not part
+          of an image, so it's selectable, linkable and indexable. */}
+      <section className="relative overflow-hidden bg-white">
+        <div className="absolute inset-0" style={{
+          background: "radial-gradient(55% 50% at 15% 15%, rgba(18,166,149,0.10) 0%, transparent 60%), radial-gradient(50% 50% at 90% 10%, rgba(33,89,212,0.10) 0%, transparent 60%)"
         }} />
-        <Container className="relative pt-8 pb-6 md:pt-10 md:pb-8 text-center">
-          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight leading-tight max-w-3xl mx-auto text-white">
-            Run Your Business. Build What&apos;s Next. All Under One Roof.
-          </h1>
-          <p className="mt-4 text-slate-400 max-w-2xl mx-auto">
-            Manage sales, inventory, expenses and profit with Bizzux. Build custom cloud, AI and business solutions
-            when your business needs something more.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-4 justify-center">
-            <CTAButton href="/apps">Explore Bizzux Platform</CTAButton>
-            <a
-              href="https://wa.me/919591222422"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 justify-center rounded-full h-10 bg-green-600 text-white text-sm font-semibold px-6 hover:bg-green-700 transition-colors"
-            >
-              <IconWhatsApp className="w-4 h-4" />
-              Chat on WhatsApp
-            </a>
+        <Container className="relative !max-w-7xl pt-10 pb-12 md:pt-16 md:pb-16">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            <div>
+              <div className="text-brand-teal font-semibold text-xs tracking-widest uppercase mb-4">
+                — Smart business. Brighter tomorrow.
+              </div>
+              <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight leading-tight text-ink">
+                Run Your Business.
+                <br />
+                Build What&apos;s Next.
+                <br />
+                <span className="bg-gradient-to-r from-brand-tealDark to-brand-blueDark bg-clip-text text-transparent">
+                  All Under One Roof.
+                </span>
+              </h1>
+              <p className="mt-5 text-slate-600 max-w-lg">
+                Manage sales, inventory, expenses, customers, POS and more with Bizzux. Powerful business apps,
+                now with AI, to help you work smarter and grow faster.
+              </p>
+              <div className="mt-7 flex flex-wrap gap-4">
+                <CTAButton href="/apps">Explore Bizzux Platform</CTAButton>
+                <CTAButton href="/contact" variant="secondary">Book a Demo</CTAButton>
+              </div>
+              <div className="mt-7 flex flex-wrap gap-2.5">
+                {heroQuickLinks.map((l) => (
+                  <a
+                    key={l.label}
+                    href="/apps"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-3.5 py-1.5 text-sm text-slate-700 hover:border-brand-teal hover:text-brand-blue transition-colors"
+                  >
+                    <l.icon className="w-3.5 h-3.5" />
+                    {l.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="relative rounded-[2rem] bg-gradient-to-br from-amber-50 via-orange-50 to-teal-50 overflow-hidden aspect-[4/5] flex items-end justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/images/hero-owner.png"
+                  alt="A Bizzux shop owner, smiling, with a POS tablet on her counter"
+                  className="w-[92%] h-auto object-contain object-bottom drop-shadow-xl"
+                />
+              </div>
+
+              <div className="absolute top-5 right-[-0.5rem] md:right-[-1rem] bg-white rounded-2xl shadow-lg shadow-slate-900/10 border border-slate-100 px-4 py-3 flex items-center gap-3 max-w-[200px]">
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white flex items-center justify-center shrink-0">
+                  <IconChart className="w-4.5 h-4.5" />
+                </div>
+                <span className="text-sm font-semibold leading-snug text-ink">Grow Smarter with Bizzux</span>
+              </div>
+
+              <div
+                className="absolute top-16 left-[-0.5rem] md:left-[-1.5rem] text-brand-blue text-sm font-medium italic -rotate-6 select-none hidden sm:block"
+                style={{ fontFamily: "cursive" }}
+              >
+                More time for what you love
+              </div>
+            </div>
           </div>
         </Container>
       </section>
 
-      {/* Featured apps — floats up over the hero's bottom edge, echoing the
-          "featured products" panel pattern from bizzux-apps' own launcher
-          (icons, layout style) but with Bizzux's own apps and branding. */}
-      <div className="px-6 mt-8 md:mt-10 relative z-10">
+      {/* Featured apps */}
+      <div className="px-6 mt-4 md:mt-6 relative z-10">
         <Container className="!px-0 !max-w-7xl">
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-900/5 p-8 md:p-12 grid md:grid-cols-[340px_1fr] gap-8 md:gap-12">
-            <div className="rounded-xl bg-gradient-to-br from-brand-tealDark via-brand-cyanDark to-brand-blueDark text-white p-8 flex flex-col justify-between">
-              <div>
-                <div className="w-14 h-14 rounded-lg bg-white/15 flex items-center justify-center mb-5">
-                  <IconStore className="w-7 h-7" />
-                </div>
-                <h3 className="text-2xl font-bold mb-3">Bizzux Shop is live</h3>
-                <p className="text-base text-white">
-                  POS, digital menu, inventory and shop management. Start running your counter on Bizzux today, free for 14 days.
-                </p>
-              </div>
-              <CTAButton href="/sign-in?mode=signup" variant="ghost-light">Start free trial</CTAButton>
+          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-8 md:p-10">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-7">
+              <span className="text-sm font-bold tracking-wide uppercase text-slate-500">Featured apps</span>
+              <a
+                href="/apps"
+                className="inline-flex items-center gap-1.5 h-10 rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
+                style={{ color: "#ffffff" }}
+              >
+                Explore all apps <IconArrowRight className="w-4 h-4" />
+              </a>
             </div>
-
-            <div>
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-7">
-                <span className="text-sm font-bold tracking-wide uppercase text-slate-500">Featured apps</span>
-                <a
-                  href="/apps"
-                  className="inline-flex items-center gap-1.5 h-10 rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
-                  style={{ color: "#ffffff" }}
-                >
-                  Explore all apps <IconArrowRight className="w-4 h-4" />
-                </a>
-              </div>
-              <FeaturedAppsGrid />
-            </div>
+            <FeaturedAppsGrid />
           </div>
         </Container>
       </div>
