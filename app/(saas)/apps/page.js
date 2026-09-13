@@ -24,7 +24,7 @@ const CATEGORIES = [
     title: "Retail & Food",
     sub: "Run the day-to-day of your shop, counter, or kitchen.",
     apps: [
-      { key: "juicechatjunction", name: "Bizzux Business", icon: "🏪", desc: "Run your sales, inventory, purchases, expenses and daily operations in one place.", live: true, featured: true, url: "https://shop.bizzux.com", sso: true },
+      { key: "juicechatjunction", name: "Bizzux Business", icon: "🏪", desc: "Run your sales, inventory, purchases, expenses and daily operations in one place.", live: true, featured: true, url: "https://business.bizzux.com", sso: true },
       { key: "pos", name: "Bizzux POS", icon: "🧾", desc: "A dedicated, no-frills billing counter — new sale, sales history, and menu only.", live: true, featured: true, url: "https://pos.bizzux.com", sso: true, ssoEndpoint: "/api/pos-sso" },
     ],
   },

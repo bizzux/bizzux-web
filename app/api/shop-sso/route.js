@@ -25,7 +25,7 @@ export async function OPTIONS() {
 // SHOP_URL lets this point at a local Shop dev server for testing (e.g.
 // SHOP_URL=http://localhost:3000 in .env.local) — leave it unset in
 // production/Vercel and it falls back to the real deployed Shop.
-const SHOP_URL = process.env.SHOP_URL || "https://shop.bizzux.com";
+const SHOP_URL = process.env.SHOP_URL || "https://business.bizzux.com";
 
 // Bizzux Shop's role model has 5 tiers, all decided here — bizzux-apps is
 // the single source of truth for roles, Shop no longer manages its own.

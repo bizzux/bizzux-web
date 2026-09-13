@@ -5,7 +5,7 @@ import { signShopToken } from "@/lib/shopHmac";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SHOP_URL = process.env.SHOP_URL || "https://shop.bizzux.com";
+const SHOP_URL = process.env.SHOP_URL || "https://business.bizzux.com";
 
 // Thin proxy to bizzux-shop's own /api/admin/activity — see that route's
 // comment for why this returns usage counts/timestamps only, never actual
