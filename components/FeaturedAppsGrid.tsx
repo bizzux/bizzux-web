@@ -17,7 +17,7 @@ import {
 // which SSO hand-off each tile uses — Shop's own /api/shop-sso (plan-
 // gated) vs the shared /api/app-sso?app=... (not plan-gated) for the rest.
 const featuredApps = [
-  { icon: IconStore, name: "Bizzux Shop", desc: "POS, menu, inventory and shop management for food & retail counters.", ssoKey: "shop" },
+  { icon: IconStore, name: "Bizzux Business", desc: "Run your sales, inventory, purchases, expenses and daily operations in one place.", ssoKey: "shop" },
   { icon: IconPOS, name: "Bizzux POS", desc: "A dedicated, no-frills billing counter — new sale, sales history, and menu only.", ssoKey: "pos" },
   { icon: IconLayers, name: "Bizzux Notes", desc: "Live meeting transcription and AI summaries — free for any account.", ssoKey: "notes" },
   { icon: IconDatabase, name: "Bizzux Files", desc: "Upload, search and manage files across all your documents.", ssoKey: "files" },

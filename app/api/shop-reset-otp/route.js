@@ -59,7 +59,7 @@ export async function POST(req) {
       const { error } = await resend.emails.send({
         from,
         to: customer.email,
-        subject: "Your Bizzux Shop reset code",
+        subject: "Your Bizzux Business reset code",
         html: resetOtpEmailHtml({ code, organizationName: customer.organizationName || customer.companyName }),
       });
       if (error) throw new Error(error.message || "Could not send the reset code email");

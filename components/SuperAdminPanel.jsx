@@ -1224,7 +1224,7 @@ function PlanLimitsManager() {
         <p className="muted" style={{ marginTop: 0 }}>
           Set usage limits per plan: staff logins, shop locations, menu items, and monthly self-orders.
           Leave a field blank for <b>Unlimited</b>. These numbers are for reference and billing conversations
-          for now; they aren&apos;t automatically enforced inside Bizzux Shop yet.
+          for now; they aren&apos;t automatically enforced inside Bizzux Business yet.
         </p>
         {missingDefaults.length > 0 && (
           <button className="btn-primary" disabled={seeding} onClick={seedDefaults}>
@@ -1366,9 +1366,9 @@ function PlanAppsManager() {
       <div className="card" style={{ marginBottom: 16 }}>
         <p className="section-title" style={{ marginTop: 0 }}>App access per plan</p>
         <p className="muted" style={{ marginTop: 0 }}>
-          Choose which Bizzux apps come with each plan. Apps with a known tab structure, like Bizzux Shop,
+          Choose which Bizzux apps come with each plan. Apps with a known tab structure, like Bizzux Business,
           show a checklist of their real tabs to include or exclude; the rest still take a free-text list of
-          feature names for reference. Enforcement currently reaches Bizzux Shop, since it's the only app
+          feature names for reference. Enforcement currently reaches Bizzux Business, since it's the only app
           live today, through the sign-in hand-off.
         </p>
         {err && <p className="error" style={{ marginTop: 10 }}>{err}</p>}
