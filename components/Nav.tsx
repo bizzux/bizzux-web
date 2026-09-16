@@ -26,9 +26,11 @@ import LiveClock from "@/components/LiveClock";
 // pages. For Super Admins, a themed "Super Admin" button follows the CTA.
 const links = [
   { href: "/apps", label: "All apps" },
+  { href: "/screen-recorder", label: "Screen Recorder" },
   { href: "/careers", label: "Career" },
   { href: "/custom-solutions", label: "Build" },
   { href: "/pricing", label: "Pricing" },
+  { href: "/resources", label: "Resources" },
   { href: "/partners", label: "Partners" },
 ];
 
