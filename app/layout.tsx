@@ -22,7 +22,8 @@ export const metadata: Metadata = {
     "Bizzux is cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
   metadataBase: new URL("https://bizzux.com"),
   applicationName: "Bizzux",
-  icons: { icon: "/logo-transparent.png" },
+  // favicon.ico, icon.png, and apple-icon.png are all auto-detected from the
+  // app/ directory by Next.js's file convention — no metadata entry needed.
   openGraph: {
     title: "Bizzux: Run your business smarter, every day.",
     description:
@@ -53,7 +54,7 @@ const organizationJsonLd = {
   "@type": "Organization",
   name: "Bizzux",
   url: "https://bizzux.com",
-  logo: "https://bizzux.com/logo-transparent.png",
+  logo: "https://bizzux.com/bizzux-logo-full.png",
   description:
     "Bizzux is cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
 };
