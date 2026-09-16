@@ -39,6 +39,23 @@ export const metadata: Metadata = {
       "Cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
     images: ["/og-image.png"],
   },
+  alternates: {
+    canonical: "https://bizzux.com",
+  },
+};
+
+// Organization structured data — tells Google explicitly that "Bizzux" is the
+// brand/entity name for this domain, which is what exact-brand-name searches
+// match against. Add real social profile URLs to `sameAs` once they exist;
+// a fabricated one would do more harm than good.
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Bizzux",
+  url: "https://bizzux.com",
+  logo: "https://bizzux.com/logo-transparent.png",
+  description:
+    "Bizzux is cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
 };
 
 // Kept deliberately minimal — the marketing Nav/Footer chrome now lives in
@@ -54,6 +71,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen font-sans bg-white text-ink">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
         {children}
         <UpdateToast />
       </body>
