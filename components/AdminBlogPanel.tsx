@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
+import ShareButtons from "@/components/ShareButtons";
 
 type BlockType =
   | { type: "p"; text: string }
@@ -149,6 +150,58 @@ export default function AdminBlogPanel() {
     setGenerating(false);
   }
 
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Uploads the image as the cover AND sends it to Gemini vision to write
+  // the post from what it actually shows (e.g. an infographic) — one
+  // upload does both, since that's the whole point of this flow.
+  async function generateFromImage(file: File) {
+    setGenerating(true);
+    setUploadingImage(true);
+    setFormError("");
+    try {
+      const [uploadResult, base64] = await Promise.all([
+        (async () => {
+          const fd = new FormData();
+          fd.append("image", file);
+          const r = await fetch("/api/admin/blog/image-upload", { method: "POST", headers: await authHeader(), body: fd });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || "Image upload failed");
+          return d.url as string;
+        })(),
+        fileToBase64(file),
+      ]);
+      setForm((f) => ({ ...f, coverImage: uploadResult }));
+      setUploadingImage(false);
+
+      const r = await fetch("/api/admin/blog/generate", {
+        method: "POST",
+        headers: { ...(await authHeader()), "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: aiTopic, imageBase64: base64, imageMimeType: file.type }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Generation failed");
+      setForm((f) => ({
+        ...f,
+        title: d.draft.title || f.title,
+        excerpt: d.draft.excerpt || f.excerpt,
+        tags: Array.isArray(d.draft.tags) ? d.draft.tags.join(", ") : f.tags,
+        bodyText: d.draft.bodyText || f.bodyText,
+      }));
+    } catch (e: any) {
+      setFormError(e?.message || "Generation failed");
+      setUploadingImage(false);
+    }
+    setGenerating(false);
+  }
+
   async function save(status: "draft" | "published") {
     setSaving(true);
     setFormError("");
@@ -244,6 +297,24 @@ export default function AdminBlogPanel() {
               {generating ? "Writing…" : "Generate"}
             </button>
           </div>
+          <div className="flex items-center gap-2 mt-2">
+            <div className="flex-1 h-px bg-brand-blue/10" />
+            <span className="text-[11px] text-slate-400 uppercase tracking-wide">or</span>
+            <div className="flex-1 h-px bg-brand-blue/10" />
+          </div>
+          <label className="mt-2 flex items-center justify-center gap-2 text-sm font-semibold text-brand-blue border border-dashed border-brand-blue/40 rounded-lg px-4 py-2.5 cursor-pointer hover:bg-brand-blue/5">
+            {generating ? "Analyzing image…" : "📤 Upload an image (infographic, chart, screenshot) — write the post from it"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={generating}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) generateFromImage(f); e.target.value = ""; }}
+            />
+          </label>
+          <p className="text-xs text-slate-400 mt-1">
+            The image becomes the cover automatically, and the topic field above (if filled in) steers the angle.
+          </p>
         </div>
 
         <div className="mb-4">
@@ -411,6 +482,9 @@ export default function AdminBlogPanel() {
                     >
                       Unpublish
                     </button>
+                    <div className="ml-1">
+                      <ShareButtons url={`https://bizzux.com/resources/${p.slug}`} title={p.title} compact />
+                    </div>
                   </>
                 ) : (
                   <button
