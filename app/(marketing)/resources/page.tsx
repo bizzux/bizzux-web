@@ -1,22 +1,63 @@
+import Link from "next/link";
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import type { Metadata } from "next";
+import { posts } from "@/lib/blog";
 
 export const metadata: Metadata = {
   title: "Resources | Bizzux",
-  description: "Guides and updates from Bizzux, coming soon.",
+  description: "Practical guides on running a small shop — inventory, POS, expenses, and profit — from the Bizzux team.",
 };
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
+}
 
 export default function ResourcesPage() {
   return (
-    <section className="py-16 pb-24 text-center">
-      <Container className="max-w-xl">
-        <Eyebrow>Resources</Eyebrow>
-        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">Guides and resources are on the way.</h1>
-        <p className="text-slate-600 mb-8">
-          We&apos;re putting together how-to guides on running your shop with Bizzux. In the meantime, book a demo
-          and we&apos;ll walk you through it directly.
-        </p>
-        <CTAButton href="/contact">Book a demo</CTAButton>
+    <section className="py-16 pb-24">
+      <Container>
+        <div className="text-center max-w-xl mx-auto mb-14">
+          <Eyebrow>Resources</Eyebrow>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
+            Guides for running a small shop better.
+          </h1>
+          <p className="text-slate-600">
+            Practical writing on inventory, POS, expenses, and profit — no fluff, written for people actually
+            running a shop day to day.
+          </p>
+        </div>
+
+        {posts.length === 0 ? (
+          <div className="text-center">
+            <p className="text-slate-600 mb-8">New guides are on the way. In the meantime, book a demo and we&apos;ll walk you through it directly.</p>
+            <CTAButton href="/contact">Book a demo</CTAButton>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {posts.map((post) => (
+              <Link
+                key={post.slug}
+                href={`/resources/${post.slug}`}
+                className="group block bg-white rounded-xl p-6 border border-slate-100 shadow-sm hover:shadow-md hover:border-brand-blue/30 transition-all"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  {post.tags.map((tag) => (
+                    <span key={tag} className="text-xs font-semibold uppercase tracking-wide text-brand-blue bg-brand-blue/10 rounded-full px-2.5 py-1">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <h2 className="text-lg font-bold mb-2 group-hover:text-brand-blue transition-colors">{post.title}</h2>
+                <p className="text-sm text-slate-600 mb-4 line-clamp-3">{post.excerpt}</p>
+                <div className="text-xs text-slate-400 flex items-center gap-2">
+                  <span>{formatDate(post.date)}</span>
+                  <span>·</span>
+                  <span>{post.readTime}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </Container>
     </section>
   );

@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { posts } from "@/lib/blog";
 
 const marketingPages = [
   "",
@@ -19,10 +20,17 @@ const marketingPages = [
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
-  return marketingPages.map((path) => ({
+  const pages: MetadataRoute.Sitemap = marketingPages.map((path) => ({
     url: `https://bizzux.com/${path}`,
     lastModified: now,
     changeFrequency: "weekly",
     priority: path === "" ? 1 : 0.7,
   }));
+  const blogPages: MetadataRoute.Sitemap = posts.map((post) => ({
+    url: `https://bizzux.com/resources/${post.slug}`,
+    lastModified: new Date(post.date),
+    changeFrequency: "monthly",
+    priority: 0.6,
+  }));
+  return [...pages, ...blogPages];
 }
