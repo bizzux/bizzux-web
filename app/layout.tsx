@@ -21,6 +21,7 @@ export const metadata: Metadata = {
   description:
     "Bizzux is cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
   metadataBase: new URL("https://bizzux.com"),
+  applicationName: "Bizzux",
   icons: { icon: "/logo-transparent.png" },
   openGraph: {
     title: "Bizzux: Run your business smarter, every day.",
@@ -29,6 +30,14 @@ export const metadata: Metadata = {
     url: "https://bizzux.com",
     siteName: "Bizzux",
     type: "website",
+    images: ["/og-image.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Bizzux: Run your business smarter, every day.",
+    description:
+      "Cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
+    images: ["/og-image.png"],
   },
 };
 
