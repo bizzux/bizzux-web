@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import { Container, CTAButton } from "@/components/Section";
+import ShareButtons from "@/components/ShareButtons";
 import type { Metadata } from "next";
-import { getAllSlugs, getPost, posts, type BlockType } from "@/lib/blog";
+import { getPublishedSlugs, getPublishedPost, getPublishedPosts, type BlockType } from "@/lib/blog";
 
-export function generateStaticParams() {
-  return getAllSlugs().map((slug) => ({ slug }));
+export async function generateStaticParams() {
+  const slugs = await getPublishedSlugs();
+  return slugs.map((slug) => ({ slug }));
 }
 
-export function generateMetadata({ params }: { params: { slug: string } }): Metadata {
-  const post = getPost(params.slug);
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+  const post = await getPublishedPost(params.slug);
   if (!post) return {};
   return {
     title: `${post.title} | Bizzux`,
@@ -21,6 +23,13 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
       type: "article",
       publishedTime: post.date,
       url: `https://bizzux.com/resources/${post.slug}`,
+      images: post.coverImage ? [post.coverImage] : ["/og-image.png"],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: post.title,
+      description: post.excerpt,
+      images: post.coverImage ? [post.coverImage] : ["/og-image.png"],
     },
   };
 }
@@ -52,11 +61,12 @@ function Block({ block }: { block: BlockType }) {
   }
 }
 
-export default function BlogPostPage({ params }: { params: { slug: string } }) {
-  const post = getPost(params.slug);
+export default async function BlogPostPage({ params }: { params: { slug: string } }) {
+  const post = await getPublishedPost(params.slug);
   if (!post) notFound();
 
-  const related = posts.filter((p) => p.slug !== post.slug).slice(0, 2);
+  const allPosts = await getPublishedPosts();
+  const related = allPosts.filter((p) => p.slug !== post.slug).slice(0, 2);
 
   const articleJsonLd = {
     "@context": "https://schema.org",
@@ -67,6 +77,7 @@ export default function BlogPostPage({ params }: { params: { slug: string } }) {
     author: { "@type": "Organization", name: "Bizzux" },
     publisher: { "@type": "Organization", name: "Bizzux" },
     mainEntityOfPage: `https://bizzux.com/resources/${post.slug}`,
+    ...(post.coverImage ? { image: post.coverImage } : {}),
   };
 
   return (
@@ -88,9 +99,17 @@ export default function BlogPostPage({ params }: { params: { slug: string } }) {
           </div>
 
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">{post.title}</h1>
-          <div className="text-sm text-slate-400 mb-10">
-            {formatDate(post.date)} · {post.readTime}
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-10">
+            <div className="text-sm text-slate-400">
+              {formatDate(post.date)} · {post.readTime}
+            </div>
+            <ShareButtons url={`https://bizzux.com/resources/${post.slug}`} title={post.title} />
           </div>
+
+          {post.coverImage && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={post.coverImage} alt={post.title} className="w-full rounded-xl mb-10 border border-slate-100" />
+          )}
 
           <div>
             {post.body.map((block, i) => (

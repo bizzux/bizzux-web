@@ -10,6 +10,8 @@ import { IconDownload } from "@/components/Icons";
 import { useMe } from "@/lib/useMe";
 import AdminTeamPanel from "@/components/AdminTeamPanel";
 import AdminReviewsPanel from "@/components/AdminReviewsPanel";
+import AdminLicensesPanel from "@/components/AdminLicensesPanel";
+import AdminBlogPanel from "@/components/AdminBlogPanel";
 
 // Super Admin (SaaS) is the default/first tab, so SuperAdminPanel is
 // imported normally — it's needed on the very first render either way.
@@ -51,7 +53,7 @@ export default function AdminTabs() {
   const { user, me } = useMe();
   const isSuper = me ? me.superAdmin === true : null; // null = checking role
   const isAccountAdmin = me?.isAccountAdmin === true;
-  const [tab, setTab] = useState<"saas" | "career" | "analytics" | "team" | "reviews">("saas");
+  const [tab, setTab] = useState<"saas" | "career" | "analytics" | "team" | "reviews" | "licenses" | "blog">("saas");
   const [apps, setApps] = useState<Application[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -140,6 +142,8 @@ export default function AdminTabs() {
                tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` :
                tab === "team" ? "CEO and staff shown on bizzux.com/about" :
                tab === "reviews" ? "Public reviews submitted from the About page" :
+               tab === "licenses" ? "Bizzux Screen Recorder license keys" :
+               tab === "blog" ? "Posts shown on bizzux.com/resources" :
                "Subscriptions and revenue across every organization"}
             </p>
           </div>
@@ -174,6 +178,18 @@ export default function AdminTabs() {
             onClick={() => setTab("reviews")}
           >
             Reviews
+          </button>
+          <button
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "licenses" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
+            onClick={() => setTab("licenses")}
+          >
+            Licenses
+          </button>
+          <button
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "blog" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
+            onClick={() => setTab("blog")}
+          >
+            Blog
           </button>
           </div>
         </div>
@@ -280,6 +296,10 @@ export default function AdminTabs() {
         {tab === "team" && <AdminTeamPanel />}
 
         {tab === "reviews" && <AdminReviewsPanel />}
+
+        {tab === "licenses" && <AdminLicensesPanel />}
+
+        {tab === "blog" && <AdminBlogPanel />}
       </div>
       </section>
     </>

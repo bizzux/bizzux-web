@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import type { Metadata } from "next";
-import { posts } from "@/lib/blog";
+import { getPublishedPosts } from "@/lib/blog";
 
 export const metadata: Metadata = {
   title: "Resources | Bizzux",
@@ -12,7 +12,8 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
 }
 
-export default function ResourcesPage() {
+export default async function ResourcesPage() {
+  const posts = await getPublishedPosts();
   return (
     <section className="py-16 pb-24">
       <Container>
@@ -38,8 +39,13 @@ export default function ResourcesPage() {
               <Link
                 key={post.slug}
                 href={`/resources/${post.slug}`}
-                className="group block bg-white rounded-xl p-6 border border-slate-100 shadow-sm hover:shadow-md hover:border-brand-blue/30 transition-all"
+                className="group block bg-white rounded-xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md hover:border-brand-blue/30 transition-all"
               >
+                {post.coverImage && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={post.coverImage} alt="" className="w-full h-36 object-cover" />
+                )}
+                <div className="p-6">
                 <div className="flex items-center gap-2 mb-3">
                   {post.tags.map((tag) => (
                     <span key={tag} className="text-xs font-semibold uppercase tracking-wide text-brand-blue bg-brand-blue/10 rounded-full px-2.5 py-1">
@@ -53,6 +59,7 @@ export default function ResourcesPage() {
                   <span>{formatDate(post.date)}</span>
                   <span>·</span>
                   <span>{post.readTime}</span>
+                </div>
                 </div>
               </Link>
             ))}
