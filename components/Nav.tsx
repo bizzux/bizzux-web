@@ -30,7 +30,7 @@ const links = [
   { href: "/careers", label: "Career" },
   { href: "/custom-solutions", label: "Build" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/resources", label: "Resources" },
+  { href: "/resources", label: "Insights" },
   { href: "/partners", label: "Partners" },
 ];
 

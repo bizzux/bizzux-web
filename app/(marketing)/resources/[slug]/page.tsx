@@ -38,6 +38,14 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
 }
 
+// A "Book a demo" CTA makes sense under a post about running a shop; it reads
+// as a forced pitch under a NIST-framework explainer. Tag-based heuristic
+// instead of a manual per-post toggle, since AI-generated posts won't set one.
+const PRODUCT_TAGS = ["pos", "inventory", "expenses", "profit", "small business", "productivity"];
+function isProductPost(tags: string[]): boolean {
+  return tags.some((t) => PRODUCT_TAGS.includes(t.toLowerCase()));
+}
+
 function Block({ block }: { block: BlockType }) {
   switch (block.type) {
     case "h2":
@@ -87,7 +95,7 @@ export default async function BlogPostPage({ params }: { params: { slug: string 
       <article className="py-16 pb-24">
         <Container className="max-w-2xl">
           <Link href="/resources" className="text-sm text-brand-blue font-semibold hover:underline mb-6 inline-block">
-            ← All resources
+            ← All insights
           </Link>
 
           <div className="flex items-center gap-2 mb-4">
@@ -118,8 +126,17 @@ export default async function BlogPostPage({ params }: { params: { slug: string 
           </div>
 
           <div className="mt-14 pt-10 border-t border-slate-100 text-center">
-            <h2 className="text-xl font-bold mb-4">Want to see this in practice?</h2>
-            <CTAButton href="/contact">Book a demo</CTAButton>
+            {isProductPost(post.tags) ? (
+              <>
+                <h2 className="text-xl font-bold mb-4">Want to see this in practice?</h2>
+                <CTAButton href="/contact">Book a demo</CTAButton>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-bold mb-4">More from Bizzux Technologies</h2>
+                <CTAButton href="/resources">Browse all insights</CTAButton>
+              </>
+            )}
           </div>
 
           {related.length > 0 && (

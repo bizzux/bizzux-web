@@ -4,8 +4,8 @@ import type { Metadata } from "next";
 import { getPublishedPosts } from "@/lib/blog";
 
 export const metadata: Metadata = {
-  title: "Resources | Bizzux",
-  description: "Practical guides on running a small shop — inventory, POS, expenses, and profit — from the Bizzux team.",
+  title: "Insights | Bizzux",
+  description: "Practical guides for running a small shop, plus cybersecurity and AI insights from the Bizzux Technologies team.",
 };
 
 function formatDate(iso: string) {
@@ -18,13 +18,13 @@ export default async function ResourcesPage() {
     <section className="py-16 pb-24">
       <Container>
         <div className="text-center max-w-xl mx-auto mb-14">
-          <Eyebrow>Resources</Eyebrow>
+          <Eyebrow>Insights</Eyebrow>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
-            Guides for running a small shop better.
+            Practical guides, and what we're thinking about in security and AI.
           </h1>
           <p className="text-slate-600">
-            Practical writing on inventory, POS, expenses, and profit — no fluff, written for people actually
-            running a shop day to day.
+            Writing on running a small shop better, plus cybersecurity and AI perspectives from the Bizzux
+            Technologies team — no fluff, either way.
           </p>
         </div>
 
