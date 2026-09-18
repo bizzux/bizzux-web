@@ -17,6 +17,7 @@ export async function GET(req) {
     let organizationId = null;
     let organizationRole = null;
     let mustChangePassword = false;
+    let fullName = null;
     try {
       const acct = await resolveAccount(c.uid);
       accountId = acct.accountId;
@@ -25,6 +26,13 @@ export async function GET(req) {
       isOwner = acct.isOwner;
       organizationId = acct.organizationId;
       organizationRole = acct.organizationRole;
+      // The real first+last name, when there is one on file — Firebase
+      // Auth's own displayName is only ever set for a Google sign-in, so
+      // an email/password login (the common case for an invited teammate)
+      // would otherwise have no name to greet them by at all.
+      fullName = acct.isOwner
+        ? acct.customer?.fullName || null
+        : [acct.membership?.firstName, acct.membership?.lastName].filter(Boolean).join(" ") || null;
       // Admin-created logins (Create Business Login, or an admin-created
       // team member) can be flagged to force a password change on first
       // sign-in — checked again here (not just right after sign-in) so a

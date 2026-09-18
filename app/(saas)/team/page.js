@@ -40,6 +40,7 @@ export default function TeamPage() {
   const [members, setMembers] = useState(null);
   const [organizationName, setOrganizationName] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [credentials, setCredentials] = useState(null); // { email, password } shown once after a credentials-based add or a password reset
@@ -174,7 +175,10 @@ export default function TeamPage() {
             {organizationName && <p className="muted" style={{ margin: "0 0 4px", fontSize: 13 }}>{organizationName}</p>}
             <p className="dash-sub" style={{ marginBottom: 0 }}>Invite teammates and manage who has access to your Bizzux apps.</p>
           </div>
-          <button className="btn-primary-sm" onClick={() => setShowAdd(true)}>+ New User</button>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn-outline-dark" onClick={() => setShowBulkAdd(true)}>Bulk add users</button>
+            <button className="btn-primary-sm" onClick={() => setShowAdd(true)}>+ New User</button>
+          </div>
         </div>
 
         {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
@@ -268,6 +272,16 @@ export default function TeamPage() {
           onAdded={async (creds) => {
             setShowAdd(false);
             if (creds) setCredentials(creds);
+            await load();
+          }}
+        />
+      )}
+
+      {showBulkAdd && (
+        <BulkAddModal
+          onClose={() => setShowBulkAdd(false)}
+          onDone={async () => {
+            setShowBulkAdd(false);
             await load();
           }}
         />
@@ -388,6 +402,143 @@ function genPassword() {
   let out = "";
   for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
+}
+
+const EMPTY_ROW = { firstName: "", lastName: "", email: "", profile: "" };
+
+// Bulk add — like M365's "Add multiple users", scoped down: email-invite
+// only (no per-row passwords to manage), one shared App access selection
+// applied to everyone in the batch rather than per row. Reuses the exact
+// same /api/team "invite" action as the single-user form, once per row, so
+// there's no separate bulk endpoint to keep in sync with it.
+function BulkAddModal({ onClose, onDone }) {
+  const [rows, setRows] = useState([{ ...EMPTY_ROW }, { ...EMPTY_ROW }, { ...EMPTY_ROW }]);
+  const [appAccess, setAppAccess] = useState(() =>
+    Object.fromEntries(APPS.map((a) => [a.id, { granted: false, admin: false }]))
+  );
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState(null); // [{ email, ok, error }]
+
+  function updateRow(i, field, value) {
+    setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
+  }
+  function addRow() {
+    setRows((cur) => [...cur, { ...EMPTY_ROW }]);
+  }
+  function removeRow(i) {
+    setRows((cur) => cur.filter((_, idx) => idx !== i));
+  }
+  function toggleApp(appId, field, value) {
+    setAppAccess((cur) => ({ ...cur, [appId]: { ...cur[appId], [field]: value, ...(field === "admin" && value ? { granted: true } : {}) } }));
+  }
+
+  async function submit() {
+    const valid = rows.filter((r) => r.firstName.trim() && EMAIL_RE.test(r.email.trim()) && r.profile);
+    if (valid.length === 0) return;
+    setBusy(true);
+    const apps = Object.entries(appAccess)
+      .filter(([, v]) => v.granted)
+      .map(([appId, v]) => ({ appId, role: v.admin ? "ADMIN" : "MEMBER" }));
+
+    const outcomes = [];
+    for (const r of valid) {
+      try {
+        await api("/api/team", "POST", {
+          action: "invite", firstName: r.firstName, lastName: r.lastName, email: r.email,
+          profile: r.profile, apps, loginMethod: "email",
+        });
+        outcomes.push({ email: r.email, ok: true });
+      } catch (e) {
+        outcomes.push({ email: r.email, ok: false, error: e.message });
+      }
+    }
+    setResults(outcomes);
+    setBusy(false);
+  }
+
+  const allDone = results && results.every((r) => r.ok);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
+        <h2 style={{ marginBottom: 4 }}>Bulk add users</h2>
+        <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>
+          Each person gets an email invite. Rows with no first name, a valid email, and a role are skipped.
+        </p>
+
+        {results ? (
+          <>
+            {results.map((r) => (
+              <div key={r.email} className="row" style={{ justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+                <span style={{ fontSize: 13.5 }}>{r.email}</span>
+                <span className={"status-pill " + (r.ok ? "active" : "expired")}>{r.ok ? "Invited" : r.error}</span>
+              </div>
+            ))}
+            <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+              <button className="btn-primary" onClick={onDone}>Close</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ overflowX: "auto", marginBottom: 14 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>First name</th><th>Last name</th><th>Email</th><th>Role</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={i}>
+                      <td><input className="input" style={{ fontSize: 13 }} value={r.firstName} onChange={(e) => updateRow(i, "firstName", e.target.value)} /></td>
+                      <td><input className="input" style={{ fontSize: 13 }} value={r.lastName} onChange={(e) => updateRow(i, "lastName", e.target.value)} /></td>
+                      <td><input className="input" type="email" style={{ fontSize: 13 }} value={r.email} onChange={(e) => updateRow(i, "email", e.target.value)} /></td>
+                      <td>
+                        <select className="input" style={{ fontSize: 13 }} value={r.profile} onChange={(e) => updateRow(i, "profile", e.target.value)}>
+                          <option value="">Select</option>
+                          {PROFILES.map((p) => (
+                            <option key={p.value} value={p.value}>{p.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        {rows.length > 1 && <button type="button" className="link-btn danger" onClick={() => removeRow(i)}>✕</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" className="link-btn" style={{ marginBottom: 16 }} onClick={addRow}>+ Add row</button>
+
+            <div style={{ marginBottom: 16 }}>
+              <label className="label">App access (applied to everyone added)</label>
+              {APPS.map((a) => {
+                const v = appAccess[a.id];
+                return (
+                  <div key={a.id} className="row" style={{ justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+                    <label className="row" style={{ gap: 8, fontSize: 13.5 }}>
+                      <input type="checkbox" checked={v.granted} onChange={(e) => toggleApp(a.id, "granted", e.target.checked)} />
+                      {a.name}
+                    </label>
+                    <label className="muted row" style={{ gap: 6, fontSize: 12.5 }}>
+                      <input type="checkbox" checked={v.admin} onChange={(e) => toggleApp(a.id, "admin", e.target.checked)} />
+                      Admin
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+              <button className="btn-primary" disabled={busy} onClick={submit}>{busy ? "Adding…" : "Add users"}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function TeamRowMenu({ items }) {

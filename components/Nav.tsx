@@ -77,10 +77,11 @@ export default function Nav() {
   const myRoleLabel = isSuper ? "Platform " + (me?.platformRole === "OWNER" ? "Owner" : "Admin") : roleLabel(me);
   const [mobileOpen, setMobileOpen] = useState(false);
   // No dedicated "name" field comes back from /api/me — Firebase's own
-  // displayName (set for Google sign-ins) is the best real name available;
-  // everyone else falls back to the readable part of their email rather
-  // than showing nothing.
-  const firstName = user?.displayName?.split(" ")[0] || user?.email?.split("@")[0];
+  // displayName (set for Google sign-ins) is the best real name available,
+  // shown in full (first + last), not just the first token; everyone else
+  // falls back to the readable part of their email rather than showing
+  // nothing.
+  const greetingName = user?.displayName || user?.email?.split("@")[0];
 
   // One breakpoint (lg) splits the ENTIRE right-side group — role badge,
   // Profile/Sign in, CTA, Super Admin, Sign out — from the desktop row into
@@ -183,7 +184,7 @@ export default function Nav() {
       {signedIn && (
         <div className="border-t border-slate-50 bg-slate-50/60 px-6 py-1.5">
           <div className="max-w-7xl mx-auto">
-            <LiveClock name={firstName} />
+            <LiveClock name={greetingName} photoUrl={user?.photoURL} />
           </div>
         </div>
       )}

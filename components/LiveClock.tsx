@@ -16,8 +16,10 @@ function greetingFor(hour: number) {
 // rendering a server-side guess would flash/mismatch on hydration) and
 // then re-renders every second off a real setInterval, not a static
 // snapshot taken once at page load.
-export default function LiveClock({ name }: { name?: string }) {
+export default function LiveClock({ name, photoUrl }: { name?: string; photoUrl?: string | null }) {
   const [now, setNow] = useState<Date | null>(null);
+  const [imgFailed, setImgFailed] = useState(false);
+  const initial = name?.trim()?.[0]?.toUpperCase() || "?";
 
   useEffect(() => {
     setNow(new Date());
@@ -41,6 +43,20 @@ export default function LiveClock({ name }: { name?: string }) {
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+      {photoUrl && !imgFailed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photoUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={() => setImgFailed(true)}
+          className="h-6 w-6 rounded-full object-cover"
+        />
+      ) : (
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-blue text-[11px] font-bold text-white">
+          {initial}
+        </span>
+      )}
       <span className="font-semibold text-slate-700">
         {greetingFor(now.getHours())}
         {name ? `, ${name}` : ""} 👋
