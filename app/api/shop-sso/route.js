@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, resolveAccount, adminDb } from "@/lib/firebaseAdmin";
+import { requireUser, resolveAccount, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { canAccessApps } from "@/lib/trial";
 import { createHmac } from "crypto";
@@ -74,6 +74,12 @@ export async function GET(req) {
     // the current plan hasn't configured a tab list for Shop at all, so an
     // unconfigured plan behaves exactly like before this existed.
     let features;
+    // Controls which admin tabs Shop shows this org (see Shop's
+    // app/admin/page.js) — "travel"/"medical"/"services" unlock the
+    // Enquiry -> Quotation -> Invoice billing module instead of the
+    // default Shop/POS tab set. Set via bizzux-web's onboarding wizard
+    // (components/OnboardingModal.jsx -> customers/{uid}.businessType).
+    let businessType;
     if (c.isSuper) {
       role = "super";
       try {
@@ -85,7 +91,6 @@ export async function GET(req) {
     } else {
       const acct = await resolveAccount(c.uid);
       orgId = acct.accountId;
-      role = acct.isOwner ? "owner" : PROFILE_TO_SHOP_ROLE[acct.profile] || "shopkeeper";
 
       // Defense in depth — dashboard/page.js already blocks this in the UI
       // via the same canAccessApps() check (lib/trial.js) before it ever
@@ -98,15 +103,27 @@ export async function GET(req) {
         ? acct.customer
         : (await adminDb().doc("customers/" + acct.accountId).get()).data();
       if (!canAccessApps(customer)) {
-        throw { status: 402, message: "Your trial has ended. Choose a plan to keep using Bizzux apps." };
-      }
-
-      if (customer?.planId) {
-        const planSnap = await adminDb().doc("plans/" + customer.planId).get();
-        const shopAccess = planSnap.exists ? planSnap.data()?.appAccess?.juicechatjunction : null;
-        if (shopAccess?.enabled && Array.isArray(shopAccess.features) && shopAccess.features.length > 0) {
-          features = shopAccess.features;
+        // A Platform Admin created later via the portal (not in
+        // SUPER_ADMIN_EMAIL, so c.isSuper missed them above) should never be
+        // blocked by their own account's trial/plan status — check
+        // platformAdmins before rejecting. Only reached once the cheap
+        // trial check has already failed, so this extra Firestore read
+        // never lands on the common case (an in-trial or paying customer).
+        const platformRole = await resolvePlatformRole(c.uid, c.email);
+        if (platformRole !== "OWNER" && platformRole !== "ADMIN") {
+          throw { status: 402, message: "Your trial has ended. Choose a plan to keep using Bizzux apps." };
         }
+        role = "super";
+      } else {
+        role = acct.isOwner ? "owner" : PROFILE_TO_SHOP_ROLE[acct.profile] || "shopkeeper";
+        if (customer?.planId) {
+          const planSnap = await adminDb().doc("plans/" + customer.planId).get();
+          const shopAccess = planSnap.exists ? planSnap.data()?.appAccess?.juicechatjunction : null;
+          if (shopAccess?.enabled && Array.isArray(shopAccess.features) && shopAccess.features.length > 0) {
+            features = shopAccess.features;
+          }
+        }
+        businessType = customer?.businessType || null;
       }
     }
 
@@ -124,6 +141,7 @@ export async function GET(req) {
       orgId,
       iat: Date.now(),
       ...(features ? { features } : {}),
+      ...(businessType ? { businessType } : {}),
     };
     const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
     const sig = createHmac("sha256", secret).update(payloadB64).digest("hex");
