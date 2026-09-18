@@ -254,6 +254,151 @@ function VerifyMobileGate({ user, customer }) {
   );
 }
 
+// Rule 8's required view for a signed-in user who belongs to no
+// organization: Profile/Dashboard (via Nav/AccountTabs, unchanged) plus a
+// way to create an organization or wait on an invitation — nothing else.
+// No app tiles, no trial banner, no organization-scoped data at all.
+function NoOrganizationDashboard() {
+  const [showCreate, setShowCreate] = useState(false);
+  return (
+    <div>
+      <Nav />
+      <AccountTabs active="dashboard" isAccountAdmin={false} isSuper={false} roleLabel="" />
+      <div className="admin-shell" style={{ maxWidth: 640 }}>
+        <h1 className="dash-heading" style={{ fontSize: 20, marginBottom: 6 }}>Welcome to Bizzux!</h1>
+        <p className="dash-sub" style={{ marginBottom: 20 }}>
+          You're signed in, but not part of an organization yet.
+        </p>
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 4 }}>Create an organization</h3>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Start your own Bizzux organization and invite your team.</p>
+          <button className="btn-primary-sm" onClick={() => setShowCreate(true)}>Create organization</button>
+        </div>
+        <div className="card">
+          <h3 style={{ marginTop: 0, marginBottom: 4 }}>Have an invitation?</h3>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>
+            If someone invited you to their organization, check your email for the invite link to join.
+          </p>
+        </div>
+      </div>
+
+      {showCreate && (
+        <CreateOrganizationModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => window.location.reload()}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateOrganizationModal({ onClose, onCreated }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError("Enter an organization name");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const r = await fetch("/api/organizations", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create", name: name.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Couldn't create organization");
+      onCreated();
+    } catch (e2) {
+      setError(e2.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <h2 style={{ marginBottom: 14 }}>Create organization</h2>
+        <form onSubmit={submit} noValidate>
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Organization name *</label>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus required />
+          </div>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" disabled={busy}>{busy ? "Creating…" : "Create"}</button>
+          </div>
+          {error && <p className="error">{error}</p>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Rule 9's switcher — only ever renders anything once a user actually
+// belongs to 2+ organizations (today that's rare: the only way in is
+// accepting a team invite while already owning your own organization), so
+// this is a no-op for the common single-org case. Switching reloads the
+// page rather than trying to live-patch every already-loaded piece of
+// organization-scoped state on this screen.
+function OrgSwitcher() {
+  const [organizations, setOrganizations] = useState(null);
+  const [current, setCurrent] = useState(null);
+  const [switching, setSwitching] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const r = await fetch("/api/organizations", { headers: { Authorization: "Bearer " + token } });
+        const d = await r.json();
+        setOrganizations(d.organizations || []);
+        setCurrent(d.currentOrganizationId || null);
+      } catch {
+        setOrganizations([]);
+      }
+    })();
+  }, []);
+
+  if (!organizations || organizations.length < 2) return null;
+
+  async function switchTo(organizationId) {
+    setSwitching(true);
+    try {
+      const token = await auth.currentUser.getIdToken();
+      await fetch("/api/organizations", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "switch", organizationId }),
+      });
+      window.location.reload();
+    } catch {
+      setSwitching(false);
+    }
+  }
+
+  return (
+    <div style={{ margin: "8px 0 4px" }}>
+      <label className="label" style={{ marginRight: 8 }}>Organization</label>
+      <select
+        className="input" style={{ display: "inline-block", width: "auto", fontSize: 13 }}
+        value={current || ""} disabled={switching}
+        onChange={(e) => switchTo(e.target.value)}
+      >
+        {organizations.map((o) => (
+          <option key={o.organizationId} value={o.organizationId}>{o.name} ({o.role})</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function DashboardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -319,6 +464,16 @@ function DashboardInner() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, accountId]);
+
+  // Bizzux rule 1/8: a login is free and can exist without any
+  // organization. /api/me's hasAccount already tells us this (resolveAccount
+  // failing means no customers/ and no memberships/ doc) — checked BEFORE
+  // the customer-doc-dependent logic below, because an empty {} customer
+  // object (what a nonexistent doc reads back as) would otherwise satisfy
+  // canAccessApps({}) as an eternally-valid trial. See NoOrganizationDashboard.
+  if (user && me && me.hasAccount === false) {
+    return <NoOrganizationDashboard />;
+  }
 
   if (!user || customer === null || !accountId) {
     // Was the same dark, full-viewport .login-wrap the sign-in page uses —
@@ -431,6 +586,7 @@ function DashboardInner() {
         <h1 className="dash-heading">
           Welcome back{customer.companyName ? `, ${customer.companyName}` : ""}!
         </h1>
+        <OrgSwitcher />
         <p className="dash-sub" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span className={"status-pill " + status}>{status === "trial" ? "Trial" : status === "active" ? "Active" : "Expired"}</span>
           {customer.planName ? (

@@ -6,6 +6,8 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizationMembership";
 import { createOrganization } from "@/lib/organization";
+import { upsertOrganizationAppSubscription, upsertAppAssignment } from "@/lib/appAccess";
+import { APP_IDS } from "@/lib/appCatalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -169,6 +171,14 @@ export async function POST(req) {
       // organizations, never Bizzux's own internal one.
       await createOrganization({ id: authUser.uid, name: organizationName, type: "CUSTOMER", createdBy: c.uid });
       await upsertOrganizationMembership({ organizationId: authUser.uid, userId: authUser.uid, role: "OWNER", status: "active" });
+      await Promise.all(
+        APP_IDS.map((appId) =>
+          upsertOrganizationAppSubscription({ organizationId: authUser.uid, appId, status: "ACTIVE", subscriptionType: "TRIAL" })
+        )
+      );
+      await Promise.all(
+        APP_IDS.map((appId) => upsertAppAssignment({ organizationId: authUser.uid, userId: authUser.uid, appId, role: "OWNER", status: "ACTIVE" }))
+      );
 
       await logAuditEvent({
         action: "organization.create_account", actor: c, targetType: "organization", targetId: authUser.uid,
