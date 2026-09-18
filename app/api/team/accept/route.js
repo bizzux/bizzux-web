@@ -34,7 +34,7 @@ export async function GET(req) {
   try {
     const token = new URL(req.url).searchParams.get("invite") || "";
     const { inv } = await loadValidInvite(token);
-    return NextResponse.json({ email: inv.email });
+    return NextResponse.json({ email: inv.email, existingAccount: !!inv.existingAccount });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }

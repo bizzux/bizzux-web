@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Resend } from "resend";
 import { requireAccountAdmin, adminAuth, adminDb, sendAuthEmail, generateTempPassword } from "@/lib/firebaseAdmin";
 import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -7,6 +8,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile, ORGANIZATION_ROLES } from "@/lib/organizationMembership";
 import { upsertAppAssignment } from "@/lib/appAccess";
 import { APPS, APP_IDS } from "@/lib/appCatalog";
+import { existingAccountInviteEmailHtml } from "@/lib/emailTemplates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +47,36 @@ async function sendInvite({ accountId, teamMemberId, email, firstName, lastName,
     email,
     continueUrl: `${origin}/accept-invite?invite=${token}`,
   });
+}
+
+// Same invite record shape as sendInvite, but for an email that already has
+// a Bizzux sign-in (see the auth/email-already-exists branch below) — no
+// Firebase password-reset link, since that account may only ever have used
+// Google. Sent directly through Resend instead of sendAuthEmail, which can
+// only generate Firebase's own oob-code email types.
+async function sendExistingAccountInvite({ accountId, teamMemberId, email, firstName, lastName, role, profile, orgName, origin }) {
+  const token = randomUUID();
+  await adminDb()
+    .doc("invites/" + token)
+    .set({
+      accountId, teamMemberId, email, firstName, lastName, role, profile,
+      existingAccount: true,
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAt: Timestamp.fromMillis(Date.now() + INVITE_TTL_MS),
+      used: false,
+    });
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw { status: 500, message: "Email delivery isn't configured yet. Contact support." };
+  const resend = new Resend(apiKey);
+  const from = process.env.RESEND_FROM_EMAIL || "Bizzux <verify@verify.bizzux.com>";
+  const { error } = await resend.emails.send({
+    from,
+    to: email,
+    subject: `You've been invited to ${orgName || "a Bizzux organization"}`,
+    html: existingAccountInviteEmailHtml({ orgName, acceptUrl: `${origin}/accept-invite?invite=${token}` }),
+  });
+  if (error) throw new Error(error.message || "Could not send invite email");
 }
 
 // Single-member detail for the "Manage roles & app access" panel: their
@@ -222,7 +254,16 @@ export async function POST(req) {
       const loginMethod = body.loginMethod === "credentials" ? "credentials" : "email";
       let password = "";
 
+      // Rule 1/2 of the Organization model let anyone sign in for free
+      // without an org, and belong to more than one — so the email being
+      // invited may already have its own Firebase Auth account (they signed
+      // up themselves, e.g. with Google, before anyone invited them). That's
+      // not a conflict: attach the existing account to this org instead of
+      // failing outright. Only the "credentials" path (a brand-new
+      // password-based login staff hands over directly) genuinely can't
+      // apply to an email that already has a different sign-in.
       let authUser;
+      let existingAccount = false;
       try {
         if (loginMethod === "credentials") {
           password = String(body.password || "").trim() || generateTempPassword();
@@ -233,12 +274,17 @@ export async function POST(req) {
         }
       } catch (e) {
         if (e.code === "auth/email-already-exists") {
-          throw {
-            status: 409,
-            message: "That email already has a Bizzux account and can't be invited as a new teammate yet.",
-          };
+          if (loginMethod === "credentials") {
+            throw {
+              status: 409,
+              message: "That email already has a Bizzux account. Use \"Email invite\" instead so they can accept with their existing sign-in.",
+            };
+          }
+          authUser = await adminAuth().getUserByEmail(email);
+          existingAccount = true;
+        } else {
+          throw e;
         }
-        throw e;
       }
 
       const memberRef = await teamCollection(acct.accountId).add({
@@ -279,16 +325,24 @@ export async function POST(req) {
       }
 
       if (loginMethod === "email") {
-        await sendInvite({
-          accountId: acct.accountId,
-          teamMemberId: memberRef.id,
-          email,
-          firstName,
-          lastName,
-          role,
-          profile,
-          origin,
-        });
+        if (existingAccount) {
+          const orgName = acct.customer?.organizationName || acct.customer?.fullName || "Bizzux";
+          await sendExistingAccountInvite({
+            accountId: acct.accountId, teamMemberId: memberRef.id, email, firstName, lastName,
+            role, profile, orgName, origin,
+          });
+        } else {
+          await sendInvite({
+            accountId: acct.accountId,
+            teamMemberId: memberRef.id,
+            email,
+            firstName,
+            lastName,
+            role,
+            profile,
+            origin,
+          });
+        }
       }
 
       // Which Bizzux apps this new teammate gets, and whether they admin
@@ -319,7 +373,7 @@ export async function POST(req) {
 
       await logAuditEvent({
         action: "team.invite", actor: acct, targetType: "organization", targetId: acct.accountId,
-        details: { email, profile, loginMethod, apps: requestedApps.map((a) => a.appId) },
+        details: { email, profile, loginMethod, existingAccount, apps: requestedApps.map((a) => a.appId) },
       });
 
       return NextResponse.json(loginMethod === "credentials" ? { ok: true, email, password } : { ok: true });

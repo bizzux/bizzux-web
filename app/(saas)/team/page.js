@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
-import { PROFILES, ORGANIZATION_ROLES } from "@/lib/roles";
+import { PROFILES, ORGANIZATION_ROLES, ACCOUNT_ADMIN_PROFILES } from "@/lib/roles";
 import { APPS, appName } from "@/lib/appCatalog";
 import Link from "next/link";
 import Nav from "@/components/Nav";
@@ -815,7 +815,9 @@ function AddUserModal({ onClose, onAdded }) {
                 <select className="input" value={profile} onChange={(e) => setProfile(e.target.value)}>
                   <option value="" disabled>Select role</option>
                   {PROFILES.map((p) => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
+                    <option key={p.value} value={p.value}>
+                      {p.label} — {ACCOUNT_ADMIN_PROFILES.includes(p.value) ? "Admin Center access" : "no Admin Center access"}
+                    </option>
                   ))}
                 </select>
                 <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
