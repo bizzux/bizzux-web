@@ -3,6 +3,7 @@ import { requireUser, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { deriveVerificationSettings, deriveVerificationFlags } from "@/lib/verification";
 import { getTwoFactorSettings } from "@/lib/twoFactor";
+import { upsertOrganizationMembership } from "@/lib/organizationMembership";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,6 +89,8 @@ export async function POST(req) {
       mustChangePassword: false,
       ...(verifyMobileRequired ? { phoneVerified: false } : {}),
     });
+
+    await upsertOrganizationMembership({ organizationId: c.uid, userId: c.uid, role: "OWNER", status: "active" });
 
     return NextResponse.json({ ok: true, created: true, verifyEmailRequired, verifyMobileRequired, mustChangePassword: false, ...twoFactorFields });
   } catch (e) {

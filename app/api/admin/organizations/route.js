@@ -4,6 +4,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { logAuditEvent } from "@/lib/audit";
+import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizationMembership";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -163,6 +164,8 @@ export async function POST(req) {
         mustChangePassword,
       });
 
+      await upsertOrganizationMembership({ organizationId: authUser.uid, userId: authUser.uid, role: "OWNER", status: "active" });
+
       await logAuditEvent({
         action: "organization.create_account", actor: c, targetType: "organization", targetId: authUser.uid,
         details: { organizationName, email },
@@ -220,6 +223,11 @@ export async function POST(req) {
 
       await adminDb().doc("memberships/" + authUser.uid).set({
         accountId, profile, role: profile, email, joinedAt: FieldValue.serverTimestamp(), mustChangePassword,
+      });
+
+      await upsertOrganizationMembership({
+        organizationId: accountId, userId: authUser.uid,
+        role: roleFromProfile(profile, false), status: "active",
       });
 
       await logAuditEvent({

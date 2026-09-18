@@ -4,6 +4,7 @@ import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { logAuditEvent } from "@/lib/audit";
+import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile } from "@/lib/organizationMembership";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -157,6 +158,19 @@ export async function POST(req) {
         await adminDb().doc("memberships/" + authUser.uid).set({
           accountId: acct.accountId, profile, role, email, joinedAt: FieldValue.serverTimestamp(),
         });
+        await upsertOrganizationMembership({
+          organizationId: acct.accountId, userId: authUser.uid,
+          role: roleFromProfile(profile, false), status: "active",
+        });
+      } else {
+        // Email-invite path: the membership isn't real until /api/team/
+        // accept finalizes it, but recording it now as "invited" (keyed by
+        // the auth user already created above) makes the pending state
+        // queryable the same way an accepted one is.
+        await upsertOrganizationMembership({
+          organizationId: acct.accountId, userId: authUser.uid,
+          role: roleFromProfile(profile, false), status: "invited",
+        });
       }
 
       if (loginMethod === "email") {
@@ -282,6 +296,7 @@ export async function POST(req) {
         // access (resolveAccount() 404s without it), so a failure here
         // (e.g. the auth user was already gone) shouldn't block removal.
         await adminAuth().deleteUser(snap.data().uid).catch(() => {});
+        await setOrganizationMembershipStatus(acct.accountId, snap.data().uid, "removed").catch(() => {});
       }
       await memberRef.delete();
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser, adminDb, adminAuth } from "@/lib/firebaseAdmin";
 import { DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue } from "firebase-admin/firestore";
+import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizationMembership";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +72,11 @@ export async function POST(req) {
         email: c.email,
         joinedAt: FieldValue.serverTimestamp(),
       });
+
+    await upsertOrganizationMembership({
+      organizationId: inv.accountId, userId: c.uid,
+      role: roleFromProfile(inv.profile || DEFAULT_PROFILE, false), status: "active",
+    });
 
     await inviteRef.set({ used: true }, { merge: true });
 
