@@ -13,5 +13,9 @@
       { "fieldPath": "createdAt", "order": "DESCENDING" }
     ] }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    { "collectionGroup": "pmTasks", "fieldPath": "assigneeEmail", "indexes": [
+      { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+    ] }
+  ]
 }
