@@ -47,11 +47,60 @@ async function sendInvite({ accountId, teamMemberId, email, firstName, lastName,
   });
 }
 
+// Single-member detail for the "Manage roles & app access" panel: their
+// org role plus per-app {granted, admin} state, computed the same way the
+// list below does but scoped to one person so the panel doesn't need to
+// re-fetch (or re-derive) the whole team.
+async function getMemberDetail(acct, memberId) {
+  const isOwner = memberId === acct.accountId;
+  let uid, orgRoleFallback;
+  if (isOwner) {
+    uid = acct.accountId;
+    orgRoleFallback = "OWNER";
+  } else {
+    const memberSnap = await adminDb().doc(`customers/${acct.accountId}/team/${memberId}`).get();
+    if (!memberSnap.exists) throw { status: 404, message: "Not found" };
+    const t = memberSnap.data();
+    if (!t.uid) throw { status: 400, message: "This teammate hasn't joined yet" };
+    uid = t.uid;
+    orgRoleFallback = roleFromProfile(t.profile || DEFAULT_PROFILE, false);
+  }
+
+  const [membershipSnap, assignmentsSnap] = await Promise.all([
+    adminDb().doc(`organizationMemberships/${acct.accountId}_${uid}`).get(),
+    adminDb()
+      .collection("appAssignments")
+      .where("organizationId", "==", acct.accountId)
+      .where("userId", "==", uid)
+      .get(),
+  ]);
+  const orgRole = membershipSnap.exists ? membershipSnap.data().role : orgRoleFallback;
+  const assignmentByAppId = new Map(assignmentsSnap.docs.map((d) => [d.data().appId, d.data()]));
+
+  const apps = APPS.map((a) => {
+    const assignment = assignmentByAppId.get(a.id);
+    return {
+      appId: a.id,
+      name: a.name,
+      granted: assignment?.status === "ACTIVE",
+      admin: assignment?.status === "ACTIVE" && assignment.role === "ADMIN",
+    };
+  });
+
+  return { uid, isOwner, orgRole, apps };
+}
+
 // Lists everyone on the caller's account: the owner plus every invited /
 // active teammate. Global Admin / Admin profiles only.
 export async function GET(req) {
   try {
     const acct = await requireAccountAdmin(req);
+
+    const memberId = new URL(req.url).searchParams.get("memberId");
+    if (memberId) {
+      return NextResponse.json(await getMemberDetail(acct, memberId));
+    }
+
     const ownerSnap = await adminDb().doc("customers/" + acct.accountId).get();
     const owner = ownerSnap.exists ? ownerSnap.data() : {};
     const teamSnap = await teamCollection(acct.accountId).get();
@@ -346,6 +395,53 @@ export async function POST(req) {
       await logAuditEvent({
         action: "team.set_org_role", actor: acct, targetType: "organization", targetId: acct.accountId,
         details: { email: t.email, role },
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // Grants/revokes app access + admin-of-that-app for one member in one
+    // call — the save action behind "Manage roles & app access". `id` is
+    // the account owner's own accountId (grants to themselves — mostly for
+    // symmetry, since owners already implicitly have everything) or a
+    // customers/{accountId}/team/{id} roster id, same as setOrgRole above.
+    if (body.action === "setAppAccess") {
+      const id = String(body.id || "");
+      const requestedApps = Array.isArray(body.apps) ? body.apps : [];
+
+      let uid;
+      if (id === acct.accountId) {
+        uid = acct.accountId;
+      } else {
+        const memberSnap = await adminDb().doc(`customers/${acct.accountId}/team/${id}`).get();
+        if (!memberSnap.exists) throw { status: 404, message: "Not found" };
+        const t = memberSnap.data();
+        if (!t.uid) throw { status: 400, message: "This teammate hasn't joined yet" };
+        uid = t.uid;
+      }
+
+      const subsSnap = await adminDb()
+        .collection("organizationAppSubscriptions")
+        .where("organizationId", "==", acct.accountId)
+        .where("status", "==", "ACTIVE")
+        .get();
+      const subscribedAppIds = new Set(subsSnap.docs.map((d) => d.data().appId));
+
+      await Promise.all(
+        requestedApps
+          .filter((a) => APP_IDS.includes(a.appId))
+          .map((a) => {
+            const granted = !!a.granted && subscribedAppIds.has(a.appId);
+            return upsertAppAssignment({
+              organizationId: acct.accountId, userId: uid, appId: a.appId,
+              role: a.admin ? "ADMIN" : "MEMBER", status: granted ? "ACTIVE" : "INACTIVE",
+            });
+          })
+      );
+
+      await logAuditEvent({
+        action: "team.set_app_access", actor: acct, targetType: "organization", targetId: acct.accountId,
+        details: { uid, apps: requestedApps },
       });
 
       return NextResponse.json({ ok: true });

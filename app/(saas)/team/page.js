@@ -43,6 +43,7 @@ export default function TeamPage() {
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [credentials, setCredentials] = useState(null); // { email, password } shown once after a credentials-based add or a password reset
+  const [managingMember, setManagingMember] = useState(null); // the member row for "Manage roles & app access", or null
 
   useEffect(() => {
     if (user === null) router.push("/sign-in");
@@ -240,6 +241,7 @@ export default function TeamPage() {
                       {!m.isOwner && (
                         <TeamRowMenu
                           items={[
+                            { label: "Manage roles & app access", onClick: () => setManagingMember(m) },
                             ...(m.status === "invited" ? [{ label: "Resend invite email", onClick: () => resend(m.id) }] : []),
                             ...(m.status !== "invited" ? [{ label: "Send password-reset email", onClick: () => resetPasswordEmail(m) }] : []),
                             { label: busyId === m.id ? "Working…" : "Set new password directly", onClick: () => setPassword(m) },
@@ -270,6 +272,113 @@ export default function TeamPage() {
           }}
         />
       )}
+
+      {managingMember && (
+        <ManageAccessModal
+          member={managingMember}
+          onClose={() => setManagingMember(null)}
+          onSaved={async () => {
+            setManagingMember(null);
+            await load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// The "Manage roles & app access" panel — org role plus per-app
+// granted/admin toggles for one existing teammate, edited and saved
+// together instead of separate visits to the inline Org role selector and
+// Team > Apps > Manage Users.
+function ManageAccessModal({ member, onClose, onSaved }) {
+  const [detail, setDetail] = useState(null); // { uid, orgRole, apps: [{appId,name,granted,admin}] }
+  const [orgRole, setOrgRole] = useState(member.orgRole);
+  const [apps, setApps] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api(`/api/team?memberId=${member.id}`, "GET");
+        setDetail(d);
+        setOrgRole(d.orgRole);
+        setApps(d.apps);
+      } catch (e) {
+        setError(e.message);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function toggleApp(appId, field, value) {
+    setApps((cur) =>
+      cur.map((a) => (a.appId === appId ? { ...a, [field]: value, ...(field === "admin" && value ? { granted: true } : {}) } : a))
+    );
+  }
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      if (orgRole !== member.orgRole) {
+        await api("/api/team", "POST", { action: "setOrgRole", id: member.id, role: orgRole });
+      }
+      await api("/api/team", "POST", {
+        action: "setAppAccess", id: member.id,
+        apps: apps.map((a) => ({ appId: a.appId, granted: a.granted, admin: a.admin })),
+      });
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <h2 style={{ marginBottom: 4 }}>Manage roles &amp; app access</h2>
+        <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>{member.email}</p>
+
+        {error && <p className="error">{error}</p>}
+        {!detail && !error && <p className="muted">Loading…</p>}
+
+        {detail && (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <label className="label">Organization role</label>
+              <select className="input" value={orgRole} onChange={(e) => setOrgRole(e.target.value)}>
+                {ORGANIZATION_ROLES.filter((r) => r !== "OWNER").map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 8 }}>
+              <label className="label">App access</label>
+              {apps.map((a) => (
+                <div key={a.appId} className="row" style={{ justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+                  <label className="row" style={{ gap: 8, fontSize: 13.5 }}>
+                    <input type="checkbox" checked={a.granted} onChange={(e) => toggleApp(a.appId, "granted", e.target.checked)} />
+                    {a.name}
+                  </label>
+                  <label className="muted row" style={{ gap: 6, fontSize: 12.5 }}>
+                    <input type="checkbox" checked={a.admin} onChange={(e) => toggleApp(a.appId, "admin", e.target.checked)} />
+                    Admin
+                  </label>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+          <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" disabled={busy || !detail} onClick={save}>{busy ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
     </div>
   );
 }
