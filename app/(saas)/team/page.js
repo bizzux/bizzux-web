@@ -647,10 +647,43 @@ function AddUserModal({ onClose, onAdded }) {
   );
   // Purely descriptive, optional fields (M365 "Add a user" wizard's Profile
   // info section) — none of them gate access or feed role/permission logic.
+  // country/state/city are stored as display names (what the API expects
+  // and what shows on the detail panel); the ISO codes below only exist to
+  // drive the cascading dropdowns (State needs the country's ISO code,
+  // City needs both) and aren't sent anywhere.
   const [contactInfo, setContactInfo] = useState(EMPTY_CONTACT_INFO);
+  const [countryIso, setCountryIso] = useState("");
+  const [stateIso, setStateIso] = useState("");
+  // The worldwide country/state/city dataset is a couple MB — way too big
+  // to bundle into every /team page load for one optional wizard step, so
+  // it's code-split and only fetched once this modal actually mounts.
+  const [csc, setCsc] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    import("country-state-city").then((mod) => {
+      if (!cancelled) setCsc(mod);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   function setContactField(field, value) {
     setContactInfo((cur) => ({ ...cur, [field]: value }));
   }
+  function selectCountry(iso) {
+    setCountryIso(iso);
+    setStateIso("");
+    const c = csc?.Country.getCountryByCode(iso);
+    setContactInfo((cur) => ({ ...cur, country: c?.name || "", state: "", city: "" }));
+  }
+  function selectState(iso) {
+    setStateIso(iso);
+    const s = csc?.State.getStateByCodeAndCountry(iso, countryIso);
+    setContactInfo((cur) => ({ ...cur, state: s?.name || "", city: "" }));
+  }
+  const allCountries = csc ? csc.Country.getAllCountries() : [];
+  const availableStates = csc && countryIso ? csc.State.getStatesOfCountry(countryIso) : [];
+  const availableCities = csc && countryIso && stateIso ? csc.City.getCitiesOfState(countryIso, stateIso) : [];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null); // set on success, drives the Finish step
@@ -876,25 +909,44 @@ function AddUserModal({ onClose, onAdded }) {
                   <label className="label">Street address</label>
                   <input className="input" value={contactInfo.streetAddress} onChange={(e) => setContactField("streetAddress", e.target.value)} />
                 </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label className="label">Country or region</label>
+                  <select className="input" value={countryIso} onChange={(e) => selectCountry(e.target.value)} disabled={!csc}>
+                    <option value="">{csc ? "Select a country" : "Loading countries…"}</option>
+                    {allCountries.map((c) => (
+                      <option key={c.isoCode} value={c.isoCode}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="row" style={{ gap: 12, marginBottom: 10 }}>
                   <div style={{ flex: 1 }}>
-                    <label className="label">City</label>
-                    <input className="input" value={contactInfo.city} onChange={(e) => setContactField("city", e.target.value)} />
+                    <label className="label">State or province</label>
+                    <select
+                      className="input" value={stateIso} onChange={(e) => selectState(e.target.value)}
+                      disabled={!countryIso || availableStates.length === 0}
+                    >
+                      <option value="">{countryIso ? (availableStates.length ? "Select a state" : "No states listed") : "Select a country first"}</option>
+                      {availableStates.map((s) => (
+                        <option key={s.isoCode} value={s.isoCode}>{s.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <label className="label">State or province</label>
-                    <input className="input" value={contactInfo.state} onChange={(e) => setContactField("state", e.target.value)} />
+                    <label className="label">City</label>
+                    <select
+                      className="input" value={contactInfo.city} onChange={(e) => setContactField("city", e.target.value)}
+                      disabled={!stateIso || availableCities.length === 0}
+                    >
+                      <option value="">{stateIso ? (availableCities.length ? "Select a city" : "No cities listed") : "Select a state first"}</option>
+                      {availableCities.map((c) => (
+                        <option key={c.name} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-                <div className="row" style={{ gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <label className="label">Zip or postal code</label>
-                    <input className="input" value={contactInfo.zip} onChange={(e) => setContactField("zip", e.target.value)} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label className="label">Country or region</label>
-                    <input className="input" value={contactInfo.country} onChange={(e) => setContactField("country", e.target.value)} />
-                  </div>
+                <div style={{ maxWidth: "50%", paddingRight: 6 }}>
+                  <label className="label">Zip or postal code</label>
+                  <input className="input" value={contactInfo.zip} onChange={(e) => setContactField("zip", e.target.value)} />
                 </div>
               </div>
             )}
