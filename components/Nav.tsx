@@ -8,6 +8,7 @@ import { auth } from "@/lib/firebase";
 import { useMe } from "@/lib/useMe";
 import { roleLabel } from "@/lib/roleLabel";
 import LiveClock from "@/components/LiveClock";
+import AppLauncher from "@/components/AppLauncher";
 
 // "All apps" sits first, right next to the logo, on every page. The rest
 // are the marketing tabs, always shown, signed in or not, so the menu bar
@@ -94,7 +95,8 @@ export default function Nav() {
 
   return (
     <header className="border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-50">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-8">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-2 lg:gap-8">
+        {signedIn && <AppLauncher user={user} isAccountAdmin={!!me?.isAccountAdmin} />}
         <Link href="/" className="flex items-center gap-2 shrink-0" onClick={closeMenu}>
           {/* The source PNG has a lot of transparent headroom above the
               wordmark for the small cloud+arrow accent, so its own visual

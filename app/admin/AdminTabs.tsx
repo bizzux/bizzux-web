@@ -12,6 +12,7 @@ import AdminTeamPanel from "@/components/AdminTeamPanel";
 import AdminReviewsPanel from "@/components/AdminReviewsPanel";
 import AdminLicensesPanel from "@/components/AdminLicensesPanel";
 import AdminBlogPanel from "@/components/AdminBlogPanel";
+import { internalVersionLabel } from "@/lib/version";
 
 // Super Admin (SaaS) is the default/first tab, so SuperAdminPanel is
 // imported normally — it's needed on the very first render either way.
@@ -148,6 +149,8 @@ export default function AdminTabs() {
             </p>
           </div>
 
+          <div className="flex flex-col items-end gap-1">
+          <span className="text-[11px] text-slate-400 font-mono">{internalVersionLabel()}</span>
           <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
           <button
             className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "saas" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
@@ -191,6 +194,7 @@ export default function AdminTabs() {
           >
             Blog
           </button>
+          </div>
           </div>
         </div>
 

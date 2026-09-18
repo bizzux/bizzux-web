@@ -1,9 +1,10 @@
 {
   "name": "bizzux-web",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/bump-build.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

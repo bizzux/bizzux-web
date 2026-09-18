@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { IconWhatsApp } from "./Icons";
+import { customerVersionLabel } from "@/lib/version";
 
 export default function Footer() {
   return (
@@ -55,6 +56,8 @@ export default function Footer() {
           <Link href="/terms" className="hover:text-brand-teal transition-colors">Terms of Service</Link>
           <Link href="/privacy" className="hover:text-brand-teal transition-colors">Privacy Policy</Link>
         </span>
+        <span className="hidden sm:inline">·</span>
+        <span>{customerVersionLabel()}</span>
       </div>
     </footer>
   );
