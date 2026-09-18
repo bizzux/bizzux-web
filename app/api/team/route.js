@@ -5,6 +5,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile, ORGANIZATION_ROLES } from "@/lib/organizationMembership";
+import { APPS } from "@/lib/appCatalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,6 +65,24 @@ export async function GET(req) {
       .get();
     const orgRoleByUid = new Map(orgMembershipsSnap.docs.map((d) => [d.data().userId, d.data().role]));
 
+    // Which apps (lib/appCatalog.js) each member currently has ACTIVE
+    // AppAssignment for (see lib/appAccess.js) — purely a display column
+    // here; actually granting/revoking access still happens on Team > Apps.
+    const assignmentsSnap = await adminDb()
+      .collection("appAssignments")
+      .where("organizationId", "==", acct.accountId)
+      .where("status", "==", "ACTIVE")
+      .get();
+    const appIdsByUid = new Map();
+    assignmentsSnap.docs.forEach((d) => {
+      const a = d.data();
+      const list = appIdsByUid.get(a.userId) || [];
+      list.push(a.appId);
+      appIdsByUid.set(a.userId, list);
+    });
+    const appNameById = new Map(APPS.map((a) => [a.id, a.name]));
+    const appAccessFor = (uid) => (appIdsByUid.get(uid) || []).map((id) => appNameById.get(id) || id);
+
     const members = [
       {
         id: acct.accountId,
@@ -73,6 +92,7 @@ export async function GET(req) {
         role: "Owner",
         profile: "Admin",
         orgRole: orgRoleByUid.get(acct.accountId) || "OWNER",
+        appAccess: appAccessFor(acct.accountId),
         status: "active",
         isOwner: true,
         joinedAt: toIso(owner.createdAt),
@@ -87,6 +107,7 @@ export async function GET(req) {
           role: t.role || "",
           profile: t.profile || DEFAULT_PROFILE,
           orgRole: (t.uid && orgRoleByUid.get(t.uid)) || roleFromProfile(t.profile || DEFAULT_PROFILE, false),
+          appAccess: t.uid ? appAccessFor(t.uid) : [],
           status: t.disabled ? "disabled" : (t.status || "invited"),
           isOwner: false,
           joinedAt: toIso(t.joinedAt),

@@ -195,7 +195,7 @@ export default function TeamPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th><th>Email</th><th>Role</th><th>Profile</th><th>Org role</th><th>Status</th><th></th>
+                  <th>Name</th><th>Email</th><th>Role</th><th>Profile</th><th>Org role</th><th>App access</th><th>Status</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -217,6 +217,17 @@ export default function TeamPage() {
                             <option key={r} value={r}>{r}</option>
                           ))}
                         </select>
+                      )}
+                    </td>
+                    <td>
+                      {m.appAccess && m.appAccess.length > 0 ? (
+                        <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                          {m.appAccess.map((name) => (
+                            <span key={name} className="status-pill active" style={{ fontSize: 11 }}>{name}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="muted" style={{ fontSize: 12 }}>None</span>
                       )}
                     </td>
                     <td>
