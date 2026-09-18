@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAccountAdmin, adminDb } from "@/lib/firebaseAdmin";
 import { DEFAULT_PROFILE } from "@/lib/roles";
-import { upsertAppAssignment, getAppAssignmentsForOrgApp } from "@/lib/appAccess";
+import { upsertAppAssignment, getAppAssignmentsForOrgApp, ensureAppSubscriptionActive } from "@/lib/appAccess";
 import { APP_IDS, appName } from "@/lib/appCatalog";
 
 export const runtime = "nodejs";
@@ -77,6 +77,12 @@ export async function POST(req, { params }) {
         .get();
       role = teamSnap.empty ? DEFAULT_PROFILE : teamSnap.docs[0].data().profile || DEFAULT_PROFILE;
     }
+
+    // Backfills the org's own subscription on demand if it's somehow
+    // missing (pre-existing org, never explicitly activated) — see
+    // ensureAppSubscriptionActive's comment. Only needed when actually
+    // granting; revoking never needs a subscription to exist.
+    if (assigned) await ensureAppSubscriptionActive(acct.accountId, appId);
 
     await upsertAppAssignment({
       organizationId: acct.accountId, userId: uid, appId, role,

@@ -6,7 +6,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile, ORGANIZATION_ROLES } from "@/lib/organizationMembership";
-import { upsertAppAssignment } from "@/lib/appAccess";
+import { upsertAppAssignment, ensureAppSubscriptionActive } from "@/lib/appAccess";
 import { APPS, APP_IDS } from "@/lib/appCatalog";
 import { existingAccountInviteEmailHtml } from "@/lib/emailTemplates";
 
@@ -350,26 +350,20 @@ export async function POST(req) {
       // Which Bizzux apps this new teammate gets, and whether they admin
       // each one (AppAssignment.role: ADMIN | MEMBER — see lib/appAccess.js)
       // — chosen right in this same invite step rather than a separate
-      // Team > Apps visit. Requires the org to actually be subscribed to an
-      // app before granting it, same rule Team > Apps' own Manage Users
-      // enforces.
+      // Team > Apps visit. ensureAppSubscriptionActive backfills the org's
+      // own subscription to an app on demand if one somehow doesn't exist
+      // yet, instead of silently dropping the grant (see its comment).
       const requestedApps = Array.isArray(body.apps) ? body.apps : [];
-      if (requestedApps.length > 0) {
-        const subsSnap = await adminDb()
-          .collection("organizationAppSubscriptions")
-          .where("organizationId", "==", acct.accountId)
-          .where("status", "==", "ACTIVE")
-          .get();
-        const subscribedAppIds = new Set(subsSnap.docs.map((d) => d.data().appId));
+      const validRequestedApps = requestedApps.filter((a) => APP_IDS.includes(a.appId));
+      if (validRequestedApps.length > 0) {
+        await Promise.all(validRequestedApps.map((a) => ensureAppSubscriptionActive(acct.accountId, a.appId)));
         await Promise.all(
-          requestedApps
-            .filter((a) => APP_IDS.includes(a.appId) && subscribedAppIds.has(a.appId))
-            .map((a) =>
-              upsertAppAssignment({
-                organizationId: acct.accountId, userId: authUser.uid, appId: a.appId,
-                role: a.role === "ADMIN" ? "ADMIN" : "MEMBER", status: "ACTIVE",
-              })
-            )
+          validRequestedApps.map((a) =>
+            upsertAppAssignment({
+              organizationId: acct.accountId, userId: authUser.uid, appId: a.appId,
+              role: a.role === "ADMIN" ? "ADMIN" : "MEMBER", status: "ACTIVE",
+            })
+          )
         );
       }
 
@@ -495,23 +489,17 @@ export async function POST(req) {
         uid = t.uid;
       }
 
-      const subsSnap = await adminDb()
-        .collection("organizationAppSubscriptions")
-        .where("organizationId", "==", acct.accountId)
-        .where("status", "==", "ACTIVE")
-        .get();
-      const subscribedAppIds = new Set(subsSnap.docs.map((d) => d.data().appId));
-
+      const validRequestedApps = requestedApps.filter((a) => APP_IDS.includes(a.appId));
       await Promise.all(
-        requestedApps
-          .filter((a) => APP_IDS.includes(a.appId))
-          .map((a) => {
-            const granted = !!a.granted && subscribedAppIds.has(a.appId);
-            return upsertAppAssignment({
-              organizationId: acct.accountId, userId: uid, appId: a.appId,
-              role: a.admin ? "ADMIN" : "MEMBER", status: granted ? "ACTIVE" : "INACTIVE",
-            });
+        validRequestedApps.filter((a) => a.granted).map((a) => ensureAppSubscriptionActive(acct.accountId, a.appId))
+      );
+      await Promise.all(
+        validRequestedApps.map((a) =>
+          upsertAppAssignment({
+            organizationId: acct.accountId, userId: uid, appId: a.appId,
+            role: a.admin ? "ADMIN" : "MEMBER", status: a.granted ? "ACTIVE" : "INACTIVE",
           })
+        )
       );
 
       await logAuditEvent({

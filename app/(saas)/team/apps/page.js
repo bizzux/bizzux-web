@@ -109,11 +109,7 @@ export default function OrganizationAppsPage() {
                   <span className="muted" style={{ fontSize: 12 }}>Assigned users: {a.assignedCount}</span>
                 </div>
               </div>
-              <button
-                className="btn-small"
-                disabled={a.status !== "ACTIVE"}
-                onClick={() => setManagingAppId(a.appId)}
-              >
+              <button className="btn-small" onClick={() => setManagingAppId(a.appId)}>
                 Manage Users
               </button>
             </div>
