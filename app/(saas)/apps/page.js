@@ -36,6 +36,11 @@ const CATEGORIES = [
       { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription and AI summaries with action items.", live: true, featured: true, url: "https://bizzux-notes.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
       { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste transcripts and notes, name them, and search across all of them.", live: true, featured: true, url: "https://bizzux-files.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
       { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Organize work into projects and track tasks on a Kanban board.", live: true, featured: true, url: "https://bizzux-projects.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
+      // A one-time-purchase Windows download, not a trial SaaS app like the
+      // others here — `direct` skips the sign-in/SSO/"Try now" flow above
+      // and just links straight to its own marketing + checkout page for
+      // any visitor, signed in or not.
+      { key: "screenrecorder", name: "Bizzux Screen Recorder", icon: "🎥", desc: "Record your screen in high quality at the smallest file size, with pen/shape annotations and cursor spotlight.", live: true, featured: true, direct: true, url: "/screen-recorder", ctaLabel: "View & buy" },
     ],
   },
   {
@@ -44,6 +49,18 @@ const CATEGORIES = [
     sub: "Keep the books straight without the busywork.",
     apps: [
       { key: "paisatrack", name: "PaisaTrack", icon: "💸", desc: "Auto-tracks personal spending from GPay, PhonePe, bank apps & SMS — no manual entry.", live: true, featured: true, url: "https://paisatrack.bizzux.com" },
+    ],
+  },
+  {
+    id: "admin",
+    title: "Admin",
+    sub: "Manage your organization.",
+    // adminOnly: filtered out below for anyone who isn't Global Admin/Admin
+    // on their own account — same gate /team itself uses. `internal` (not
+    // `sso`) just router.push()es straight there, no SSO hand-off needed
+    // since it's this same app.
+    apps: [
+      { key: "admin", name: "Admin Center", icon: "🛠️", desc: "Manage your team, their roles, and which Bizzux apps they can use.", live: true, featured: true, internal: true, adminOnly: true, url: "/team", ctaLabel: "Open" },
     ],
   },
 ];
@@ -59,10 +76,12 @@ function AppCard({ a, authState, opening, onTryNow }) {
         {!a.live && <span className="apps-panel-soon">Soon</span>}
       </h4>
       <p>{a.desc}</p>
-      {a.live ? (
+      {a.direct ? (
+        <Link href={a.url} className="btn-primary">{a.ctaLabel || "Learn more"}</Link>
+      ) : a.live ? (
         signedIn ? (
           <button type="button" className="btn-primary" onClick={() => onTryNow(a)} disabled={opening}>
-            {opening ? "Opening…" : "Try now"}
+            {opening ? "Opening…" : a.ctaLabel || "Try now"}
           </button>
         ) : (
           <Link href={`/sign-in?mode=signup&app=${encodeURIComponent(a.name)}`} className="btn-primary">Try now</Link>
@@ -111,6 +130,7 @@ export default function AllAppsPage() {
 
   const authState = user === undefined ? "checking" : user === null ? "out" : "in";
   const isSuper = me?.superAdmin === true;
+  const isAccountAdmin = me?.isAccountAdmin === true;
   // Until the customer doc has loaded, treat access as gated so a click
   // can't slip through before we know the real trial/plan status. Super
   // Admin always bypasses this, same as /api/shop-sso and dashboard/page.js.
@@ -118,12 +138,16 @@ export default function AllAppsPage() {
 
   async function openApp(a) {
     if (!user) return;
-    if (customer === null || appsLocked) {
-      setShowLockedModal(true);
-      return;
-    }
+    // Admin Center (and anything else internal to this app) stays reachable
+    // even on a locked/expired-trial account — same reasoning as rule 8:
+    // account/organization administration doesn't depend on the org's own
+    // trial/plan status.
     if (a.internal) {
       router.push(a.url);
+      return;
+    }
+    if (customer === null || appsLocked) {
+      setShowLockedModal(true);
       return;
     }
     if (!a.sso) {
@@ -150,17 +174,20 @@ export default function AllAppsPage() {
 
   const term = q.trim().toLowerCase();
   const matches = (a) =>
-    !term || a.name.toLowerCase().includes(term) || a.desc.toLowerCase().includes(term);
+    (!a.adminOnly || isAccountAdmin) &&
+    (!term || a.name.toLowerCase().includes(term) || a.desc.toLowerCase().includes(term));
 
   const featured = useMemo(
     () => CATEGORIES.flatMap((c) => c.apps.filter((a) => a.featured)).filter(matches),
-    [term]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [term, isAccountAdmin]
   );
 
   const categorized = useMemo(
     () =>
       CATEGORIES.map((c) => ({ ...c, apps: c.apps.filter(matches) })).filter((c) => c.apps.length > 0),
-    [term]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [term, isAccountAdmin]
   );
 
   const nothingFound = featured.length === 0 && categorized.length === 0;

@@ -63,6 +63,14 @@ export default function Nav() {
   const { user, me } = useMe();
   const isSuper = me?.superAdmin === true;
   const signedIn = !!user;
+  // "Admin Center" sits right after "All apps" — visible only to whoever
+  // can actually administer their own organization (Global Admin/Admin,
+  // same gate /team itself uses), not every signed-in customer. Platform
+  // Admins never see this row at all (see the `!isSuper &&` guard below),
+  // so there's no overlap with their own Super Admin button.
+  const navLinks = me?.isAccountAdmin
+    ? [links[0], { href: "/team", label: "Admin Center" }, ...links.slice(1)]
+    : links;
   // Same "who am I" wording used on Profile/Dashboard/Team's AccountTabs
   // badge (see lib/roleLabel.js) — repeated here so it's visible on every
   // page, not just those three, since Nav itself isn't in a shared layout.
@@ -96,7 +104,7 @@ export default function Nav() {
         </Link>
         <nav className="hidden lg:flex items-center gap-6">
           {!isSuper &&
-            links.map((l) => (
+            navLinks.map((l) => (
               <NavLink key={l.href} href={l.href}>
                 {l.label}
               </NavLink>
@@ -195,7 +203,7 @@ export default function Nav() {
 
           <nav className="flex flex-col mb-3">
             {!isSuper &&
-              links.map((l) => (
+              navLinks.map((l) => (
                 <Link key={l.href} href={l.href} onClick={closeMenu} className="py-2.5 text-sm font-medium text-ink border-b border-slate-50 last:border-0">
                   {l.label}
                 </Link>
