@@ -1,9 +1,11 @@
-// One-off, manually-run backfill for Phase 1 of the Organization
-// Membership model (see lib/organizationMembership.js). Populates
-// organizationMemberships/{organizationId}_{userId} for every organization
-// and membership that already existed before that collection did, so
-// existing customers aren't left out of the new model. Idempotent — safe
-// to re-run; upsertOrganizationMembership() never creates duplicates.
+// One-off, manually-run backfill for the Organization + OrganizationMembership
+// model (see lib/organization.js and lib/organizationMembership.js).
+// Populates organizations/{id} and organizationMemberships/{organizationId}_
+// {userId} for every organization and membership that already existed
+// before those collections did, so existing customers aren't left out of
+// the new model. Idempotent — safe to re-run; upsertOrganizationMembership()
+// never creates duplicates, and upsertOrganization() here skips any
+// organizations/ doc that already exists rather than overwriting it.
 //
 // Run from the bizzux-web project root:
 //   node scripts/backfill-organization-memberships.mjs
@@ -54,14 +56,35 @@ async function upsert(organizationId, userId, role, status) {
   );
 }
 
+async function upsertOrganization(id, data) {
+  const ref = db.collection("organizations").doc(id);
+  const snap = await ref.get();
+  if (snap.exists) return; // don't overwrite anything already backfilled/created
+  await ref.set({
+    id,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    ...data,
+  });
+}
+
 async function main() {
   let ownerCount = 0;
+  let orgCount = 0;
   const customersSnap = await db.collection("customers").get();
   for (const doc of customersSnap.docs) {
+    const c = doc.data();
+    await upsertOrganization(doc.id, {
+      name: c.organizationName || c.companyName || c.email || null,
+      type: "CUSTOMER", // existing accounts predate the platform-admin/INTERNAL distinction; adjust manually if needed
+      status: "active",
+      createdBy: doc.id,
+    });
+    orgCount++;
     await upsert(doc.id, doc.id, "OWNER", "active");
     ownerCount++;
   }
-  console.log(`Backfilled ${ownerCount} OWNER memberships from customers/`);
+  console.log(`Backfilled ${orgCount} organizations/ and ${ownerCount} OWNER memberships from customers/`);
 
   let memberCount = 0;
   const membershipsSnap = await db.collection("memberships").get();

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireUser, adminDb } from "@/lib/firebaseAdmin";
+import { requireUser, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { deriveVerificationSettings, deriveVerificationFlags } from "@/lib/verification";
 import { getTwoFactorSettings } from "@/lib/twoFactor";
 import { upsertOrganizationMembership } from "@/lib/organizationMembership";
+import { createOrganization } from "@/lib/organization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +91,12 @@ export async function POST(req) {
       ...(verifyMobileRequired ? { phoneVerified: false } : {}),
     });
 
+    // Bizzux's own staff (env-var Super Admin or a platformAdmins/ role)
+    // get an INTERNAL organization instead of CUSTOMER — everyone else
+    // signing up for the first time is a paying customer's organization.
+    const platformRole = await resolvePlatformRole(c.uid, c.email);
+    const orgType = c.isSuper || platformRole ? "INTERNAL" : "CUSTOMER";
+    await createOrganization({ id: c.uid, name: fullName || c.email, type: orgType, createdBy: c.uid });
     await upsertOrganizationMembership({ organizationId: c.uid, userId: c.uid, role: "OWNER", status: "active" });
 
     return NextResponse.json({ ok: true, created: true, verifyEmailRequired, verifyMobileRequired, mustChangePassword: false, ...twoFactorFields });

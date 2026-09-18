@@ -5,6 +5,7 @@ import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizationMembership";
+import { createOrganization } from "@/lib/organization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,6 +165,9 @@ export async function POST(req) {
         mustChangePassword,
       });
 
+      // Platform-Admin-created business logins are always real customer
+      // organizations, never Bizzux's own internal one.
+      await createOrganization({ id: authUser.uid, name: organizationName, type: "CUSTOMER", createdBy: c.uid });
       await upsertOrganizationMembership({ organizationId: authUser.uid, userId: authUser.uid, role: "OWNER", status: "active" });
 
       await logAuditEvent({

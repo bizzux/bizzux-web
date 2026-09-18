@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
-import { PROFILES } from "@/lib/roles";
+import { PROFILES, ORGANIZATION_ROLES } from "@/lib/roles";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
@@ -37,6 +37,7 @@ export default function TeamPage() {
   const isSuper = me?.superAdmin === true;
   const myRoleLabel = isSuper ? "Platform " + (me?.platformRole === "OWNER" ? "Owner" : "Admin") : roleLabel(me);
   const [members, setMembers] = useState(null);
+  const [organizationName, setOrganizationName] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
@@ -50,6 +51,7 @@ export default function TeamPage() {
     try {
       const d = await api("/api/team", "GET");
       setMembers(d.members || []);
+      setOrganizationName(d.organizationName || null);
     } catch (e) {
       setErr(e.message);
       setMembers([]);
@@ -133,6 +135,16 @@ export default function TeamPage() {
     }
   }
 
+  async function changeOrgRole(m, role) {
+    setMembers((cur) => cur.map((x) => (x.id === m.id ? { ...x, orgRole: role } : x)));
+    try {
+      await api("/api/team", "POST", { action: "setOrgRole", id: m.id, role });
+    } catch (e) {
+      setErr(e.message);
+      load();
+    }
+  }
+
   async function toggleDisabled(m) {
     const disabling = m.status !== "disabled";
     if (!confirm(disabling ? `Disable ${m.email}? They'll immediately lose access.` : `Re-enable ${m.email}?`)) return;
@@ -157,6 +169,7 @@ export default function TeamPage() {
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
           <div>
             <h1 className="dash-heading" style={{ fontSize: 20 }}>Users</h1>
+            {organizationName && <p className="muted" style={{ margin: "0 0 4px", fontSize: 13 }}>{organizationName}</p>}
             <p className="dash-sub" style={{ marginBottom: 0 }}>Invite teammates and manage who has access to your Bizzux apps.</p>
           </div>
           <button className="btn-primary-sm" onClick={() => setShowAdd(true)}>+ New User</button>
@@ -182,7 +195,7 @@ export default function TeamPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th><th>Email</th><th>Role</th><th>Profile</th><th>Status</th><th></th>
+                  <th>Name</th><th>Email</th><th>Role</th><th>Profile</th><th>Org role</th><th>Status</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -192,6 +205,20 @@ export default function TeamPage() {
                     <td>{m.email}</td>
                     <td>{m.role || "N/A"}</td>
                     <td>{m.profile}</td>
+                    <td>
+                      {m.isOwner ? (
+                        "OWNER"
+                      ) : (
+                        <select
+                          className="input" style={{ fontSize: 12.5, padding: "3px 6px" }}
+                          value={m.orgRole} onChange={(e) => changeOrgRole(m, e.target.value)}
+                        >
+                          {ORGANIZATION_ROLES.filter((r) => r !== "OWNER").map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
                     <td>
                       <span className={"status-pill " + (m.status === "active" ? "active" : m.status === "disabled" ? "expired" : "trial")}>
                         {m.status === "active" ? "Active" : m.status === "disabled" ? "Disabled" : "Invited"}

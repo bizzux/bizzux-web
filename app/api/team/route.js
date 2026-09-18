@@ -4,7 +4,7 @@ import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { logAuditEvent } from "@/lib/audit";
-import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile } from "@/lib/organizationMembership";
+import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile, ORGANIZATION_ROLES } from "@/lib/organizationMembership";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +54,16 @@ export async function GET(req) {
     const owner = ownerSnap.exists ? ownerSnap.data() : {};
     const teamSnap = await teamCollection(acct.accountId).get();
 
+    // organizationMemberships is the source of truth for the generic
+    // OWNER/ADMIN/MEMBER/VIEWER org role (see lib/organizationMembership.js)
+    // — falls back to mapping the business profile when a member predates
+    // that collection and hasn't been backfilled yet.
+    const orgMembershipsSnap = await adminDb()
+      .collection("organizationMemberships")
+      .where("organizationId", "==", acct.accountId)
+      .get();
+    const orgRoleByUid = new Map(orgMembershipsSnap.docs.map((d) => [d.data().userId, d.data().role]));
+
     const members = [
       {
         id: acct.accountId,
@@ -62,6 +72,7 @@ export async function GET(req) {
         email: owner.email || "",
         role: "Owner",
         profile: "Admin",
+        orgRole: orgRoleByUid.get(acct.accountId) || "OWNER",
         status: "active",
         isOwner: true,
         joinedAt: toIso(owner.createdAt),
@@ -75,6 +86,7 @@ export async function GET(req) {
           email: t.email || "",
           role: t.role || "",
           profile: t.profile || DEFAULT_PROFILE,
+          orgRole: (t.uid && orgRoleByUid.get(t.uid)) || roleFromProfile(t.profile || DEFAULT_PROFILE, false),
           status: t.disabled ? "disabled" : (t.status || "invited"),
           isOwner: false,
           joinedAt: toIso(t.joinedAt),
@@ -83,7 +95,10 @@ export async function GET(req) {
       }),
     ];
 
-    return NextResponse.json({ members });
+    return NextResponse.json({
+      organizationName: owner.organizationName || owner.companyName || null,
+      members,
+    });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
@@ -256,6 +271,33 @@ export async function POST(req) {
       await logAuditEvent({
         action: disabling ? "team.disable" : "team.enable", actor: acct, targetType: "organization", targetId: acct.accountId,
         details: { email: t.email },
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
+    // Changes only the generic OWNER/ADMIN/MEMBER/VIEWER organization role
+    // (organizationMemberships) — deliberately separate from the business
+    // Profile (Manager/Staff/etc., which still drives every existing
+    // permission check and isn't touched here). Ownership transfer isn't
+    // supported yet, so OWNER can't be assigned through this action.
+    if (body.action === "setOrgRole") {
+      const id = String(body.id || "");
+      const role = String(body.role || "");
+      if (!id || id === acct.accountId) throw { status: 400, message: "Can't change the account owner's role" };
+      if (!ORGANIZATION_ROLES.includes(role) || role === "OWNER") {
+        throw { status: 400, message: "role must be one of ADMIN, MEMBER, VIEWER" };
+      }
+      const memberSnap = await adminDb().doc(`customers/${acct.accountId}/team/${id}`).get();
+      if (!memberSnap.exists) throw { status: 404, message: "Not found" };
+      const t = memberSnap.data();
+      if (!t.uid) throw { status: 400, message: "This teammate hasn't joined yet" };
+
+      await upsertOrganizationMembership({ organizationId: acct.accountId, userId: t.uid, role, status: "active" });
+
+      await logAuditEvent({
+        action: "team.set_org_role", actor: acct, targetType: "organization", targetId: acct.accountId,
+        details: { email: t.email, role },
       });
 
       return NextResponse.json({ ok: true });
