@@ -29,6 +29,7 @@ const TABS = [
   { id: "platformadmins", label: "Platform Admins" },
   { id: "auditlogs", label: "Audit Logs" },
   { id: "security", label: "Security Settings" },
+  { id: "storage", label: "Storage" },
 ];
 
 async function api(path, method, body) {
@@ -124,6 +125,7 @@ export default function SuperAdminPanel() {
       {tab === "platformadmins" && <PlatformAdminsManager isOwner={platformRole === "OWNER"} />}
       {tab === "auditlogs" && <AuditLogsPanel />}
       {tab === "security" && <SecuritySettingsPanel />}
+      {tab === "storage" && <BlobCleanupPanel />}
     </div>
   );
 }
@@ -149,6 +151,99 @@ function SecuritySettingsPanel() {
         <li>Platform Admins are created only by the Owner and can never create or remove other Platform Admins.</li>
         <li>Every sensitive platform action is recorded in Audit Logs.</li>
       </ul>
+    </div>
+  );
+}
+
+// Super Admin -> Storage. The Blob store (1GB on the Hobby plan) filled up
+// because every published Screen Recorder build kept its own old version
+// around forever — see scripts/publish-screen-recorder.mjs, which now
+// deletes the previous build before uploading a new one going forward. This
+// is purely for cleaning up everything published BEFORE that fix: preview
+// what's orphaned, then actually delete it once you've checked the numbers
+// look right. Never touches whichever build productReleases/screen-recorder
+// currently points at, so today's live download link is never at risk.
+function BlobCleanupPanel() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [err, setErr] = useState("");
+  const [result, setResult] = useState(null);
+
+  async function preview() {
+    setLoading(true);
+    setErr("");
+    setResult(null);
+    try {
+      const d = await api("/api/admin/blob-cleanup", "GET");
+      setData(d);
+    } catch (e) {
+      setErr(e.message || "Couldn't load storage info");
+    }
+    setLoading(false);
+  }
+
+  async function cleanup() {
+    if (!data || data.wouldDelete.length === 0) return;
+    if (!window.confirm(`Permanently delete ${data.wouldDelete.length} old build(s), freeing ~${(data.totalBytes / 1024 / 1024).toFixed(0)}MB? This can't be undone.`)) return;
+    setDeleting(true);
+    setErr("");
+    try {
+      const d = await api("/api/admin/blob-cleanup", "POST");
+      setResult(d);
+      setData(null);
+    } catch (e) {
+      setErr(e.message || "Cleanup failed");
+    }
+    setDeleting(false);
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 640 }}>
+      <h3 style={{ fontSize: 15, marginBottom: 10 }}>Old Screen Recorder builds</h3>
+      <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+        Every previously published installer build is still sitting in the Blob store. Preview what would be
+        deleted before actually deleting anything — the current, live build is never touched.
+      </p>
+      {err && <p className="error">⚠️ {err}</p>}
+      {result && (
+        <p style={{ color: "#16a34a", fontSize: 13, marginBottom: 12 }}>
+          ✓ Deleted {result.deletedCount} build(s), freed ~{(result.freedBytes / 1024 / 1024).toFixed(0)}MB.
+        </p>
+      )}
+      <div className="row" style={{ gap: 10, marginBottom: data ? 14 : 0 }}>
+        <button type="button" className="btn-small" disabled={loading} onClick={preview}>
+          {loading ? "Checking…" : "Preview what would be deleted"}
+        </button>
+        {data && data.wouldDelete.length > 0 && (
+          <button type="button" className="btn-primary-sm" disabled={deleting} onClick={cleanup} style={{ background: "#dc2626" }}>
+            {deleting ? "Deleting…" : `Delete ${data.wouldDelete.length} old build(s)`}
+          </button>
+        )}
+      </div>
+      {data && (
+        <div style={{ fontSize: 12.5 }}>
+          <p className="muted" style={{ marginBottom: 6 }}>
+            Current live build: <code>{data.currentBlobPath || "none published yet"}</code>
+          </p>
+          {data.wouldDelete.length === 0 ? (
+            <p className="muted">Nothing orphaned — storage is already clean.</p>
+          ) : (
+            <>
+              <p style={{ fontWeight: 600, marginBottom: 6 }}>
+                {data.wouldDelete.length} old build(s), ~{(data.totalBytes / 1024 / 1024).toFixed(0)}MB total:
+              </p>
+              <ul style={{ paddingLeft: 18, margin: 0, lineHeight: 1.7 }}>
+                {data.wouldDelete.map((b) => (
+                  <li key={b.pathname}>
+                    {b.pathname} — {((b.size || 0) / 1024 / 1024).toFixed(1)}MB
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1437,44 +1532,6 @@ function PlanAppsManager() {
 }
 
 // Small "⋯" more-actions menu — same pattern used in Bizzux Files.
-function RowMenu({ items }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ position: "relative", display: "inline-block" }}>
-      <button
-        type="button"
-        className="link-btn"
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        style={{ fontSize: 16, padding: "2px 8px" }}
-      >
-        ⋯
-      </button>
-      {open && (
-        <>
-          {/* Backdrop closes the menu on outside click without a ref/effect. */}
-          <div style={{ position: "fixed", inset: 0, zIndex: 29 }} onClick={() => setOpen(false)} />
-          <div
-            className="card"
-            onClick={(e) => e.stopPropagation()}
-            style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, zIndex: 30, minWidth: 170, padding: 6, boxShadow: "0 8px 24px rgba(0,0,0,.18)" }}
-          >
-            {items.map((it, i) => (
-              <button
-                key={i} type="button"
-                className={"link-btn" + (it.danger ? " danger" : "")}
-                style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 8px", fontSize: 13 }}
-                onClick={() => { setOpen(false); it.onClick(); }}
-              >
-                {it.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // Matches the keys appUsage.<key> is stamped with (app-sso/route.js,
 // shop-sso/route.js) to the display name shown in the Apps Used column.
 const APP_USAGE_LABELS = {
@@ -1688,14 +1745,9 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
 
 function CustomersList() {
   const [customers, setCustomers] = useState(null);
-  const [extending, setExtending] = useState(null); // customer row being extended, or null
-  const [markingPaid, setMarkingPaid] = useState(null); // customer row being marked paid, or null
-  const [viewingAdmins, setViewingAdmins] = useState(null); // customer row, or null
-  const [viewingActivity, setViewingActivity] = useState(null); // customer row, or null
-  const [settingPassword, setSettingPassword] = useState(null); // customer row, or null
   const [viewingDetail, setViewingDetail] = useState(null); // customer row, or null
   const [err, setErr] = useState("");
-  const [busyId, setBusyId] = useState(null);
+  const [search, setSearch] = useState("");
 
   async function load() {
     try {
@@ -1710,59 +1762,39 @@ function CustomersList() {
     load();
   }, []);
 
-  async function resetPassword(c) {
-    if (!confirm(`Send a password-reset email to ${c.email}?`)) return;
-    setBusyId(c.id);
-    setErr("");
-    try {
-      await api("/api/admin/customers", "POST", { action: "resetPassword", id: c.id });
-      alert(`Password-reset email sent to ${c.email}.`);
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  // For accounts with no working email on file (e.g. created directly from
-  // Organizations > "Create Business Login") — sets the password right
-  // here instead of emailing a reset link nobody can receive. Also useful
-  // when a shop owner calls support because they forgot their password and
-  // can't reach whatever email is on file either.
-  async function toggleSuspend(c) {
-    const suspending = c.status !== "suspended";
-    if (!confirm(suspending
-      ? `Suspend ${c.email}? They'll immediately lose access to every Bizzux app until reactivated.`
-      : `Reactivate ${c.email}?`)) return;
-    setBusyId(c.id);
-    setErr("");
-    try {
-      await api("/api/admin/customers", "POST", { action: suspending ? "suspend" : "reactivate", id: c.id });
-      await load();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   if (customers === null) return <p className="muted">Loading…</p>;
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? customers.filter((c) =>
+        [c.organizationName, c.fullName, c.email, c.phone].some((v) => v && v.toLowerCase().includes(q))
+      )
+    : customers;
 
   return (
     <div className="card">
       {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+      <input
+        type="text"
+        className="input"
+        placeholder="Search by organization, owner, email or mobile…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ marginBottom: 14, maxWidth: 360 }}
+      />
       {customers.length === 0 && <p className="muted">No signups yet.</p>}
-      {customers.length > 0 && (
+      {customers.length > 0 && filtered.length === 0 && <p className="muted">No customers match "{search}".</p>}
+      {filtered.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table className="table">
             <thead>
               <tr>
                 <th>Organization</th><th>Owner</th><th>Email</th><th>Mobile</th><th>Location</th>
-                <th>Signed up</th><th>Customer for</th><th>Last login</th><th>Status</th><th>Type</th><th>Plan</th><th>Apps used</th><th>Trial ends</th><th></th>
+                <th>Signed up</th><th>Customer for</th><th>Last login</th><th>Status</th><th>Type</th><th>Plan</th><th>Apps used</th><th>Trial ends</th>
               </tr>
             </thead>
             <tbody>
-              {customers.map((c) => {
+              {filtered.map((c) => {
                 const usedKeys = Object.keys(c.appUsage || {});
                 return (
                 <tr key={c.id}>
@@ -1804,23 +1836,6 @@ function CustomersList() {
                     )}
                   </td>
                   <td>{c.trialEndDate ? new Date(c.trialEndDate).toLocaleDateString() : "N/A"}</td>
-                  <td>
-                    <RowMenu
-                      items={[
-                        { label: "View org owner/admins", onClick: () => setViewingAdmins(c) },
-                        { label: "View Shop activity", onClick: () => setViewingActivity(c) },
-                        { label: "Extend trial", onClick: () => setExtending(c) },
-                        { label: "Mark as paid (cash / offline)", onClick: () => setMarkingPaid(c) },
-                        { label: "Reset password (email link)", onClick: () => resetPassword(c) },
-                        { label: "Set new password directly", onClick: () => setSettingPassword(c) },
-                        {
-                          label: busyId === c.id ? "Working…" : (c.status === "suspended" ? "Reactivate" : "Suspend"),
-                          danger: c.status !== "suspended",
-                          onClick: () => toggleSuspend(c),
-                        },
-                      ]}
-                    />
-                  </td>
                 </tr>
                 );
               })}
@@ -1829,42 +1844,8 @@ function CustomersList() {
         </div>
       )}
 
-      {extending && (
-        <ExtendTrialModal
-          customer={extending}
-          onClose={() => setExtending(null)}
-          onExtended={async () => {
-            setExtending(null);
-            await load();
-          }}
-        />
-      )}
-
-      {viewingAdmins && (
-        <OrgAdminsModal customer={viewingAdmins} onClose={() => setViewingAdmins(null)} />
-      )}
-
-      {viewingActivity && (
-        <CustomerActivityModal customer={viewingActivity} onClose={() => setViewingActivity(null)} />
-      )}
-
-      {settingPassword && (
-        <SetPasswordModal customer={settingPassword} onClose={() => setSettingPassword(null)} />
-      )}
-
       {viewingDetail && (
         <CustomerDetailPanel customer={viewingDetail} onClose={() => setViewingDetail(null)} onChanged={load} />
-      )}
-
-      {markingPaid && (
-        <MarkPaidModal
-          customer={markingPaid}
-          onClose={() => setMarkingPaid(null)}
-          onMarked={async () => {
-            setMarkingPaid(null);
-            await load();
-          }}
-        />
       )}
     </div>
   );
@@ -1883,57 +1864,6 @@ function ActivityRow({ label, data }) {
       <span className="muted" style={{ fontSize: 13, textAlign: "right" }}>
         {data.lastAt ? timeAgo(data.lastAt) : "Never"} · {data.last30Days} in last 30 days
       </span>
-    </div>
-  );
-}
-
-function CustomerActivityModal({ customer, onClose }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const d = await api(`/api/admin/customer-activity?id=${customer.id}`, "GET");
-        setData(d);
-      } catch (e) {
-        setError(e.message);
-      }
-    })();
-  }, [customer.id]);
-
-  const modules = data && [
-    ["Menu", data.usesMenu], ["Inventory", data.usesInventory],
-    ["Reservations", data.usesReservations], ["CapEx", data.usesCapex],
-  ];
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
-        <h2 style={{ marginBottom: 4 }}>{customer.organizationName || customer.fullName || customer.email}</h2>
-        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>
-          Usage only — sales/purchase/expense amounts are never shown here.
-        </p>
-        {error && <p className="error">{error}</p>}
-        {!error && data === null && <p className="muted">Loading…</p>}
-        {data && (
-          <>
-            <ActivityRow label="🧾 Sales" data={data.sales} />
-            <ActivityRow label="🛒 Purchases" data={data.purchases} />
-            <ActivityRow label="🧺 Expenses" data={data.expenses} />
-            <div className="row" style={{ marginTop: 14, gap: 6, flexWrap: "wrap" }}>
-              {modules.map(([label, used]) => (
-                <span key={label} className={"status-pill " + (used ? "active" : "")} style={!used ? { opacity: 0.5 } : undefined}>
-                  {used ? "✓" : "—"} {label}
-                </span>
-              ))}
-            </div>
-          </>
-        )}
-        <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
-          <button className="btn-outline-dark" onClick={onClose}>Close</button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -2092,56 +2022,6 @@ function AddTeamMemberForm({ accountId, onDone }) {
         {error && <p className="error" style={{ fontSize: 12.5 }}>{error}</p>}
         <button className="btn-small" disabled={busy}>{busy ? "Creating…" : "+ Create login"}</button>
       </form>
-    </div>
-  );
-}
-
-function OrgAdminsModal({ customer, onClose }) {
-  const [admins, setAdmins] = useState(null);
-  const [error, setError] = useState("");
-  const [showAddForm, setShowAddForm] = useState(false);
-
-  async function load() {
-    try {
-      const d = await api(`/api/admin/customers?id=${customer.id}`, "GET");
-      setAdmins(d.admins || []);
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-  useEffect(() => { load(); }, [customer.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
-        <h2 style={{ marginBottom: 4 }}>{customer.organizationName || customer.fullName || customer.email}</h2>
-        <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>Everyone with a login on this account.</p>
-        {error && <p className="error">{error}</p>}
-        {!error && admins === null && <p className="muted">Loading…</p>}
-        {admins && admins.map((a, i) => (
-          <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <span style={{ fontSize: 13.5 }}>{a.email}</span>
-              <span className="status-pill active">{a.role}</span>
-            </div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 2 }} title={a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : ""}>
-              Last login: {timeAgo(a.lastLoginAt)}
-            </div>
-          </div>
-        ))}
-
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-          {showAddForm ? (
-            <AddTeamMemberForm accountId={customer.id} onDone={load} />
-          ) : (
-            <button className="link-btn" onClick={() => setShowAddForm(true)}>+ Add a team member (Manager, Staff, etc.)</button>
-          )}
-        </div>
-
-        <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
-          <button className="btn-outline-dark" onClick={onClose}>Close</button>
-        </div>
-      </div>
     </div>
   );
 }
