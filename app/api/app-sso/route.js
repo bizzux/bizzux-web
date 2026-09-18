@@ -25,6 +25,7 @@ const TARGET_APPS = {
   notes: process.env.NOTES_APP_URL || "https://bizzux-notes.vercel.app",
   files: process.env.FILES_APP_URL || "https://bizzux-files.vercel.app",
   projects: process.env.PROJECTS_APP_URL || "https://bizzux-projects.vercel.app",
+  chat: process.env.CHAT_APP_URL || "https://bizzux-chat.vercel.app",
 };
 
 export async function GET(req) {
