@@ -430,6 +430,10 @@ function BulkAddModal({ onClose, onDone }) {
   function toggleApp(appId, field, value) {
     setAppAccess((cur) => ({ ...cur, [appId]: { ...cur[appId], [field]: value, ...(field === "admin" && value ? { granted: true } : {}) } }));
   }
+  function toggleAllApps(checked) {
+    setAppAccess((cur) => Object.fromEntries(APPS.map((a) => [a.id, { granted: checked, admin: checked ? cur[a.id].admin : false }])));
+  }
+  const allAppsGranted = APPS.every((a) => appAccess[a.id].granted);
 
   async function submit() {
     const valid = rows.filter((r) => r.firstName.trim() && EMAIL_RE.test(r.email.trim()) && r.profile);
@@ -512,6 +516,10 @@ function BulkAddModal({ onClose, onDone }) {
 
             <div style={{ marginBottom: 16 }}>
               <label className="label">App access (applied to everyone added)</label>
+              <label className="row" style={{ gap: 8, fontSize: 13, fontWeight: 600, padding: "4px 0 6px", cursor: "pointer" }}>
+                <input type="checkbox" checked={allAppsGranted} onChange={(e) => toggleAllApps(e.target.checked)} />
+                Select all apps
+              </label>
               {APPS.map((a) => {
                 const v = appAccess[a.id];
                 return (
@@ -651,6 +659,10 @@ function AddUserModal({ onClose, onAdded }) {
   function toggleApp(appId, field, value) {
     setAppAccess((cur) => ({ ...cur, [appId]: { ...cur[appId], [field]: value, ...(field === "admin" && value ? { granted: true } : {}) } }));
   }
+  function toggleAllApps(checked) {
+    setAppAccess((cur) => Object.fromEntries(APPS.map((a) => [a.id, { granted: checked, admin: checked ? cur[a.id].admin : false }])));
+  }
+  const allAppsGranted = APPS.every((a) => appAccess[a.id].granted);
 
   function validateStep(i) {
     if (i === 0) {
@@ -786,6 +798,10 @@ function AddUserModal({ onClose, onAdded }) {
                 <p className="muted" style={{ fontSize: 12.5, marginBottom: 16 }}>
                   Choose which Bizzux apps this person can open, and whether they administer each one.
                 </p>
+                <label className="row" style={{ gap: 8, fontSize: 13, fontWeight: 600, padding: "0 0 10px", cursor: "pointer" }}>
+                  <input type="checkbox" checked={allAppsGranted} onChange={(e) => toggleAllApps(e.target.checked)} />
+                  Select all apps
+                </label>
                 {APPS.map((a) => {
                   const v = appAccess[a.id];
                   return (
