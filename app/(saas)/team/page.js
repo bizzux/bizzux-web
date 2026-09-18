@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { PROFILES, ORGANIZATION_ROLES } from "@/lib/roles";
+import { APPS } from "@/lib/appCatalog";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
@@ -325,8 +326,20 @@ function AddUserModal({ onClose, onAdded }) {
   const [loginMethod, setLoginMethod] = useState("email"); // "email" | "credentials"
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // { [appId]: { granted: bool, admin: bool } } — which apps this new user
+  // gets, and whether they're an admin of each (AppAssignment.role:
+  // ADMIN | MEMBER, see lib/appAccess.js) rather than one all-or-nothing
+  // permission. PaisaTrack isn't listed here — it's a separate Firebase
+  // project with its own login, outside this organization/app model.
+  const [appAccess, setAppAccess] = useState(() =>
+    Object.fromEntries(APPS.map((a) => [a.id, { granted: false, admin: false }]))
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  function toggleApp(appId, field, value) {
+    setAppAccess((cur) => ({ ...cur, [appId]: { ...cur[appId], [field]: value, ...(field === "admin" && value ? { granted: true } : {}) } }));
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -348,8 +361,11 @@ function AddUserModal({ onClose, onAdded }) {
       // `role` (free-text job title) is no longer collected here — the API
       // still accepts it and defaults it to "" server-side, so nothing else
       // needs to change for this field to just go away.
+      const apps = Object.entries(appAccess)
+        .filter(([, v]) => v.granted)
+        .map(([appId, v]) => ({ appId, role: v.admin ? "ADMIN" : "MEMBER" }));
       const d = await api("/api/team", "POST", {
-        action: "invite", firstName, lastName, email, profile,
+        action: "invite", firstName, lastName, email, profile, apps,
         loginMethod, ...(loginMethod === "credentials" ? { password } : {}),
       });
       onAdded(loginMethod === "credentials" ? { email: d.email, password: d.password } : null);
@@ -435,6 +451,32 @@ function AddUserModal({ onClose, onAdded }) {
               {PROFILES.find((p) => p.value === profile)?.desc}
             </p>
           </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">App access</label>
+            <p className="muted" style={{ fontSize: 12, marginTop: 0, marginBottom: 8 }}>
+              Choose which Bizzux apps this person can open, and whether they administer each one.
+            </p>
+            {APPS.map((a) => {
+              const v = appAccess[a.id];
+              return (
+                <div key={a.id} className="row" style={{ justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+                  <label className="row" style={{ gap: 8, fontSize: 13.5 }}>
+                    <input type="checkbox" checked={v.granted} onChange={(e) => toggleApp(a.id, "granted", e.target.checked)} />
+                    {a.name}
+                  </label>
+                  <label className="muted row" style={{ gap: 6, fontSize: 12.5 }}>
+                    <input type="checkbox" checked={v.admin} onChange={(e) => toggleApp(a.id, "admin", e.target.checked)} />
+                    Admin
+                  </label>
+                </div>
+              );
+            })}
+            <p className="muted" style={{ fontSize: 11.5, marginTop: 6, marginBottom: 0 }}>
+              PaisaTrack has its own separate sign-in and isn't managed here.
+            </p>
+          </div>
+
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
             <button className="btn-primary" disabled={busy}>{busy ? "Saving…" : "Save"}</button>

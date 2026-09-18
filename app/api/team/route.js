@@ -5,7 +5,8 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile, ORGANIZATION_ROLES } from "@/lib/organizationMembership";
-import { APPS } from "@/lib/appCatalog";
+import { upsertAppAssignment } from "@/lib/appAccess";
+import { APPS, APP_IDS } from "@/lib/appCatalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -222,9 +223,35 @@ export async function POST(req) {
         });
       }
 
+      // Which Bizzux apps this new teammate gets, and whether they admin
+      // each one (AppAssignment.role: ADMIN | MEMBER — see lib/appAccess.js)
+      // — chosen right in this same invite step rather than a separate
+      // Team > Apps visit. Requires the org to actually be subscribed to an
+      // app before granting it, same rule Team > Apps' own Manage Users
+      // enforces.
+      const requestedApps = Array.isArray(body.apps) ? body.apps : [];
+      if (requestedApps.length > 0) {
+        const subsSnap = await adminDb()
+          .collection("organizationAppSubscriptions")
+          .where("organizationId", "==", acct.accountId)
+          .where("status", "==", "ACTIVE")
+          .get();
+        const subscribedAppIds = new Set(subsSnap.docs.map((d) => d.data().appId));
+        await Promise.all(
+          requestedApps
+            .filter((a) => APP_IDS.includes(a.appId) && subscribedAppIds.has(a.appId))
+            .map((a) =>
+              upsertAppAssignment({
+                organizationId: acct.accountId, userId: authUser.uid, appId: a.appId,
+                role: a.role === "ADMIN" ? "ADMIN" : "MEMBER", status: "ACTIVE",
+              })
+            )
+        );
+      }
+
       await logAuditEvent({
         action: "team.invite", actor: acct, targetType: "organization", targetId: acct.accountId,
-        details: { email, profile, loginMethod },
+        details: { email, profile, loginMethod, apps: requestedApps.map((a) => a.appId) },
       });
 
       return NextResponse.json(loginMethod === "credentials" ? { ok: true, email, password } : { ok: true });
