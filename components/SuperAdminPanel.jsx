@@ -1560,6 +1560,7 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
   const [showSetPassword, setShowSetPassword] = useState(false);
   const [guestSeatsInput, setGuestSeatsInput] = useState(customer.guestSeats || 0);
   const [savingGuestSeats, setSavingGuestSeats] = useState(false);
+  const [openingApp, setOpeningApp] = useState(null);
 
   async function loadAdmins() {
     try {
@@ -1624,6 +1625,20 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
     }
   }
 
+  async function openAsOrg(label, endpoint) {
+    setOpeningApp(label);
+    setErr("");
+    try {
+      const sep = endpoint.includes("?") ? "&" : "?";
+      const d = await api(`${endpoint}${sep}asOrg=${customer.id}`, "GET");
+      window.open(d.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setOpeningApp(null);
+    }
+  }
+
   async function saveGuestSeats() {
     setSavingGuestSeats(true);
     try {
@@ -1679,6 +1694,29 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
                 <button className="btn-small" onClick={() => setShowSetPassword(true)}>Set new password directly</button>
                 <button className="btn-small" disabled={busyUid === customer.id} onClick={() => revokeSessions(customer.id)}>Sign out of all devices</button>
                 <button className="btn-ghost" onClick={toggleSuspend}>{customer.status === "suspended" ? "Reactivate" : "Suspend"}</button>
+              </div>
+
+              <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                <div className="label" style={{ marginBottom: 6 }}>Open apps as this organization</div>
+                <p className="muted" style={{ fontSize: 12, marginBottom: 8, maxWidth: 420 }}>
+                  Opens the app exactly as this organization's owner sees it, for support/troubleshooting. Every open is recorded in Audit Logs.
+                </p>
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    { label: "Business", endpoint: "/api/shop-sso" },
+                    { label: "POS", endpoint: "/api/pos-sso" },
+                    { label: "Notes", endpoint: "/api/app-sso?app=notes" },
+                    { label: "Files", endpoint: "/api/app-sso?app=files" },
+                    { label: "Projects", endpoint: "/api/app-sso?app=projects" },
+                  ].map((a) => (
+                    <button
+                      key={a.label} className="btn-small" disabled={openingApp === a.label}
+                      onClick={() => openAsOrg(a.label, a.endpoint)}
+                    >
+                      {openingApp === a.label ? "Opening…" : a.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>

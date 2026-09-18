@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireAccountWithAppsAccess, adminDb } from "@/lib/firebaseAdmin";
+import { requireAccountWithAppsAccess, requireUser, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
+import { logAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,27 +29,55 @@ const TARGET_APPS = {
 
 export async function GET(req) {
   try {
-    const appKey = new URL(req.url).searchParams.get("app");
+    const url = new URL(req.url);
+    const appKey = url.searchParams.get("app");
     const targetUrl = TARGET_APPS[appKey];
     if (!targetUrl) throw { status: 400, message: "Unknown app" };
 
-    // Enforces auth + the same trial/plan gate as the app itself (defense
-    // in depth), and gives us the resolved accountId/email.
-    const acct = await requireAccountWithAppsAccess(req);
+    const asOrg = url.searchParams.get("asOrg");
+    let uid, email, accountId;
+
+    if (asOrg) {
+      // Platform-Admin-only support tool: open a specific CUSTOMER's app
+      // exactly as that organization's owner sees it, for troubleshooting.
+      // Never reachable by a plain customer — gated on the real
+      // platformAdmins/SUPER_ADMIN_EMAIL check, same as the Super Admin
+      // portal itself, and every use is audit-logged since it's viewing
+      // (and can act on) a customer's real data.
+      const c = await requireUser(req);
+      const platformRole = await resolvePlatformRole(c.uid, c.email);
+      if (!c.isSuper && !platformRole) throw { status: 403, message: "Platform admin access required" };
+      const orgSnap = await adminDb().doc("customers/" + asOrg).get();
+      if (!orgSnap.exists) throw { status: 404, message: "Organization not found" };
+      uid = asOrg;
+      email = orgSnap.data().email || "";
+      accountId = asOrg;
+      await logAuditEvent({
+        action: "organization.impersonate_app_open", actor: c, targetType: "organization", targetId: asOrg,
+        details: { app: appKey },
+      });
+    } else {
+      // Enforces auth + the same trial/plan gate as the app itself (defense
+      // in depth), and gives us the resolved accountId/email.
+      const acct = await requireAccountWithAppsAccess(req);
+      uid = acct.uid;
+      email = acct.email;
+      accountId = acct.accountId;
+    }
 
     // Best-effort "last opened" stamp for the Super Admin Customers list's
     // Apps Used column — .update() (not .set(merge)) so this can never
     // create a stray customers/ doc for an account that doesn't have one
     // (e.g. a pure Super Admin with no customer record of their own).
     adminDb()
-      .doc("customers/" + acct.accountId)
+      .doc("customers/" + accountId)
       .update({ ["appUsage." + appKey]: FieldValue.serverTimestamp() })
       .catch(() => {});
 
     const secret = process.env.APP_SSO_SECRET;
     if (!secret) throw { status: 500, message: "SSO is not configured" };
 
-    const payload = { uid: acct.uid, email: acct.email, iat: Date.now() };
+    const payload = { uid, email, iat: Date.now() };
     const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
     const sig = createHmac("sha256", secret).update(payloadB64).digest("hex");
     const token = payloadB64 + "." + sig;

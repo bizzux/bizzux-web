@@ -4,6 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { canAccessApps } from "@/lib/trial";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
+import { logAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,6 +58,28 @@ export async function GET(req) {
     const c = await requireUser(req);
     const secret = process.env.SHOP_SSO_SECRET;
     if (!secret) throw { status: 500, message: "SHOP_SSO_SECRET is not configured" };
+
+    const asOrg = new URL(req.url).searchParams.get("asOrg");
+    if (asOrg) {
+      // Platform-Admin-only support tool — see app-sso's own asOrg comment
+      // for the full rationale. Shop already has a "super" role concept
+      // (see below) that isn't tied to a specific person's identity, so
+      // impersonation here is simpler: just point orgId at the chosen
+      // organization instead of resolving the caller's own.
+      const platformRole = await resolvePlatformRole(c.uid, c.email);
+      if (!c.isSuper && !platformRole) throw { status: 403, message: "Platform admin access required" };
+      const orgSnap = await adminDb().doc("customers/" + asOrg).get();
+      if (!orgSnap.exists) throw { status: 404, message: "Organization not found" };
+      await logAuditEvent({
+        action: "organization.impersonate_app_open", actor: c, targetType: "organization", targetId: asOrg,
+        details: { app: "juicechatjunction" },
+      });
+      const payload = { email: c.email, role: "super", orgId: asOrg, iat: Date.now() };
+      const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+      const sig = createHmac("sha256", secret).update(payloadB64).digest("hex");
+      const token = payloadB64 + "." + sig;
+      return NextResponse.json({ url: `${SHOP_URL}/sso?token=${token}` }, { headers: CORS_HEADERS });
+    }
 
     let role;
     // The tenant boundary Shop scopes ALL its data by — every sale, menu
