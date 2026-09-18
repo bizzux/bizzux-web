@@ -188,6 +188,24 @@ export async function POST(req) {
       const email = String(body.email || "").trim().toLowerCase().slice(0, 200);
       const role = String(body.role || "").trim().slice(0, 60);
       const profile = PROFILE_VALUES.includes(body.profile) ? body.profile : DEFAULT_PROFILE;
+      // Optional, purely descriptive — mirrors the M365 "Add a user" wizard's
+      // Profile info section. None of these fields gate access or feed any
+      // role/permission logic; they're just shown back on the teammate's
+      // detail panel.
+      const ci = body.contactInfo && typeof body.contactInfo === "object" ? body.contactInfo : {};
+      const contactInfo = {
+        jobTitle: String(ci.jobTitle || "").trim().slice(0, 100),
+        department: String(ci.department || "").trim().slice(0, 100),
+        office: String(ci.office || "").trim().slice(0, 100),
+        officePhone: String(ci.officePhone || "").trim().slice(0, 40),
+        faxNumber: String(ci.faxNumber || "").trim().slice(0, 40),
+        mobilePhone: String(ci.mobilePhone || "").trim().slice(0, 40),
+        streetAddress: String(ci.streetAddress || "").trim().slice(0, 200),
+        city: String(ci.city || "").trim().slice(0, 100),
+        state: String(ci.state || "").trim().slice(0, 100),
+        zip: String(ci.zip || "").trim().slice(0, 20),
+        country: String(ci.country || "").trim().slice(0, 100),
+      };
 
       if (!firstName) throw { status: 400, message: "First name is required" };
       if (!EMAIL_RE.test(email)) throw { status: 400, message: "Enter a valid email address" };
@@ -229,6 +247,7 @@ export async function POST(req) {
         email,
         role,
         profile,
+        contactInfo,
         status: loginMethod === "credentials" ? "active" : "invited",
         uid: authUser.uid,
         invitedBy: acct.email,

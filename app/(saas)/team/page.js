@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { PROFILES, ORGANIZATION_ROLES } from "@/lib/roles";
-import { APPS } from "@/lib/appCatalog";
+import { APPS, appName } from "@/lib/appCatalog";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
@@ -270,7 +270,6 @@ export default function TeamPage() {
         <AddUserModal
           onClose={() => setShowAdd(false)}
           onAdded={async (creds) => {
-            setShowAdd(false);
             if (creds) setCredentials(creds);
             await load();
           }}
@@ -583,7 +582,15 @@ const ADD_USER_STEPS = [
   { key: "access", label: "App access" },
   { key: "role", label: "Role" },
   { key: "review", label: "Review & finish" },
+  { key: "finish", label: "Finish" },
 ];
+const REVIEW_STEP = 3;
+const FINISH_STEP = 4;
+
+const EMPTY_CONTACT_INFO = {
+  jobTitle: "", department: "", office: "", officePhone: "", faxNumber: "",
+  mobilePhone: "", streetAddress: "", city: "", state: "", zip: "", country: "",
+};
 
 // Left-hand step list — a circle per step (filled + connecting line for
 // done/current, hollow for not-yet-reached), matching the M365 admin
@@ -630,8 +637,16 @@ function AddUserModal({ onClose, onAdded }) {
   const [appAccess, setAppAccess] = useState(() =>
     Object.fromEntries(APPS.map((a) => [a.id, { granted: false, admin: false }]))
   );
+  // Purely descriptive, optional fields (M365 "Add a user" wizard's Profile
+  // info section) — none of them gate access or feed role/permission logic.
+  const [contactInfo, setContactInfo] = useState(EMPTY_CONTACT_INFO);
+  function setContactField(field, value) {
+    setContactInfo((cur) => ({ ...cur, [field]: value }));
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [result, setResult] = useState(null); // set on success, drives the Finish step
+  const [showResultPassword, setShowResultPassword] = useState(false);
 
   function toggleApp(appId, field, value) {
     setAppAccess((cur) => ({ ...cur, [appId]: { ...cur[appId], [field]: value, ...(field === "admin" && value ? { granted: true } : {}) } }));
@@ -673,10 +688,14 @@ function AddUserModal({ onClose, onAdded }) {
         .filter(([, v]) => v.granted)
         .map(([appId, v]) => ({ appId, role: v.admin ? "ADMIN" : "MEMBER" }));
       const d = await api("/api/team", "POST", {
-        action: "invite", firstName, lastName, email, profile, apps,
+        action: "invite", firstName, lastName, email, profile, apps, contactInfo,
         loginMethod, ...(loginMethod === "credentials" ? { password } : {}),
       });
-      onAdded(loginMethod === "credentials" ? { email: d.email, password: d.password } : null);
+      const creds = loginMethod === "credentials" ? { email: d.email, password: d.password } : null;
+      await onAdded(creds);
+      setResult({ apps, creds });
+      setStep(FINISH_STEP);
+      setBusy(false);
     } catch (e2) {
       setError(e2.message);
       setBusy(false);
@@ -802,10 +821,67 @@ function AddUserModal({ onClose, onAdded }) {
                 <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
                   {PROFILES.find((p) => p.value === profile)?.desc}
                 </p>
+
+                <h3 style={{ marginTop: 24, marginBottom: 4 }}>Profile info</h3>
+                <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>
+                  Optional — shown on this person's detail panel, doesn't affect access.
+                </p>
+                <div className="row" style={{ gap: 12, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">Job title</label>
+                    <input className="input" value={contactInfo.jobTitle} onChange={(e) => setContactField("jobTitle", e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">Department</label>
+                    <input className="input" value={contactInfo.department} onChange={(e) => setContactField("department", e.target.value)} />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label className="label">Office</label>
+                  <input className="input" value={contactInfo.office} onChange={(e) => setContactField("office", e.target.value)} />
+                </div>
+                <div className="row" style={{ gap: 12, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">Office phone</label>
+                    <input className="input" value={contactInfo.officePhone} onChange={(e) => setContactField("officePhone", e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">Fax number</label>
+                    <input className="input" value={contactInfo.faxNumber} onChange={(e) => setContactField("faxNumber", e.target.value)} />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label className="label">Mobile phone</label>
+                  <input className="input" value={contactInfo.mobilePhone} onChange={(e) => setContactField("mobilePhone", e.target.value)} />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label className="label">Street address</label>
+                  <input className="input" value={contactInfo.streetAddress} onChange={(e) => setContactField("streetAddress", e.target.value)} />
+                </div>
+                <div className="row" style={{ gap: 12, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">City</label>
+                    <input className="input" value={contactInfo.city} onChange={(e) => setContactField("city", e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">State or province</label>
+                    <input className="input" value={contactInfo.state} onChange={(e) => setContactField("state", e.target.value)} />
+                  </div>
+                </div>
+                <div className="row" style={{ gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">Zip or postal code</label>
+                    <input className="input" value={contactInfo.zip} onChange={(e) => setContactField("zip", e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">Country or region</label>
+                    <input className="input" value={contactInfo.country} onChange={(e) => setContactField("country", e.target.value)} />
+                  </div>
+                </div>
               </div>
             )}
 
-            {step === 3 && (
+            {step === REVIEW_STEP && (
               <div>
                 <h3 style={{ marginTop: 0, marginBottom: 4 }}>Review and finish</h3>
                 <p className="muted" style={{ fontSize: 12.5, marginBottom: 16 }}>Review everything before adding this person.</p>
@@ -833,10 +909,70 @@ function AddUserModal({ onClose, onAdded }) {
                   <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={() => setStep(1)}>Edit</button>
                 </div>
 
-                <div style={{ marginBottom: 0 }}>
+                <div style={{ marginBottom: 14 }}>
                   <div className="label">Role</div>
                   <div style={{ fontSize: 13.5 }}>{PROFILES.find((p) => p.value === profile)?.label || "—"}</div>
                   <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={() => setStep(2)}>Edit</button>
+                </div>
+
+                <div style={{ marginBottom: 0 }}>
+                  <div className="label">Profile info</div>
+                  {Object.values(contactInfo).some(Boolean) ? (
+                    <div className="muted" style={{ fontSize: 12.5 }}>
+                      {[contactInfo.jobTitle, contactInfo.department, contactInfo.office].filter(Boolean).join(" · ") || "Set"}
+                    </div>
+                  ) : (
+                    <div className="muted" style={{ fontSize: 12.5 }}>Not set</div>
+                  )}
+                  <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={() => setStep(2)}>Edit</button>
+                </div>
+              </div>
+            )}
+
+            {step === FINISH_STEP && result && (
+              <div>
+                <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 4 }}>
+                  <span style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    width: 22, height: 22, borderRadius: "50%", background: "#16a34a", color: "#fff", fontSize: 13, flexShrink: 0,
+                  }}>✓</span>
+                  <h3 style={{ margin: 0 }}>
+                    {[firstName, lastName].filter(Boolean).join(" ") || "User"} added to your team
+                  </h3>
+                </div>
+                <p className="muted" style={{ fontSize: 12.5, marginBottom: 16 }}>
+                  {loginMethod === "credentials"
+                    ? "They can sign in right away with the credentials below."
+                    : "They'll appear as \"Invited\" until they accept the emailed invitation."}
+                </p>
+
+                <div style={{ marginBottom: 14 }}>
+                  <div className="label">User details</div>
+                  <div style={{ fontSize: 13.5 }}>Display name: {[firstName, lastName].filter(Boolean).join(" ") || "—"}</div>
+                  <div style={{ fontSize: 13.5 }}>Email: {email}</div>
+                  {result.creds && (
+                    <div className="row" style={{ gap: 6, fontSize: 13.5 }}>
+                      Password: {showResultPassword ? result.creds.password : "•".repeat(10)}
+                      <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={() => setShowResultPassword((v) => !v)}>
+                        {showResultPassword ? "Hide" : "Show"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginBottom: 0 }}>
+                  <div className="label">App access assigned</div>
+                  {result.apps.length === 0 ? (
+                    <div className="muted" style={{ fontSize: 12.5 }}>None</div>
+                  ) : (
+                    <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                      {result.apps.map((a) => (
+                        <span key={a.appId} className="status-pill active" style={{ fontSize: 11 }}>
+                          {appName(a.appId)}{a.role === "ADMIN" ? " (Admin)" : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -846,12 +982,18 @@ function AddUserModal({ onClose, onAdded }) {
         {error && <p className="error" style={{ marginTop: 16 }}>{error}</p>}
 
         <div className="row" style={{ justifyContent: "flex-end", marginTop: 20, gap: 8 }}>
-          <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
-          {step > 0 && <button type="button" className="btn-outline-dark" onClick={goBack}>Back</button>}
-          {step < ADD_USER_STEPS.length - 1 ? (
-            <button type="button" className="btn-primary" onClick={goNext}>Next</button>
+          {step === FINISH_STEP ? (
+            <button type="button" className="btn-primary" onClick={onClose}>Close</button>
           ) : (
-            <button type="button" className="btn-primary" disabled={busy} onClick={finish}>{busy ? "Adding…" : "Finish adding"}</button>
+            <>
+              <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+              {step > 0 && <button type="button" className="btn-outline-dark" onClick={goBack}>Back</button>}
+              {step < REVIEW_STEP ? (
+                <button type="button" className="btn-primary" onClick={goNext}>Next</button>
+              ) : (
+                <button type="button" className="btn-primary" disabled={busy} onClick={finish}>{busy ? "Adding…" : "Finish adding"}</button>
+              )}
+            </>
           )}
         </div>
       </div>
