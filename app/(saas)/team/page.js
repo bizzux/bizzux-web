@@ -578,7 +578,43 @@ function TeamRowMenu({ items }) {
   );
 }
 
+const ADD_USER_STEPS = [
+  { key: "basics", label: "Basics" },
+  { key: "access", label: "App access" },
+  { key: "role", label: "Role" },
+  { key: "review", label: "Review & finish" },
+];
+
+// Left-hand step list — a circle per step (filled + connecting line for
+// done/current, hollow for not-yet-reached), matching the M365 admin
+// center's "Add a user" wizard shape. Purely a layout/flow change from the
+// old single scrolling form; same fields, same submit call.
+function WizardSteps({ steps, currentIndex }) {
+  return (
+    <div style={{ minWidth: 160 }}>
+      {steps.map((s, i) => (
+        <div key={s.key} className="row" style={{ alignItems: "flex-start", gap: 10, minHeight: 44 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <span
+              style={{
+                width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
+                background: i <= currentIndex ? "var(--brand-gradient, #2563eb)" : "transparent",
+                border: i <= currentIndex ? "none" : "2px solid var(--line)",
+              }}
+            />
+            {i < steps.length - 1 && <span style={{ width: 2, flex: 1, minHeight: 20, background: "var(--line)" }} />}
+          </div>
+          <span style={{ fontSize: 13.5, fontWeight: i === currentIndex ? 700 : 500, color: i === currentIndex ? "inherit" : "var(--muted, #64748b)" }}>
+            {s.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AddUserModal({ onClose, onAdded }) {
+  const [step, setStep] = useState(0);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -601,26 +637,38 @@ function AddUserModal({ onClose, onAdded }) {
     setAppAccess((cur) => ({ ...cur, [appId]: { ...cur[appId], [field]: value, ...(field === "admin" && value ? { granted: true } : {}) } }));
   }
 
-  async function submit(e) {
-    e.preventDefault();
+  function validateStep(i) {
+    if (i === 0) {
+      if (!firstName.trim()) return "First name is required";
+      if (!EMAIL_RE.test(email.trim())) return loginMethod === "credentials" ? "Enter a login username in email format" : "Enter a valid email address";
+    }
+    if (i === 2 && !profile) return "Select a role";
+    return null;
+  }
+
+  function goNext() {
+    const err = validateStep(step);
+    if (err) {
+      setError(err);
+      return;
+    }
     setError("");
-    if (!firstName.trim()) {
-      setError("First name is required");
-      return;
-    }
-    if (!EMAIL_RE.test(email.trim())) {
-      setError(loginMethod === "credentials" ? "Enter a login username in email format" : "Enter a valid email address");
-      return;
-    }
-    if (!profile) {
-      setError("Select a role");
+    setStep((s) => Math.min(s + 1, ADD_USER_STEPS.length - 1));
+  }
+  function goBack() {
+    setError("");
+    setStep((s) => Math.max(s - 1, 0));
+  }
+
+  async function finish() {
+    const err = validateStep(0) || validateStep(2);
+    if (err) {
+      setError(err);
       return;
     }
     setBusy(true);
+    setError("");
     try {
-      // `role` (free-text job title) is no longer collected here — the API
-      // still accepts it and defaults it to "" server-side, so nothing else
-      // needs to change for this field to just go away.
       const apps = Object.entries(appAccess)
         .filter(([, v]) => v.granted)
         .map(([appId, v]) => ({ appId, role: v.admin ? "ADMIN" : "MEMBER" }));
@@ -635,114 +683,177 @@ function AddUserModal({ onClose, onAdded }) {
     }
   }
 
+  const grantedApps = APPS.filter((a) => appAccess[a.id].granted);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginBottom: 14 }}>Add New User</h2>
-        <form onSubmit={submit} noValidate>
-          <div style={{ marginBottom: 10 }}>
-            <label className="label">First name *</label>
-            <input className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoFocus required />
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            <label className="label">Last name</label>
-            <input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-          </div>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 700, width: "100%" }}>
+        <h2 style={{ marginBottom: 18 }}>Add New User</h2>
+        <div className="row" style={{ alignItems: "flex-start", gap: 28 }}>
+          <WizardSteps steps={ADD_USER_STEPS} currentIndex={step} />
 
-          <div className="mode-toggle" role="tablist" aria-label="How they'll sign in" style={{ marginBottom: 10 }}>
-            <button
-              type="button" role="tab" aria-selected={loginMethod === "email"}
-              className={"mode-toggle-btn" + (loginMethod === "email" ? " active" : "")}
-              onClick={() => setLoginMethod("email")}
-            >
-              Email invite
-            </button>
-            <button
-              type="button" role="tab" aria-selected={loginMethod === "credentials"}
-              className={"mode-toggle-btn" + (loginMethod === "credentials" ? " active" : "")}
-              onClick={() => setLoginMethod("credentials")}
-            >
-              Set username &amp; password
-            </button>
-          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {step === 0 && (
+              <div>
+                <h3 style={{ marginTop: 0, marginBottom: 4 }}>Set up the basics</h3>
+                <p className="muted" style={{ fontSize: 12.5, marginBottom: 16 }}>Who are you adding, and how will they sign in?</p>
 
-          <div style={{ marginBottom: 4 }}>
-            <label className="label">{loginMethod === "credentials" ? "Username (email format) *" : "Email *"}</label>
-            <input
-              className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder={loginMethod === "credentials" ? "name@bizzux.login" : ""} required
-            />
-          </div>
-          {loginMethod === "email" ? (
-            <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-              An invitation will be sent to this email address.
-            </p>
-          ) : (
-            <div style={{ marginBottom: 10 }}>
-              <label className="label">Password (leave blank to auto-generate)</label>
-              <div className="row" style={{ gap: 6 }}>
-                <input
-                  className="input" type={showPassword ? "text" : "password"} value={password}
-                  onChange={(e) => setPassword(e.target.value)} style={{ flex: 1 }}
-                />
-                <button type="button" className="link-btn" onClick={() => setPassword(genPassword())}>Generate</button>
-              </div>
-              {password && (
-                <label className="muted" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
-                  <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} style={{ marginRight: 6 }} />
-                  Show password
-                </label>
-              )}
-              <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
-                No email is sent — this account is active immediately. Give the credentials to them yourself.
-              </p>
-            </div>
-          )}
-
-          <div style={{ marginBottom: 16 }}>
-            <label className="label">Roles *</label>
-            <select className="input" value={profile} onChange={(e) => setProfile(e.target.value)} required>
-              <option value="" disabled>Select role</option>
-              {PROFILES.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
-            <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
-              {PROFILES.find((p) => p.value === profile)?.desc}
-            </p>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label className="label">App access</label>
-            <p className="muted" style={{ fontSize: 12, marginTop: 0, marginBottom: 8 }}>
-              Choose which Bizzux apps this person can open, and whether they administer each one.
-            </p>
-            {APPS.map((a) => {
-              const v = appAccess[a.id];
-              return (
-                <div key={a.id} className="row" style={{ justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-                  <label className="row" style={{ gap: 8, fontSize: 13.5 }}>
-                    <input type="checkbox" checked={v.granted} onChange={(e) => toggleApp(a.id, "granted", e.target.checked)} />
-                    {a.name}
-                  </label>
-                  <label className="muted row" style={{ gap: 6, fontSize: 12.5 }}>
-                    <input type="checkbox" checked={v.admin} onChange={(e) => toggleApp(a.id, "admin", e.target.checked)} />
-                    Admin
-                  </label>
+                <div className="row" style={{ gap: 12, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">First name *</label>
+                    <input className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoFocus />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label className="label">Last name</label>
+                    <input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                  </div>
                 </div>
-              );
-            })}
-            <p className="muted" style={{ fontSize: 11.5, marginTop: 6, marginBottom: 0 }}>
-              PaisaTrack has its own separate sign-in and isn't managed here.
-            </p>
-          </div>
 
-          <div className="row" style={{ justifyContent: "flex-end" }}>
-            <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
-            <button className="btn-primary" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+                <div className="mode-toggle" role="tablist" aria-label="How they'll sign in" style={{ marginBottom: 10 }}>
+                  <button
+                    type="button" role="tab" aria-selected={loginMethod === "email"}
+                    className={"mode-toggle-btn" + (loginMethod === "email" ? " active" : "")}
+                    onClick={() => setLoginMethod("email")}
+                  >
+                    Email invite
+                  </button>
+                  <button
+                    type="button" role="tab" aria-selected={loginMethod === "credentials"}
+                    className={"mode-toggle-btn" + (loginMethod === "credentials" ? " active" : "")}
+                    onClick={() => setLoginMethod("credentials")}
+                  >
+                    Set username &amp; password
+                  </button>
+                </div>
+
+                <div style={{ marginBottom: 4 }}>
+                  <label className="label">{loginMethod === "credentials" ? "Username (email format) *" : "Email *"}</label>
+                  <input
+                    className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder={loginMethod === "credentials" ? "name@bizzux.login" : ""}
+                  />
+                </div>
+                {loginMethod === "email" ? (
+                  <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+                    An invitation will be sent to this email address.
+                  </p>
+                ) : (
+                  <div style={{ marginTop: 10 }}>
+                    <label className="label">Password (leave blank to auto-generate)</label>
+                    <div className="row" style={{ gap: 6 }}>
+                      <input
+                        className="input" type={showPassword ? "text" : "password"} value={password}
+                        onChange={(e) => setPassword(e.target.value)} style={{ flex: 1 }}
+                      />
+                      <button type="button" className="link-btn" onClick={() => setPassword(genPassword())}>Generate</button>
+                    </div>
+                    {password && (
+                      <label className="muted" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
+                        <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} style={{ marginRight: 6 }} />
+                        Show password
+                      </label>
+                    )}
+                    <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
+                      No email is sent — this account is active immediately. Give the credentials to them yourself.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === 1 && (
+              <div>
+                <h3 style={{ marginTop: 0, marginBottom: 4 }}>Assign app access</h3>
+                <p className="muted" style={{ fontSize: 12.5, marginBottom: 16 }}>
+                  Choose which Bizzux apps this person can open, and whether they administer each one.
+                </p>
+                {APPS.map((a) => {
+                  const v = appAccess[a.id];
+                  return (
+                    <div key={a.id} className="row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                      <label className="row" style={{ gap: 8, fontSize: 13.5 }}>
+                        <input type="checkbox" checked={v.granted} onChange={(e) => toggleApp(a.id, "granted", e.target.checked)} />
+                        {a.name}
+                      </label>
+                      <label className="muted row" style={{ gap: 6, fontSize: 12.5 }}>
+                        <input type="checkbox" checked={v.admin} onChange={(e) => toggleApp(a.id, "admin", e.target.checked)} />
+                        Admin
+                      </label>
+                    </div>
+                  );
+                })}
+                <p className="muted" style={{ fontSize: 11.5, marginTop: 8, marginBottom: 0 }}>
+                  PaisaTrack has its own separate sign-in and isn't managed here.
+                </p>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div>
+                <h3 style={{ marginTop: 0, marginBottom: 4 }}>Choose a role</h3>
+                <p className="muted" style={{ fontSize: 12.5, marginBottom: 16 }}>What can this person do at the organization level?</p>
+                <label className="label">Roles *</label>
+                <select className="input" value={profile} onChange={(e) => setProfile(e.target.value)}>
+                  <option value="" disabled>Select role</option>
+                  {PROFILES.map((p) => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
+                </select>
+                <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
+                  {PROFILES.find((p) => p.value === profile)?.desc}
+                </p>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div>
+                <h3 style={{ marginTop: 0, marginBottom: 4 }}>Review and finish</h3>
+                <p className="muted" style={{ fontSize: 12.5, marginBottom: 16 }}>Review everything before adding this person.</p>
+
+                <div style={{ marginBottom: 14 }}>
+                  <div className="label">Name and sign-in</div>
+                  <div style={{ fontSize: 13.5 }}>{[firstName, lastName].filter(Boolean).join(" ") || "—"}</div>
+                  <div className="muted" style={{ fontSize: 12.5 }}>{email || "—"} · {loginMethod === "credentials" ? "Username & password" : "Email invite"}</div>
+                  <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={() => setStep(0)}>Edit</button>
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <div className="label">App access</div>
+                  {grantedApps.length === 0 ? (
+                    <div className="muted" style={{ fontSize: 12.5 }}>No apps granted</div>
+                  ) : (
+                    <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                      {grantedApps.map((a) => (
+                        <span key={a.id} className="status-pill active" style={{ fontSize: 11 }}>
+                          {a.name}{appAccess[a.id].admin ? " (Admin)" : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={() => setStep(1)}>Edit</button>
+                </div>
+
+                <div style={{ marginBottom: 0 }}>
+                  <div className="label">Role</div>
+                  <div style={{ fontSize: 13.5 }}>{PROFILES.find((p) => p.value === profile)?.label || "—"}</div>
+                  <button type="button" className="link-btn" style={{ fontSize: 12 }} onClick={() => setStep(2)}>Edit</button>
+                </div>
+              </div>
+            )}
           </div>
-          {error && <p className="error">{error}</p>}
-        </form>
+        </div>
+
+        {error && <p className="error" style={{ marginTop: 16 }}>{error}</p>}
+
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 20, gap: 8 }}>
+          <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+          {step > 0 && <button type="button" className="btn-outline-dark" onClick={goBack}>Back</button>}
+          {step < ADD_USER_STEPS.length - 1 ? (
+            <button type="button" className="btn-primary" onClick={goNext}>Next</button>
+          ) : (
+            <button type="button" className="btn-primary" disabled={busy} onClick={finish}>{busy ? "Adding…" : "Finish adding"}</button>
+          )}
+        </div>
       </div>
     </div>
   );
