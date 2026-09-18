@@ -14,7 +14,10 @@
     ] }
   ],
   "fieldOverrides": [
-    { "collectionGroup": "pmTasks", "fieldPath": "assigneeEmail", "indexes": [
+    { "collectionGroup": "collaborators", "fieldPath": "email", "indexes": [
+      { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+    ] },
+    { "collectionGroup": "collaborators", "fieldPath": "accountId", "indexes": [
       { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
     ] }
   ]

@@ -1558,6 +1558,8 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
   const [showExtend, setShowExtend] = useState(false);
   const [showMarkPaid, setShowMarkPaid] = useState(false);
   const [showSetPassword, setShowSetPassword] = useState(false);
+  const [guestSeatsInput, setGuestSeatsInput] = useState(customer.guestSeats || 0);
+  const [savingGuestSeats, setSavingGuestSeats] = useState(false);
 
   async function loadAdmins() {
     try {
@@ -1622,6 +1624,18 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
     }
   }
 
+  async function saveGuestSeats() {
+    setSavingGuestSeats(true);
+    try {
+      await api("/api/admin/customers", "POST", { action: "setGuestSeats", id: customer.id, guestSeats: Number(guestSeatsInput) });
+      onChanged && onChanged();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSavingGuestSeats(false);
+    }
+  }
+
   return (
     <>
       <div className="modal-overlay" onClick={onClose}>
@@ -1665,6 +1679,23 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
                 <button className="btn-small" onClick={() => setShowSetPassword(true)}>Set new password directly</button>
                 <button className="btn-small" disabled={busyUid === customer.id} onClick={() => revokeSessions(customer.id)}>Sign out of all devices</button>
                 <button className="btn-ghost" onClick={toggleSuspend}>{customer.status === "suspended" ? "Reactivate" : "Suspend"}</button>
+              </div>
+
+              <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                <div className="label" style={{ marginBottom: 6 }}>Bizzux Projects guest seats</div>
+                <p className="muted" style={{ fontSize: 12, marginBottom: 8, maxWidth: 420 }}>
+                  How many outside collaborators this org can have accepted across all its projects — 0 by default. Someone they invite can't accept until a seat is available here.
+                </p>
+                <div className="row" style={{ gap: 8 }}>
+                  <input
+                    type="number" min="0" step="1" className="input" style={{ width: 90 }}
+                    value={guestSeatsInput}
+                    onChange={(e) => setGuestSeatsInput(e.target.value)}
+                  />
+                  <button className="btn-small" disabled={savingGuestSeats} onClick={saveGuestSeats}>
+                    {savingGuestSeats ? "Saving…" : "Save"}
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -138,6 +138,10 @@ export async function GET(req) {
         // appUsage.<key> stamps in app-sso/route.js and shop-sso/route.js).
         // Empty object means this account has never opened any app yet.
         appUsage: Object.fromEntries(Object.entries(appUsage).map(([k, v]) => [k, toIso(v)])),
+        // Paid Bizzux Projects guest/collaborator seats this org has bought
+        // — see the "setGuestSeats" action below and bizzux-projects'
+        // lib/seats.js. Defaults to 0: no free guest seats.
+        guestSeats: Number(data.guestSeats) || 0,
       };
     });
     customers.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -292,6 +296,28 @@ export async function POST(req) {
         details: { planId, planName: plan.name || "", notes },
       });
 
+      return NextResponse.json({ ok: true });
+    }
+
+    // Manual stopgap ahead of a real per-app-per-seat checkout flow (see
+    // bizzux-projects' lib/seats.js) — a Platform Admin sets how many paid
+    // guest/collaborator seats an organization has bought, and Bizzux
+    // Projects blocks accepting an invite past that count. Defaults to 0:
+    // no free guest seats for anyone until a Platform Admin explicitly
+    // grants some.
+    if (body.action === "setGuestSeats") {
+      const id = String(body.id || "");
+      const guestSeats = Number(body.guestSeats);
+      if (!id) throw { status: 400, message: "Customer id required" };
+      if (!Number.isInteger(guestSeats) || guestSeats < 0) throw { status: 400, message: "guestSeats must be a whole number, 0 or more" };
+      const ref = adminDb().doc("customers/" + id);
+      const snap = await ref.get();
+      if (!snap.exists) throw { status: 404, message: "Customer not found" };
+      await ref.set({ guestSeats }, { merge: true });
+      await logAuditEvent({
+        action: "customer.set_guest_seats", actor: c, targetType: "organization", targetId: id,
+        details: { guestSeats },
+      });
       return NextResponse.json({ ok: true });
     }
 
