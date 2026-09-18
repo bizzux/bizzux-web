@@ -225,9 +225,11 @@ export async function POST(req) {
       // role/permission logic; they're just shown back on the teammate's
       // detail panel.
       const ci = body.contactInfo && typeof body.contactInfo === "object" ? body.contactInfo : {};
+      const EMPLOYMENT_TYPES = ["Full-time", "Part-time", "Contractor", "Intern"];
       const contactInfo = {
         jobTitle: String(ci.jobTitle || "").trim().slice(0, 100),
         department: String(ci.department || "").trim().slice(0, 100),
+        employmentType: EMPLOYMENT_TYPES.includes(ci.employmentType) ? ci.employmentType : "",
         office: String(ci.office || "").trim().slice(0, 100),
         officePhone: String(ci.officePhone || "").trim().slice(0, 40),
         faxNumber: String(ci.faxNumber || "").trim().slice(0, 40),

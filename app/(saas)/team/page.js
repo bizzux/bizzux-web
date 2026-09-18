@@ -596,9 +596,11 @@ const REVIEW_STEP = 3;
 const FINISH_STEP = 4;
 
 const EMPTY_CONTACT_INFO = {
-  jobTitle: "", department: "", office: "", officePhone: "", faxNumber: "",
+  jobTitle: "", department: "", employmentType: "", office: "", officePhone: "", faxNumber: "",
   mobilePhone: "", streetAddress: "", city: "", state: "", zip: "", country: "",
 };
+
+const EMPLOYMENT_TYPES = ["Full-time", "Part-time", "Contractor", "Intern"];
 
 // Left-hand step list — a circle per step (filled + connecting line for
 // done/current, hollow for not-yet-reached), matching the M365 admin
@@ -887,6 +889,15 @@ function AddUserModal({ onClose, onAdded }) {
                     <input className="input" value={contactInfo.department} onChange={(e) => setContactField("department", e.target.value)} />
                   </div>
                 </div>
+                <div style={{ marginBottom: 10, maxWidth: "50%", paddingRight: 6 }}>
+                  <label className="label">Employment type</label>
+                  <select className="input" value={contactInfo.employmentType} onChange={(e) => setContactField("employmentType", e.target.value)}>
+                    <option value="">Not specified</option>
+                    {EMPLOYMENT_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
                 <div style={{ marginBottom: 10 }}>
                   <label className="label">Office</label>
                   <input className="input" value={contactInfo.office} onChange={(e) => setContactField("office", e.target.value)} />
@@ -989,7 +1000,7 @@ function AddUserModal({ onClose, onAdded }) {
                   <div className="label">Profile info</div>
                   {Object.values(contactInfo).some(Boolean) ? (
                     <div className="muted" style={{ fontSize: 12.5 }}>
-                      {[contactInfo.jobTitle, contactInfo.department, contactInfo.office].filter(Boolean).join(" · ") || "Set"}
+                      {[contactInfo.jobTitle, contactInfo.department, contactInfo.employmentType, contactInfo.office].filter(Boolean).join(" · ") || "Set"}
                     </div>
                   ) : (
                     <div className="muted" style={{ fontSize: 12.5 }}>Not set</div>
