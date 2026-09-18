@@ -210,7 +210,7 @@ export default function TeamPage() {
                     <td>{[m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A"}</td>
                     <td>{m.email}</td>
                     <td>{m.role || "N/A"}</td>
-                    <td>{m.profile}</td>
+                    <td>{PROFILES.find((p) => p.value === m.profile)?.label || m.profile}</td>
                     <td>
                       {m.isOwner ? (
                         "OWNER"
