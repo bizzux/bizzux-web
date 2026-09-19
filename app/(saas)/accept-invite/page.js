@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { verifyPasswordResetCode, confirmPasswordReset, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { verifyPasswordResetCode, confirmPasswordReset, signInWithEmailAndPassword, signInWithRedirect, getRedirectResult, GoogleAuthProvider } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 
@@ -68,6 +68,41 @@ function AcceptInviteInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invite, mode, oobCode]);
 
+  // signInWithPopup gets blocked by Chrome's popup blocker for real users —
+  // signInWithRedirect avoids that by navigating to Google and back instead
+  // of opening a popup. getRedirectResult only ever resolves non-null ONCE
+  // (right after the redirect completes), so it's read exactly once here,
+  // on mount, into state — not re-invoked as a dependency of anything else,
+  // since a second call would just see it as already consumed and return
+  // null. The actual email-match check waits for BOTH this and the
+  // invite-lookup effect above (which re-derives `email` from the URL on
+  // this same post-redirect page load) in the effect below.
+  const [redirectCred, setRedirectCred] = useState(undefined); // undefined = not checked yet
+
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then((cred) => setRedirectCred(cred || null))
+      .catch((err) => {
+        setError(err.message || "That didn't go through. Mind giving it another try?");
+        setRedirectCred(null);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!redirectCred || !email) return;
+    setGoogleBusy(true);
+    if ((redirectCred.user.email || "").toLowerCase() !== email.toLowerCase()) {
+      setError(`Signed in as ${redirectCred.user.email}, but this invite is for ${email}. Sign in with that account instead.`);
+      setGoogleBusy(false);
+      return;
+    }
+    finishAccept().catch((err) => {
+      setError(err.message || "Couldn't finish setting up your account");
+      setGoogleBusy(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [redirectCred, email]);
+
   async function finishAccept() {
     const token = await auth.currentUser.getIdToken();
     const r = await fetch("/api/team/accept", {
@@ -130,14 +165,11 @@ function AcceptInviteInner() {
   async function handleInviteGoogle() {
     setError("");
     setGoogleBusy(true);
+    // Navigates away to Google and back — the redirect-result effect above
+    // picks up the outcome (including the email-match check) once the page
+    // reloads on return.
     try {
-      const cred = await signInWithPopup(auth, new GoogleAuthProvider());
-      if ((cred.user.email || "").toLowerCase() !== email.toLowerCase()) {
-        setError(`Signed in as ${cred.user.email}, but this invite is for ${email}. Sign in with that account instead.`);
-        setGoogleBusy(false);
-        return;
-      }
-      await finishAccept();
+      await signInWithRedirect(auth, new GoogleAuthProvider());
     } catch (err) {
       setError(err.message || "That didn't go through. Mind giving it another try?");
       setGoogleBusy(false);

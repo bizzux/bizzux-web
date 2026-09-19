@@ -1708,6 +1708,7 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
                     { label: "Notes", endpoint: "/api/app-sso?app=notes" },
                     { label: "Files", endpoint: "/api/app-sso?app=files" },
                     { label: "Projects", endpoint: "/api/app-sso?app=projects" },
+                    { label: "Chat", endpoint: "/api/app-sso?app=chat" },
                   ].map((a) => (
                     <button
                       key={a.label} className="btn-small" disabled={openingApp === a.label}

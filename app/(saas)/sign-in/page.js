@@ -6,7 +6,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
@@ -33,6 +34,30 @@ export default function LoginPage() {
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("mode");
     if (p === "signup" || p === "signin") setMode(p);
+  }, []);
+
+  // signInWithPopup used to be blocked by Chrome's popup blocker for real
+  // users (works fine when automated/synthetic-clicked, which is why this
+  // slipped through testing) — signInWithRedirect avoids popups entirely by
+  // navigating to Google and back instead. On the way back, Firebase
+  // resolves the pending sign-in here rather than at the click site.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result && !cancelled) {
+          setGoogleBusy(true);
+          await afterAuth();
+        }
+      } catch (err) {
+        if (!cancelled) setError("That didn't go through. Mind giving it another try?");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Ensures a customers/{uid} record exists (creating it with the current
@@ -69,9 +94,12 @@ export default function LoginPage() {
   async function handleGoogleSignIn() {
     setError("");
     setGoogleBusy(true);
+    // Navigates away to Google and back — no popup involved, so nothing
+    // here runs until the redirect-result effect above picks it up on
+    // return. Only the (rare) synchronous failure to even start the
+    // redirect lands in this catch.
     try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
-      await afterAuth();
+      await signInWithRedirect(auth, new GoogleAuthProvider());
     } catch (err) {
       setError("That didn't go through. Mind giving it another try?");
       setGoogleBusy(false);
