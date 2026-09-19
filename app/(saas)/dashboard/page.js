@@ -24,10 +24,10 @@ const APPS = [
   // they get the same treatment.
   { key: "juicechatjunction", name: "Bizzux Business", icon: "🏪", desc: "Run your sales, inventory, purchases, expenses and daily operations in one place.", live: true, url: "https://business.bizzux.com", sso: true },
   { key: "pos", name: "Bizzux POS", icon: "🧾", desc: "Dedicated billing counter — new sale, history & menu", live: true, url: "https://pos.bizzux.com", sso: true, ssoEndpoint: "/api/pos-sso" },
-  { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription & AI summaries", live: true, url: "https://bizzux-notes.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
-  { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste text files, then search across all of them", live: true, url: "https://bizzux-files.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
-  { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Projects and tasks on a Kanban board", live: true, url: "https://bizzux-projects.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
-  { key: "chat", name: "Bizzux Chat", icon: "💬", desc: "Team channels and direct messages", live: true, url: "https://bizzux-chat.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=chat" },
+  { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription & AI summaries", live: true, url: "https://notes.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
+  { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste text files, then search across all of them", live: true, url: "https://files.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
+  { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Projects and tasks on a Kanban board", live: true, url: "https://projects.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
+  { key: "chat", name: "Bizzux Chat", icon: "💬", desc: "Team channels and direct messages", live: true, url: "https://chat.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=chat" },
   // Personal finance tracker — its own separate Firebase project/auth (not
   // part of the shared Bizzux customer data), so it's a plain link rather
   // than an SSO hand-off like the apps above.

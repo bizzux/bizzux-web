@@ -33,10 +33,10 @@ const CATEGORIES = [
     title: "Productivity",
     sub: "Tools that save your team time on the busywork.",
     apps: [
-      { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription and AI summaries with action items.", live: true, featured: true, url: "https://bizzux-notes.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
-      { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste transcripts and notes, name them, and search across all of them.", live: true, featured: true, url: "https://bizzux-files.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
-      { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Organize work into projects and track tasks on a Kanban board.", live: true, featured: true, url: "https://bizzux-projects.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
-      { key: "chat", name: "Bizzux Chat", icon: "💬", desc: "Team channels and direct messages, built right into Bizzux.", live: true, featured: true, url: "https://bizzux-chat.vercel.app", sso: true, ssoEndpoint: "/api/app-sso?app=chat" },
+      { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription and AI summaries with action items.", live: true, featured: true, url: "https://notes.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
+      { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste transcripts and notes, name them, and search across all of them.", live: true, featured: true, url: "https://files.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
+      { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Organize work into projects and track tasks on a Kanban board.", live: true, featured: true, url: "https://projects.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
+      { key: "chat", name: "Bizzux Chat", icon: "💬", desc: "Team channels and direct messages, built right into Bizzux.", live: true, featured: true, url: "https://chat.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=chat" },
       // A one-time-purchase Windows download, not a trial SaaS app like the
       // others here — `direct` skips the sign-in/SSO/"Try now" flow above
       // and just links straight to its own marketing + checkout page for

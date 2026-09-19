@@ -22,10 +22,10 @@ export async function OPTIONS() {
 // app already has the same uid, so the payload just carries it directly and
 // the target's own /api/sso can mint a custom token for it immediately.
 const TARGET_APPS = {
-  notes: process.env.NOTES_APP_URL || "https://bizzux-notes.vercel.app",
-  files: process.env.FILES_APP_URL || "https://bizzux-files.vercel.app",
-  projects: process.env.PROJECTS_APP_URL || "https://bizzux-projects.vercel.app",
-  chat: process.env.CHAT_APP_URL || "https://bizzux-chat.vercel.app",
+  notes: process.env.NOTES_APP_URL || "https://notes.bizzux.com",
+  files: process.env.FILES_APP_URL || "https://files.bizzux.com",
+  projects: process.env.PROJECTS_APP_URL || "https://projects.bizzux.com",
+  chat: process.env.CHAT_APP_URL || "https://chat.bizzux.com",
 };
 
 export async function GET(req) {
