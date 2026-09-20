@@ -26,6 +26,7 @@ const TARGET_APPS = {
   files: process.env.FILES_APP_URL || "https://files.bizzux.com",
   projects: process.env.PROJECTS_APP_URL || "https://projects.bizzux.com",
   chat: process.env.CHAT_APP_URL || "https://chat.bizzux.com",
+  mail: process.env.MAIL_APP_URL || "https://mail.bizzux.com",
 };
 
 export async function GET(req) {

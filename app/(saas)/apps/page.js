@@ -37,6 +37,7 @@ const CATEGORIES = [
       { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste transcripts and notes, name them, and search across all of them.", live: true, featured: true, url: "https://files.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
       { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Organize work into projects and track tasks on a Kanban board.", live: true, featured: true, url: "https://projects.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
       { key: "chat", name: "Bizzux Chat", icon: "💬", desc: "Team channels and direct messages, built right into Bizzux.", live: true, featured: true, url: "https://chat.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=chat" },
+      { key: "mail", name: "Bizzux Mail", icon: "📧", desc: "Your own @mail.bizzux.com inbox — send and receive mail without leaving Bizzux.", live: true, featured: true, url: "https://mail.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=mail" },
       // A one-time-purchase Windows download, not a trial SaaS app like the
       // others here — `direct` skips the sign-in/SSO/"Try now" flow above
       // and just links straight to its own marketing + checkout page for
