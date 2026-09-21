@@ -25,6 +25,7 @@ const TARGET_APPS = {
   notes: process.env.NOTES_APP_URL || "https://notes.bizzux.com",
   files: process.env.FILES_APP_URL || "https://files.bizzux.com",
   projects: process.env.PROJECTS_APP_URL || "https://projects.bizzux.com",
+  crm: process.env.CRM_APP_URL || "https://crm.bizzux.com",
   chat: process.env.CHAT_APP_URL || "https://chat.bizzux.com",
   mail: process.env.MAIL_APP_URL || "https://mail.bizzux.com",
 };

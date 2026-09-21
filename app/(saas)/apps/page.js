@@ -29,6 +29,14 @@ const CATEGORIES = [
     ],
   },
   {
+    id: "sales",
+    title: "Sales",
+    sub: "Track leads, contacts, and deals through your pipeline.",
+    apps: [
+      { key: "crm", name: "Bizzux CRM", icon: "📇", desc: "Track leads, contacts, and deals through your sales pipeline.", live: true, featured: true, url: "https://crm.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=crm" },
+    ],
+  },
+  {
     id: "productivity",
     title: "Productivity",
     sub: "Tools that save your team time on the busywork.",
@@ -146,6 +154,14 @@ export default function AllAppsPage() {
     // trial/plan status.
     if (a.internal) {
       router.push(a.url);
+      return;
+    }
+    // Rule 1/8: a login can exist with no organization at all — SSO would
+    // otherwise 404 with a raw "No Bizzux account found" error. Send them
+    // to the dashboard's NoOrganizationDashboard (create-org / await-invite)
+    // instead of firing the SSO request.
+    if (me && me.hasAccount === false) {
+      router.push("/dashboard");
       return;
     }
     if (customer === null || appsLocked) {

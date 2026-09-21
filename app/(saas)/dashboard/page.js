@@ -27,6 +27,7 @@ const APPS = [
   { key: "notes", name: "Bizzux Notes", icon: "📝", desc: "Live meeting transcription & AI summaries", live: true, url: "https://notes.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=notes" },
   { key: "files", name: "Bizzux Files", icon: "🗂️", desc: "Upload or paste text files, then search across all of them", live: true, url: "https://files.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=files" },
   { key: "projects", name: "Bizzux Projects", icon: "🗒️", desc: "Projects and tasks on a Kanban board", live: true, url: "https://projects.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=projects" },
+  { key: "crm", name: "Bizzux CRM", icon: "📇", desc: "Track leads, contacts, and deals through your sales pipeline", live: true, url: "https://crm.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=crm" },
   { key: "chat", name: "Bizzux Chat", icon: "💬", desc: "Team channels and direct messages", live: true, url: "https://chat.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=chat" },
   { key: "mail", name: "Bizzux Mail", icon: "📧", desc: "Your own @mail.bizzux.com inbox", live: true, url: "https://mail.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=mail" },
   // Personal finance tracker — its own separate Firebase project/auth (not
@@ -648,7 +649,7 @@ function DashboardInner() {
       </div>
 
       {isOwner && customer.onboarded !== true && (
-        <OnboardingModal user={user} onDone={() => reloadCustomer(accountId)} />
+        <OnboardingModal user={user} organizationName={customer.organizationName} onDone={() => reloadCustomer(accountId)} />
       )}
 
       {showCheckoutSuccess && (
