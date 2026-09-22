@@ -5,8 +5,10 @@ import { put } from "@vercel/blob";
 export const runtime = "nodejs";
 
 // Team photos need to be publicly fetchable (they render on the public
-// About page), unlike the private resume store /api/careers uses — same
-// Vercel Blob store, just access: "public" instead.
+// About page), but the project's Blob store is provisioned private — see
+// app/api/media/[...path]/route.js's comment. Uploaded privately here;
+// served back out through that public proxy route instead of a direct
+// Blob URL.
 export async function POST(req: NextRequest) {
   try {
     await requireSuperAdmin(req);
@@ -23,8 +25,8 @@ export async function POST(req: NextRequest) {
     }
 
     const path = `team/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    const blob = await put(path, file, { access: "public", contentType: file.type });
-    return NextResponse.json({ url: blob.url });
+    await put(path, file, { access: "private", contentType: file.type });
+    return NextResponse.json({ url: `/api/media/${path}` });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Upload failed" }, { status: e.status || 500 });
   }

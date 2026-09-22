@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
 import OrganizationsManager from "@/components/OrganizationsManager";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
@@ -22,6 +22,10 @@ export default function ProfilePage() {
   // last known answer instead of a blank "checking…" state.
   const { user, me } = useMe();
   const [customer, setCustomer] = useState(null);
+  const [editingOrgName, setEditingOrgName] = useState(false);
+  const [orgNameDraft, setOrgNameDraft] = useState("");
+  const [savingOrgName, setSavingOrgName] = useState(false);
+  const [orgNameError, setOrgNameError] = useState("");
 
   useEffect(() => {
     if (user === null) { router.push("/sign-in"); return; }
@@ -43,6 +47,38 @@ export default function ProfilePage() {
       cancelled = true;
     };
   }, [user, me]);
+
+  function startEditOrgName() {
+    setOrgNameDraft(customer?.companyName || "");
+    setOrgNameError("");
+    setEditingOrgName(true);
+  }
+
+  async function saveOrgName() {
+    const name = orgNameDraft.trim();
+    if (!name) {
+      setOrgNameError("Company name can't be empty");
+      return;
+    }
+    setSavingOrgName(true);
+    setOrgNameError("");
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch("/api/organization-name", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ companyName: name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't save");
+      setCustomer((c) => ({ ...c, companyName: name, organizationName: name }));
+      setEditingOrgName(false);
+    } catch (e) {
+      setOrgNameError(e.message);
+    } finally {
+      setSavingOrgName(false);
+    }
+  }
 
   if (!user || me === null) {
     // Same fix as dashboard/page.js: keep Nav visible on a light background
@@ -99,7 +135,45 @@ export default function ProfilePage() {
                 <div className="row" style={{ gap: 22, flexWrap: "wrap" }}>
                   <div>
                     <div className="label">Name</div>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.companyName || "N/A"}</div>
+                    {editingOrgName ? (
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input
+                          className="input"
+                          style={{ height: 30, fontSize: 13, padding: "4px 8px", width: 180 }}
+                          value={orgNameDraft}
+                          onChange={(e) => setOrgNameDraft(e.target.value)}
+                          autoFocus
+                          disabled={savingOrgName}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveOrgName();
+                            if (e.key === "Escape") setEditingOrgName(false);
+                          }}
+                        />
+                        <button className="btn-primary-sm" disabled={savingOrgName} onClick={saveOrgName}>
+                          {savingOrgName ? "Saving…" : "Save"}
+                        </button>
+                        <button className="btn-outline-dark" disabled={savingOrgName} onClick={() => setEditingOrgName(false)} style={{ padding: "4px 10px", fontSize: 13 }}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.companyName || "Not set"}</span>
+                        {/* Only whoever can already manage team/account settings can
+                            rename the org — same gate as Admin Center in Nav, not
+                            every signed-in member. */}
+                        {me.isAccountAdmin && (
+                          <button
+                            className="link-btn"
+                            style={{ fontSize: 12, padding: 0 }}
+                            onClick={startEditOrgName}
+                          >
+                            {customer.companyName ? "Edit" : "Set name"}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {orgNameError && <p className="error" style={{ fontSize: 12, marginTop: 4 }}>{orgNameError}</p>}
                   </div>
                   {customer.status && (
                     <div>

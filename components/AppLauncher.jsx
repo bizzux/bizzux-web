@@ -10,7 +10,7 @@ import { LAUNCHER_APPS } from "@/lib/launcherApps";
 // Projects without going back through /apps first. Same SSO hand-off
 // app/(saas)/apps/page.js's "Try now" uses; kept as its own copy here since
 // this renders inside Nav (no page-level auth/trial state to reuse).
-export default function AppLauncher({ user, isAccountAdmin }) {
+export default function AppLauncher({ user, isAccountAdmin, hasAccount }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [openingKey, setOpeningKey] = useState(null);
@@ -45,6 +45,13 @@ export default function AppLauncher({ user, isAccountAdmin }) {
       return;
     }
     if (!user) return;
+    // Rule 1/8: a login can exist with no organization at all — SSO would
+    // otherwise 404 with a raw "No Bizzux account found" error. Send them
+    // to the dashboard's create-org / await-invite screen instead.
+    if (hasAccount === false) {
+      router.push("/dashboard");
+      return;
+    }
     setOpeningKey(a.key);
     try {
       const token = await user.getIdToken();

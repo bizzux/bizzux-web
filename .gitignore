@@ -13,3 +13,4 @@ _to_delete
 
 .vercel
 .env*
+*.tsbuildinfo

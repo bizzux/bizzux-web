@@ -4,6 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 import { logAuditEvent } from "@/lib/audit";
+import { canAccessApp } from "@/lib/appAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export async function GET(req) {
     if (!targetUrl) throw { status: 400, message: "Unknown app" };
 
     const asOrg = url.searchParams.get("asOrg");
-    let uid, email, accountId;
+    let uid, email, accountId, isOwner;
 
     if (asOrg) {
       // Platform-Admin-only support tool: open a specific CUSTOMER's app
@@ -55,6 +56,7 @@ export async function GET(req) {
       uid = asOrg;
       email = orgSnap.data().email || "";
       accountId = asOrg;
+      isOwner = true; // impersonation always opens the app AS the org's own owner
       await logAuditEvent({
         action: "organization.impersonate_app_open", actor: c, targetType: "organization", targetId: asOrg,
         details: { app: appKey },
@@ -66,6 +68,20 @@ export async function GET(req) {
       uid = acct.uid;
       email = acct.email;
       accountId = acct.accountId;
+      isOwner = !!acct.isOwner;
+    }
+
+    // Phase 3 of the Organization model (lib/appAccess.js): a non-owner
+    // team member needs an ACTIVE appAssignment for this specific app, not
+    // just general account access — owners always have every app their
+    // account has a subscription for, so they skip this check entirely.
+    // Catalog ids (lib/appCatalog.js) are "bizzux-<key>", one level more
+    // specific than this route's own short appKey ("crm", "projects", ...).
+    if (!isOwner) {
+      const allowed = await canAccessApp({ organizationId: accountId, userId: uid, appId: "bizzux-" + appKey });
+      if (!allowed) {
+        throw { status: 403, message: "You don't have access to this app yet — ask your admin to grant it under Team > Apps." };
+      }
     }
 
     // Best-effort "last opened" stamp for the Super Admin Customers list's

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, resolveAccount, resolvePlatformRole } from "@/lib/firebaseAdmin";
+import { requireUser, resolveAccount, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { ACCOUNT_ADMIN_PROFILES } from "@/lib/roles";
 import { getTwoFactorSettings } from "@/lib/twoFactor";
 
@@ -18,6 +18,21 @@ export async function GET(req) {
     let organizationRole = null;
     let mustChangePassword = false;
     let fullName = null;
+    // A login can both own its own Bizzux account AND be staff on someone
+    // else's team (resolveAccount() picks one, defaulting to their own
+    // account) — these three fields describe that duality so Nav's account
+    // switcher can offer to flip between the two. dualContext is false for
+    // the overwhelmingly common single-context case.
+    let dualContext = false;
+    let useMembershipContext = false;
+    let ownAccountEmail = null;
+    let membershipOrgEmail = null;
+    // The org/company name typed into the "Getting Started" wizard
+    // (OnboardingModal -> api/onboarding) — shown in Nav and in every
+    // satellite app's sidebar (Projects, Chat, Notes, Files) so a member
+    // always knows which company's workspace they're in, not just "Bizzux"
+    // (the platform brand). null until the owner has completed onboarding.
+    let organizationName = null;
     try {
       const acct = await resolveAccount(c.uid);
       accountId = acct.accountId;
@@ -26,6 +41,10 @@ export async function GET(req) {
       isOwner = acct.isOwner;
       organizationId = acct.organizationId;
       organizationRole = acct.organizationRole;
+      // Owner's own doc is already in hand; a team member's isn't (acct only
+      // carries their membership doc), so fetch the org's customers/ doc.
+      const orgCustomer = acct.isOwner ? acct.customer : (await adminDb().doc("customers/" + acct.accountId).get()).data();
+      organizationName = orgCustomer?.organizationName || orgCustomer?.companyName || null;
       // The real first+last name, when there is one on file — Firebase
       // Auth's own displayName is only ever set for a Google sign-in, so
       // an email/password login (the common case for an invited teammate)
@@ -38,6 +57,20 @@ export async function GET(req) {
       // sign-in — checked again here (not just right after sign-in) so a
       // bookmarked /dashboard link can't skip it. See /change-password.
       mustChangePassword = !!(acct.customer?.mustChangePassword || acct.membership?.mustChangePassword);
+
+      if (acct.isOwner && acct.hasMembership) {
+        dualContext = true;
+        ownAccountEmail = c.email;
+        const memSnap = await adminDb().doc("memberships/" + c.uid).get();
+        const orgSnap = memSnap.exists ? await adminDb().doc("customers/" + memSnap.data().accountId).get() : null;
+        membershipOrgEmail = orgSnap?.exists ? orgSnap.data().email : null;
+      } else if (!acct.isOwner && acct.hasOwnAccount) {
+        dualContext = true;
+        useMembershipContext = true;
+        ownAccountEmail = c.email;
+        const orgSnap = await adminDb().doc("customers/" + acct.accountId).get();
+        membershipOrgEmail = orgSnap.exists ? orgSnap.data().email : null;
+      }
     } catch {
       // /api/claim hasn't run yet for this sign-in (e.g. right after
       // Google sign-in, before the client calls it) — no account yet.
@@ -64,7 +97,8 @@ export async function GET(req) {
     return NextResponse.json({
       email: c.email, superAdmin: isSuper, platformRole: resolvedPlatformRole, accountType,
       accountId, isAccountAdmin, hasAccount, profile, isOwner,
-      organizationId, organizationRole, mustChangePassword,
+      organizationId, organizationRole, organizationName, mustChangePassword,
+      dualContext, useMembershipContext, ownAccountEmail, membershipOrgEmail,
       twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null, twoFactorRequired: !!twoFactor.required,
       canManageOrgs: isSuper || isAccountAdmin,
     });

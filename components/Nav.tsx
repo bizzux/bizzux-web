@@ -9,6 +9,7 @@ import { useMe } from "@/lib/useMe";
 import { roleLabel } from "@/lib/roleLabel";
 import LiveClock from "@/components/LiveClock";
 import AppLauncher from "@/components/AppLauncher";
+import AccountSwitcher from "@/components/AccountSwitcher";
 
 // "All apps" sits first, right next to the logo, on every page. The rest
 // are the marketing tabs, always shown, signed in or not, so the menu bar
@@ -96,7 +97,7 @@ export default function Nav() {
   return (
     <header className="border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-50">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-2 lg:gap-8">
-        {signedIn && <AppLauncher user={user} isAccountAdmin={!!me?.isAccountAdmin} />}
+        {signedIn && <AppLauncher user={user} isAccountAdmin={!!me?.isAccountAdmin} hasAccount={me?.hasAccount} />}
         <Link href="/" className="flex items-center gap-2 shrink-0" onClick={closeMenu}>
           {/* The source PNG has a lot of transparent headroom above the
               wordmark for the small cloud+arrow accent, so its own visual
@@ -105,6 +106,19 @@ export default function Nav() {
               instead of the box's geometric center. */}
           <Image src="/logo-transparent.png" alt="Bizzux" width={132} height={54} priority className="h-11 w-auto -translate-y-2" />
         </Link>
+        {/* Bizzux is the platform brand — this is which COMPANY's workspace
+            the signed-in user is actually in (set via the "Getting Started"
+            wizard, api/onboarding). Only rendered once it's known, so it
+            never flashes empty before /api/me resolves, and never shows for
+            a Platform Admin/Owner (they aren't inside any one company). */}
+        {signedIn && !isSuper && me?.organizationName && (
+          <span
+            className="hidden sm:inline-flex items-center h-7 px-2.5 rounded-full text-[12px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 whitespace-nowrap max-w-[180px] truncate"
+            title={me.organizationName}
+          >
+            {me.organizationName}
+          </span>
+        )}
         <nav className="hidden lg:flex items-center gap-6">
           {!isSuper &&
             navLinks.map((l) => (
@@ -115,6 +129,7 @@ export default function Nav() {
         </nav>
         <div className="flex-1" />
         <div className="hidden lg:flex items-center gap-3 shrink-0">
+          {signedIn && <AccountSwitcher me={me} />}
           {signedIn && myRoleLabel && (
             <span
               className="text-[11px] font-semibold text-brand-blue bg-blue-50 rounded-full px-3 py-1 whitespace-nowrap"
@@ -201,6 +216,11 @@ export default function Nav() {
                   {myRoleLabel}
                 </span>
               )}
+            </div>
+          )}
+          {signedIn && me?.dualContext && (
+            <div className="pb-3 mb-3 border-b border-slate-100">
+              <AccountSwitcher me={me} />
             </div>
           )}
 

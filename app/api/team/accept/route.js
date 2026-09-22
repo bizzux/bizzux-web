@@ -78,6 +78,22 @@ export async function POST(req) {
       role: roleFromProfile(inv.profile || DEFAULT_PROFILE, false), status: "active",
     });
 
+    // If this login already owns its own Bizzux account (they signed up
+    // independently before this invite reached them), resolveAccount()
+    // would otherwise keep resolving to that account by default and this
+    // brand-new membership would sit unreachable until they found the
+    // account switcher themselves. Since accepting an invite is an
+    // explicit "I want to join this team" action, default them into the
+    // membership they just joined right away — see resolveAccount() in
+    // lib/firebaseAdmin.js.
+    const ownAccountSnap = await adminDb().doc("customers/" + c.uid).get();
+    if (ownAccountSnap.exists) {
+      await adminDb().doc("users/" + c.uid).set(
+        { useMembershipContext: true, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+    }
+
     await inviteRef.set({ used: true }, { merge: true });
 
     return NextResponse.json({ ok: true, accountId: inv.accountId });

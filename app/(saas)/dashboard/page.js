@@ -34,6 +34,10 @@ const APPS = [
   // part of the shared Bizzux customer data), so it's a plain link rather
   // than an SSO hand-off like the apps above.
   { key: "paisatrack", name: "PaisaTrack", icon: "💸", desc: "Auto-tracks spending from GPay, PhonePe, bank apps & SMS", live: true, url: "https://paisatrack.bizzux.com" },
+  // Shares this project's Firebase auth (same login works there), but has
+  // its own standalone sign-in page rather than the SSO hand-off — plain
+  // link like PaisaTrack above.
+  { key: "assistant", name: "Bizzux Assistant", icon: "🗓️", desc: "Bills, loans, vehicle service & fuel — with reminders before anything's overdue", live: true, url: "https://assistant.bizzux.com" },
 ];
 
 function VerifyEmailGate({ user }) {
@@ -261,8 +265,58 @@ function VerifyMobileGate({ user, customer }) {
 // organization: Profile/Dashboard (via Nav/AccountTabs, unchanged) plus a
 // way to create an organization or wait on an invitation — nothing else.
 // No app tiles, no trial banner, no organization-scoped data at all.
+//
+// Also checks for a pending invite addressed to this exact email (see
+// /api/my-pending-invite) — someone who signs in directly (e.g. Google)
+// before ever opening the invite email lands here with no way to act on an
+// invite that's already waiting for them, and the old copy ("check your
+// email") left them likely to click "Create organization" instead, which
+// creates a brand-new, disconnected org rather than joining the team they
+// were actually invited to. When a pending invite is found, it's surfaced
+// first, with a direct Accept button — Create an organization moves below
+// it with an explicit warning not to use it if that's the case.
 function NoOrganizationDashboard() {
   const [showCreate, setShowCreate] = useState(false);
+  const [pendingInvite, setPendingInvite] = useState(undefined); // undefined = checking, null = none
+  const [accepting, setAccepting] = useState(false);
+  const [acceptError, setAcceptError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const r = await fetch("/api/my-pending-invite", { headers: { Authorization: "Bearer " + token } });
+        const d = await r.json();
+        if (!cancelled) setPendingInvite(r.ok ? d.invite : null);
+      } catch {
+        if (!cancelled) setPendingInvite(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function acceptInvite() {
+    setAccepting(true);
+    setAcceptError("");
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const r = await fetch("/api/team/accept", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ invite: pendingInvite.token }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Couldn't accept that invite.");
+      window.location.reload();
+    } catch (e) {
+      setAcceptError(e.message);
+      setAccepting(false);
+    }
+  }
+
   return (
     <div>
       <Nav />
@@ -272,17 +326,39 @@ function NoOrganizationDashboard() {
         <p className="dash-sub" style={{ marginBottom: 20 }}>
           You're signed in, but not part of an organization yet.
         </p>
+
+        {pendingInvite && (
+          <div className="card" style={{ marginBottom: 16, background: "#f0fdf4", borderColor: "#bbf7d0" }}>
+            <h3 style={{ marginTop: 0, marginBottom: 4 }}>You've been invited!</h3>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+              Join <strong>{pendingInvite.orgName}</strong> — no need to dig up the invite email, you can accept it right here.
+            </p>
+            <button className="btn-primary-sm" onClick={acceptInvite} disabled={accepting}>
+              {accepting ? "Joining…" : `Accept invite to ${pendingInvite.orgName}`}
+            </button>
+            {acceptError && <p className="error" style={{ marginTop: 8 }}>{acceptError}</p>}
+          </div>
+        )}
+
         <div className="card" style={{ marginBottom: 16 }}>
           <h3 style={{ marginTop: 0, marginBottom: 4 }}>Create an organization</h3>
           <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Start your own Bizzux organization and invite your team.</p>
+          {pendingInvite && (
+            <p style={{ fontSize: 12.5, color: "var(--red)", marginBottom: 12 }}>
+              Only do this if you're starting a new company — you already have a pending invite above.
+            </p>
+          )}
           <button className="btn-primary-sm" onClick={() => setShowCreate(true)}>Create organization</button>
         </div>
-        <div className="card">
-          <h3 style={{ marginTop: 0, marginBottom: 4 }}>Have an invitation?</h3>
-          <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>
-            If someone invited you to their organization, check your email for the invite link to join.
-          </p>
-        </div>
+
+        {pendingInvite === null && (
+          <div className="card">
+            <h3 style={{ marginTop: 0, marginBottom: 4 }}>Have an invitation?</h3>
+            <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>
+              If someone invited you to their organization, check your email for the invite link to join — or ask them to double-check the email address they used.
+            </p>
+          </div>
+        )}
       </div>
 
       {showCreate && (

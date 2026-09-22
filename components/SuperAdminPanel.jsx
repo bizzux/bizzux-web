@@ -1687,6 +1687,15 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
                 <div><div className="label">Last login</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{timeAgo(customer.lastLoginAt)}</div></div>
                 <div><div className="label">Trial ends</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.trialEndDate ? new Date(customer.trialEndDate).toLocaleDateString() : "N/A"}</div></div>
               </div>
+              {/* Sales follow-up context, from the "Set up your Bizzux account"
+                  onboarding wizard — why this trial exists and who to ask for
+                  when calling, not operational account state like the row above. */}
+              <div className="row" style={{ gap: 22, flexWrap: "wrap", marginBottom: 16 }}>
+                <div><div className="label">Job title</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.jobTitle || "N/A"}</div></div>
+                <div><div className="label">Using it for</div><div style={{ fontWeight: 700, fontSize: 13.5, textTransform: "capitalize" }}>{customer.useCase || "N/A"}</div></div>
+                <div><div className="label">Employees</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.employeeCount || "N/A"}</div></div>
+                <div><div className="label">Business type</div><div style={{ fontWeight: 700, fontSize: 13.5, textTransform: "capitalize" }}>{customer.businessType || "N/A"}</div></div>
+              </div>
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                 <button className="btn-small" onClick={() => setShowExtend(true)}>Extend trial</button>
                 <button className="btn-small" onClick={() => setShowMarkPaid(true)}>Mark as paid</button>

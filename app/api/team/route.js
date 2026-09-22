@@ -8,7 +8,9 @@ import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile, ORGANIZATION_ROLES } from "@/lib/organizationMembership";
 import { upsertAppAssignment, ensureAppSubscriptionActive } from "@/lib/appAccess";
 import { APPS, APP_IDS } from "@/lib/appCatalog";
-import { existingAccountInviteEmailHtml } from "@/lib/emailTemplates";
+import { validatePassword } from "@/lib/passwordPolicy";
+import { CORS_HEADERS_WRITE, corsPreflightWrite } from "@/lib/cors";
+import { existingAccountInviteEmailHtml, newAccountInviteEmailHtml } from "@/lib/emailTemplates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +27,15 @@ function teamCollection(accountId) {
   return adminDb().collection("customers/" + accountId + "/team");
 }
 
-async function sendInvite({ accountId, teamMemberId, email, firstName, lastName, role, profile, origin }) {
+// Sent through Resend, not Firebase's own accounts:sendOobCode
+// (sendAuthEmail) — Firebase's default sender has no SPF/DKIM alignment
+// with bizzux.com and reliably fails to reach Gmail/etc, confirmed the
+// hard way (the API call reports success while the email never arrives).
+// adminAuth().generatePasswordResetLink() only ever generates the link —
+// it never sends anything itself — so Resend can deliver it exactly the
+// way app/api/send-verification-email/route.js already does for the
+// email-verification link.
+async function sendInvite({ accountId, teamMemberId, email, firstName, lastName, role, profile, orgName, origin }) {
   const token = randomUUID();
   await adminDb()
     .doc("invites/" + token)
@@ -42,11 +52,22 @@ async function sendInvite({ accountId, teamMemberId, email, firstName, lastName,
       used: false,
     });
 
-  await sendAuthEmail({
-    requestType: "PASSWORD_RESET",
-    email,
-    continueUrl: `${origin}/accept-invite?invite=${token}`,
+  const link = await adminAuth().generatePasswordResetLink(email, {
+    url: `${origin}/accept-invite?invite=${token}`,
+    handleCodeInApp: true,
   });
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw { status: 500, message: "Email delivery isn't configured yet. Contact support." };
+  const resend = new Resend(apiKey);
+  const from = process.env.RESEND_FROM_EMAIL || "Bizzux <verify@verify.bizzux.com>";
+  const { error } = await resend.emails.send({
+    from,
+    to: email,
+    subject: `You've been invited to ${orgName || "join a Bizzux organization"}`,
+    html: newAccountInviteEmailHtml({ orgName, link }),
+  });
+  if (error) throw new Error(error.message || "Could not send invite email");
 }
 
 // Same invite record shape as sendInvite, but for an email that already has
@@ -124,7 +145,7 @@ async function getMemberDetail(acct, memberId) {
 
 // Lists everyone on the caller's account: the owner plus every invited /
 // active teammate. Global Admin / Admin profiles only.
-export async function GET(req) {
+async function handleGET(req) {
   try {
     const acct = await requireAccountAdmin(req);
 
@@ -208,11 +229,18 @@ export async function GET(req) {
 }
 
 // Action-based, same pattern as /api/admin/plans: { action: "invite" | "remove" | "resend", ... }
-export async function POST(req) {
+async function handlePOST(req) {
   try {
     const acct = await requireAccountAdmin(req);
     const body = await req.json();
-    const origin = req.headers.get("origin") || new URL(req.url).origin;
+    // Always this route's OWN origin (bizzux-web), never the caller's
+    // Origin header — /accept-invite only exists here. This route is now
+    // CORS-reachable cross-origin (e.g. bizzux-crm's "Invite Teammate"),
+    // and a naive Origin-header preference would build an invite link
+    // pointing at the CALLING app's domain instead, which both 404s (no
+    // /accept-invite route there) and fails Firebase's authorized-domain
+    // check on the action link.
+    const origin = new URL(req.url).origin;
 
     if (body.action === "invite") {
       const firstName = String(body.firstName || "").trim().slice(0, 60);
@@ -269,7 +297,8 @@ export async function POST(req) {
       try {
         if (loginMethod === "credentials") {
           password = String(body.password || "").trim() || generateTempPassword();
-          if (password.length < 8) throw { status: 400, message: "Password must be at least 8 characters" };
+          const pwError = await validatePassword(acct.accountId, password);
+          if (pwError) throw { status: 400, message: pwError };
           authUser = await adminAuth().createUser({ email, password, emailVerified: true });
         } else {
           authUser = await adminAuth().createUser({ email, emailVerified: false });
@@ -327,8 +356,8 @@ export async function POST(req) {
       }
 
       if (loginMethod === "email") {
+        const orgName = acct.customer?.organizationName || acct.customer?.fullName || "Bizzux";
         if (existingAccount) {
-          const orgName = acct.customer?.organizationName || acct.customer?.fullName || "Bizzux";
           await sendExistingAccountInvite({
             accountId: acct.accountId, teamMemberId: memberRef.id, email, firstName, lastName,
             role, profile, orgName, origin,
@@ -342,6 +371,7 @@ export async function POST(req) {
             lastName,
             role,
             profile,
+            orgName,
             origin,
           });
         }
@@ -407,7 +437,8 @@ export async function POST(req) {
       const t = memberSnap.data();
 
       const password = String(body.password || "").trim() || generateTempPassword();
-      if (password.length < 8) throw { status: 400, message: "Password must be at least 8 characters" };
+      const pwError = await validatePassword(acct.accountId, password);
+      if (pwError) throw { status: 400, message: pwError };
 
       await adminAuth().updateUser(t.uid, { password });
 
@@ -517,16 +548,41 @@ export async function POST(req) {
       const t = memberSnap.data();
       if (t.status === "active") throw { status: 400, message: "This teammate has already joined" };
 
-      await sendInvite({
-        accountId: acct.accountId,
-        teamMemberId: id,
-        email: t.email,
-        firstName: t.firstName,
-        lastName: t.lastName,
-        role: t.role,
-        profile: t.profile,
-        origin,
-      });
+      // Resend with the SAME method the original invite used, not always
+      // the Firebase-oobCode path — Firebase's own auth emails have no
+      // SPF/DKIM alignment with bizzux.com and reliably land in spam or
+      // never arrive (same reason /api/send-verification-email exists
+      // instead of the client SDK's sendEmailVerification()). For someone
+      // who already had a Bizzux sign-in when invited, the original invite
+      // went out through Resend instead — resending should too.
+      // A single-field where() needs no composite index; sorting the
+      // (small — one person's invite history) result set in memory avoids
+      // requiring one just to find the most recent invite.
+      const priorInviteSnap = await adminDb().collection("invites").where("teamMemberId", "==", id).get();
+      const priorInvites = priorInviteSnap.docs
+        .map((d) => d.data())
+        .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      const wasExistingAccount = priorInvites.length > 0 && !!priorInvites[0].existingAccount;
+
+      const orgName = acct.customer?.organizationName || acct.customer?.fullName || "Bizzux";
+      if (wasExistingAccount) {
+        await sendExistingAccountInvite({
+          accountId: acct.accountId, teamMemberId: id, email: t.email, firstName: t.firstName, lastName: t.lastName,
+          role: t.role, profile: t.profile, orgName, origin,
+        });
+      } else {
+        await sendInvite({
+          accountId: acct.accountId,
+          teamMemberId: id,
+          email: t.email,
+          firstName: t.firstName,
+          lastName: t.lastName,
+          role: t.role,
+          profile: t.profile,
+          orgName,
+          origin,
+        });
+      }
 
       return NextResponse.json({ ok: true });
     }
@@ -561,4 +617,24 @@ export async function POST(req) {
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
+}
+
+// CORS-enabled wrappers — lets a split app (e.g. bizzux-crm's Settings
+// page "Invite Teammate") call this route cross-origin with the same
+// Bearer token it already has, instead of needing a second, duplicate
+// invite implementation. Real authorization is still requireAccountAdmin()
+// inside handleGET/handlePOST above; this only controls which origins a
+// browser lets JS read the response from.
+export async function OPTIONS() {
+  return corsPreflightWrite();
+}
+export async function GET(req) {
+  const res = await handleGET(req);
+  for (const [k, v] of Object.entries(CORS_HEADERS_WRITE)) res.headers.set(k, v);
+  return res;
+}
+export async function POST(req) {
+  const res = await handlePOST(req);
+  for (const [k, v] of Object.entries(CORS_HEADERS_WRITE)) res.headers.set(k, v);
+  return res;
 }

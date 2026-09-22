@@ -8,7 +8,7 @@ import Link from "next/link";
 // there. Sub-tabs only — the signed-in-as email, role badge, and Sign out
 // used to be repeated here too, directly duplicating Nav's own top-right
 // group one row above; dropped in favor of that single copy.
-const PROFILE_SECTION_KEYS = ["profile", "dashboard", "team", "team-apps", "team-groups"];
+const PROFILE_SECTION_KEYS = ["profile", "dashboard", "team", "team-apps", "team-groups", "team-security"];
 
 // isSuper/roleLabel are no longer used here (see the file comment above)
 // but stay accepted so every existing caller — several are .tsx files that
@@ -28,6 +28,7 @@ export default function AccountTabs({ active, isAccountAdmin = false, isSuper = 
     { key: "dashboard", href: "/dashboard", label: "Dashboard" },
     ...(isAccountAdmin ? [{ key: "team-apps", href: "/team/apps", label: "Apps" }] : []),
     ...(isAccountAdmin ? [{ key: "team-groups", href: "/team/groups", label: "Groups" }] : []),
+    ...(isAccountAdmin ? [{ key: "team-security", href: "/team/security", label: "Security" }] : []),
   ];
 
   return (
