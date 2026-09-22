@@ -62,6 +62,14 @@ const CATEGORIES = [
     ],
   },
   {
+    id: "personal",
+    title: "Personal",
+    sub: "Bills, loans, vehicles, and everything else worth remembering.",
+    apps: [
+      { key: "assistant", name: "Bizzux Assistant", icon: "🗓️", desc: "Track bills, loans, vehicle service and fuel — with reminders before anything becomes overdue. Share it with your household.", live: true, featured: true, url: "https://assistant.bizzux.com" },
+    ],
+  },
+  {
     id: "admin",
     title: "Admin",
     sub: "Manage your organization.",
