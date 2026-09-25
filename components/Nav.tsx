@@ -34,6 +34,7 @@ const links = [
   { href: "/pricing", label: "Pricing" },
   { href: "/resources", label: "Insights" },
   { href: "/partners", label: "Partners" },
+  { href: "/about", label: "About" },
 ];
 
 // A fixed h-9 box (same height as the logo) with the label vertically
