@@ -716,7 +716,8 @@ function PlatformDashboard({ isOwner }) {
     nobiz: { label: "Signed up, no business yet", test: (u) => u.kind === "none" },
     biz: { label: "Set up or joined a business", test: hasBiz },
     apps: { label: "Opened at least one app", test: (u) => u.kind === "owner" && u.appsUsed.length > 0 },
-    paid: { label: "Paid businesses", test: (u) => u.kind === "owner" && u.status === "active" },
+    paid: { label: "Paid businesses", test: (u) => u.kind === "owner" && u.status === "active" && !u.free },
+    free: { label: "Free licenses (own business, family, testers)", test: (u) => u.kind === "owner" && u.free },
     ending: {
       label: "Trial ends within 3 days",
       test: (u) => {
@@ -740,6 +741,7 @@ function PlatformDashboard({ isOwner }) {
     { key: "biz", label: "Set up a business", value: count("biz"), sub: `${pct(count("biz"), people.length)}% of users` },
     { key: "apps", label: "Opened an app", value: count("apps"), sub: "business owners" },
     { key: "paid", label: "Paid", value: count("paid"), sub: "active subscriptions" },
+    { key: "free", label: "Free licenses", value: count("free"), sub: "not counted as revenue" },
     { key: "ending", label: "Trial ending ≤ 3 days", value: count("ending"), sub: "follow up now" },
     { key: "suspended", label: "Suspended", value: count("suspended"), sub: "blocked from apps" },
   ];
@@ -927,6 +929,7 @@ function StagePill({ user: u }) {
   if (u.disabled || u.status === "closed") return <span className="status-pill expired">Closed</span>;
   if (u.kind === "none") return <span className="status-pill" style={{ background: "#f1f5f9", color: "#475569" }}>No business yet</span>;
   if (u.kind === "member") return <span className="status-pill" style={{ background: "#eef2ff", color: "#4338ca" }}>Team member</span>;
+  if (u.free) return <span className="status-pill active" style={{ background: "#ecfdf5", color: "#047857" }}>Owner · free</span>;
   const s = u.status || "trial";
   return (
     <span className={"status-pill " + (s === "suspended" ? "expired" : s)}>
@@ -1012,6 +1015,19 @@ function SignupChart({ days }) {
 // business they belong to, and Delete for the Platform Owner.
 function UserDetailModal({ user: u, isOwner, onClose, onOpenBusiness, onDeleted }) {
   const [showDelete, setShowDelete] = useState(false);
+  const [showFree, setShowFree] = useState(false);
+  const isFree = customer.billing === "complimentary";
+
+  async function endFree() {
+    if (!confirm("End this free license? They'll get 7 days of trial to choose a paid plan.")) return;
+    try {
+      await api("/api/admin/customers", "POST", { action: "endFree", id: customer.id });
+      onChanged && onChanged();
+      onClose();
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
   const fmt = (iso) => (iso ? new Date(iso).toLocaleString() : "N/A");
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -2338,9 +2354,20 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
                   options rather than one long run of links. */}
               <div style={{ paddingTop: 16, borderTop: "1px solid var(--line)" }}>
                 <div className="label" style={{ marginBottom: 8 }}>Subscription</div>
+                {isFree && (
+                  <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: 10, fontSize: 13, marginBottom: 10 }}>
+                    <strong>Free license</strong> · {customer.planName || "plan"} · {freeReasonLabel(customer.compReason)} ·{" "}
+                    {customer.compUntil ? "until " + new Date(customer.compUntil).toLocaleDateString() : "no end date"}
+                    {customer.compNote && <div className="muted" style={{ marginTop: 4 }}>{customer.compNote}</div>}
+                  </div>
+                )}
                 <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <button className="btn-small" onClick={() => setShowExtend(true)}>Extend trial</button>
+                  {!isFree && <button className="btn-small" onClick={() => setShowExtend(true)}>Extend trial</button>}
                   <button className="btn-small" onClick={() => setShowMarkPaid(true)}>Mark as paid</button>
+                  {isOwner && (
+                    <button className="btn-small" onClick={() => setShowFree(true)}>{isFree ? "Change free license" : "Give free license"}</button>
+                  )}
+                  {isOwner && isFree && <button className="btn-small" onClick={endFree}>End free license</button>}
                 </div>
               </div>
 
@@ -2481,6 +2508,12 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
       {showMarkPaid && (
         <MarkPaidModal customer={customer} onClose={() => setShowMarkPaid(false)} onMarked={async () => { setShowMarkPaid(false); onChanged && onChanged(); }} />
       )}
+      {showFree && (
+        <FreeLicenseModal
+          customer={customer} onClose={() => setShowFree(false)}
+          onDone={() => { setShowFree(false); onChanged && onChanged(); onClose(); }}
+        />
+      )}
       {showSetPassword && (
         <SetPasswordModal customer={customer} onClose={() => setShowSetPassword(false)} />
       )}
@@ -2564,7 +2597,13 @@ function CustomersList({ isOwner }) {
                   <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}</td>
                   <td title={c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}>{c.createdAt ? timeAgo(c.createdAt) : "N/A"}</td>
                   <td title={c.lastLoginAt ? new Date(c.lastLoginAt).toLocaleString() : ""}>{timeAgo(c.lastLoginAt)}</td>
-                  <td><span className={"status-pill " + (c.status === "suspended" ? "expired" : c.status || "trial")}>{c.status || "trial"}</span></td>
+                  <td>
+                    {c.billing === "complimentary" ? (
+                      <span className="status-pill active" style={{ background: "#ecfdf5", color: "#047857" }}>free</span>
+                    ) : (
+                      <span className={"status-pill " + (c.status === "suspended" || c.status === "closed" ? "expired" : c.status || "trial")}>{c.status || "trial"}</span>
+                    )}
+                  </td>
                   <td>{c.customerType}</td>
                   <td>{c.planName || "N/A"}</td>
                   <td>
@@ -2844,6 +2883,124 @@ function ExtendTrialModal({ customer, onClose, onExtended }) {
 // chosen plan exactly like a real Razorpay/Stripe charge would (see
 // "markPaid" in app/api/admin/customers/route.js), so there's no separate
 // "was this ever actually paid" bookkeeping to reconcile later.
+const FREE_REASONS = [
+  { value: "internal", label: "Our own business" },
+  { value: "family", label: "Family & friends" },
+  { value: "tester", label: "Tester" },
+  { value: "partner", label: "Partner" },
+  { value: "other", label: "Other" },
+];
+const freeReasonLabel = (v) => FREE_REASONS.find((r) => r.value === v)?.label || "Free";
+
+// Platform Owner -> give a business a free license: a real plan (so its
+// features/limits apply) that's never charged and doesn't count as revenue.
+// See the grantFree action in app/api/admin/customers/route.js.
+function FreeLicenseModal({ customer, onClose, onDone }) {
+  const [plans, setPlans] = useState(null);
+  const [planId, setPlanId] = useState("");
+  const [reason, setReason] = useState("internal");
+  const [hasEnd, setHasEnd] = useState(false);
+  const [until, setUntil] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api("/api/admin/plans", "GET");
+        const active = (d.plans || []).filter((p) => p.active !== false);
+        setPlans(active);
+        // Default to the top plan: a free license usually means "everything".
+        if (active.length) setPlanId(active[active.length - 1].id);
+      } catch (e) {
+        setErr(e.message);
+        setPlans([]);
+      }
+    })();
+  }, []);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!planId) return setErr("Choose a plan");
+    if (hasEnd && !until) return setErr("Pick an end date, or choose No end date");
+    setBusy(true);
+    setErr("");
+    try {
+      await api("/api/admin/customers", "POST", {
+        action: "grantFree", id: customer.id, planId, reason,
+        until: hasEnd ? new Date(until + "T23:59:59").toISOString() : null, note,
+      });
+      onDone();
+    } catch (e2) {
+      setErr(e2.message);
+      setBusy(false);
+    }
+  }
+
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return (
+    <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480, width: "100%" }}>
+        <h2 style={{ marginBottom: 4 }}>Give a free license</h2>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
+          <strong>{customer.organizationName || customer.email}</strong> gets the chosen plan at no charge. It isn't
+          counted as revenue.
+        </p>
+        <form onSubmit={submit} noValidate>
+          <label className="label">Plan</label>
+          {plans === null ? (
+            <p className="muted">Loading plans…</p>
+          ) : (
+            <select className="input" value={planId} onChange={(e) => setPlanId(e.target.value)} style={{ marginBottom: 14 }}>
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
+
+          <label className="label">Why is it free?</label>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+            {FREE_REASONS.map((r) => (
+              <button
+                key={r.value} type="button" onClick={() => setReason(r.value)} aria-pressed={reason === r.value}
+                className={reason === r.value ? "btn-primary-sm" : "btn-small"}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+
+          <label className="label">How long?</label>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+            <button type="button" className={!hasEnd ? "btn-primary-sm" : "btn-small"} onClick={() => setHasEnd(false)} aria-pressed={!hasEnd}>
+              No end date
+            </button>
+            <button type="button" className={hasEnd ? "btn-primary-sm" : "btn-small"} onClick={() => setHasEnd(true)} aria-pressed={hasEnd}>
+              Until a date
+            </button>
+            {hasEnd && (
+              <input type="date" className="input" min={tomorrow} value={until} onChange={(e) => setUntil(e.target.value)} style={{ width: 170 }} />
+            )}
+          </div>
+
+          <label className="label">Note (optional)</label>
+          <input
+            className="input" value={note} onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. Brother's shop, testing POS" style={{ marginBottom: 16 }}
+          />
+
+          {err && <p className="error">{err}</p>}
+          <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" className="btn-outline-dark" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn-primary" disabled={busy || !plans?.length}>{busy ? "Saving…" : "Give free license"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function MarkPaidModal({ customer, onClose, onMarked }) {
   const [plans, setPlans] = useState(null);
   const [planId, setPlanId] = useState("");

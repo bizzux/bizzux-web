@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSuperAdmin, adminDb } from "@/lib/firebaseAdmin";
+import { isPayingCustomer } from "@/lib/trial";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
@@ -44,7 +45,8 @@ export async function GET(req) {
     let activeCount = 0;
     customersSnap.docs.forEach((d) => {
       const c = d.data();
-      if ((c.status || "trial") === "active" && c.planId) {
+      // Free licenses aren't revenue (see lib/trial.js isPayingCustomer).
+      if (isPayingCustomer(c)) {
         mrr += monthlyPriceOf(planById.get(c.planId));
         activeCount += 1;
       }

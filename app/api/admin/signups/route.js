@@ -64,6 +64,8 @@ export async function GET(req) {
         businessCreatedAt: own ? toIso(own.createdAt) : null,
         status: own ? own.status || "trial" : null,
         planName: own?.planName || null,
+        free: own?.billing === "complimentary",
+        compReason: own?.compReason || null,
         trialEndDate: own ? toIso(own.trialEndDate) : null,
         appsUsed: own ? Object.keys(own.appUsage || {}) : [],
         country: own?.signupCountry || doc.signupCountry || null,

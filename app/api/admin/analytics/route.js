@@ -80,7 +80,9 @@ export async function GET(req) {
     customersSnap.docs.forEach((d) => {
       const c = d.data();
       totalCustomers++;
-      const status = c.status || "trial";
+      // Free licenses (own business, family, testers) are counted on their
+      // own and never as revenue or as a trial converting to paid.
+      const status = c.billing === "complimentary" ? "complimentary" : c.status || "trial";
       byStatus[status] = (byStatus[status] || 0) + 1;
 
       if (status === "active" && c.planId) {

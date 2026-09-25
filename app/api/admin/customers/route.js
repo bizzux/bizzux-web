@@ -146,6 +146,11 @@ export async function GET(req) {
         // — see the "setGuestSeats" action below and bizzux-projects'
         // lib/seats.js. Defaults to 0: no free guest seats.
         guestSeats: Number(data.guestSeats) || 0,
+        // Free license (see grantFree below / lib/trial.js).
+        billing: data.billing || null,
+        compReason: data.compReason || null,
+        compUntil: toIso(data.compUntil),
+        compNote: data.compNote || null,
       };
     });
     customers.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -264,6 +269,64 @@ export async function POST(req) {
     // set on a real charge (see app/api/webhooks/razorpay/route.js), so this
     // account is indistinguishable from an online payer everywhere else in
     // the app (status, plan gating, the Customers list's Type column).
+    // Free license: a real plan, never charged. For Bizzux's own business,
+    // family/testers, partners. Platform Owner only, since it's giving the
+    // product away. Optional end date (compUntil); after it, apps lock like
+    // an expired trial (lib/trial.js canAccessApps).
+    if (body.action === "grantFree" || body.action === "endFree") {
+      if (c.platformRole !== "OWNER") throw { status: 403, message: "Only the Platform Owner can give or end free licenses" };
+      const id = String(body.id || "");
+      if (!id) throw { status: 400, message: "Customer id required" };
+      const ref = adminDb().doc("customers/" + id);
+      const snap = await ref.get();
+      if (!snap.exists) throw { status: 404, message: "Customer not found" };
+
+      if (body.action === "endFree") {
+        if (snap.data().billing !== "complimentary") throw { status: 409, message: "This business doesn't have a free license" };
+        // Back to a short trial so they have time to pick a paid plan
+        // rather than being locked out mid-day.
+        const days = Math.min(Math.max(Number(body.graceDays) || 7, 0), 90);
+        await ref.set(
+          {
+            status: "trial", billing: FieldValue.delete(), compReason: FieldValue.delete(), compUntil: FieldValue.delete(),
+            compNote: FieldValue.delete(), compGrantedBy: FieldValue.delete(), compGrantedAt: FieldValue.delete(),
+            planId: null, planName: null,
+            trialEndDate: Timestamp.fromMillis(Date.now() + days * 24 * 60 * 60 * 1000),
+          },
+          { merge: true }
+        );
+        await logAuditEvent({ action: "customer.free_license_end", actor: c, targetType: "organization", targetId: id, details: { graceDays: days } });
+        return NextResponse.json({ ok: true });
+      }
+
+      const planId = String(body.planId || "");
+      if (!planId) throw { status: 400, message: "Choose a plan" };
+      const planSnap = await adminDb().doc("plans/" + planId).get();
+      if (!planSnap.exists) throw { status: 400, message: "That plan no longer exists" };
+      const reasons = ["internal", "family", "tester", "partner", "other"];
+      const reason = reasons.includes(body.reason) ? body.reason : "other";
+      let compUntil = null;
+      if (body.until) {
+        const d = new Date(body.until);
+        if (isNaN(d.getTime()) || d.getTime() < Date.now()) throw { status: 400, message: "End date must be in the future" };
+        compUntil = Timestamp.fromDate(d);
+      }
+      const note = String(body.note || "").trim().slice(0, 300);
+      await ref.set(
+        {
+          status: "active", billing: "complimentary", planId, planName: planSnap.data().name || "",
+          compReason: reason, compUntil, compNote: note || null,
+          compGrantedBy: c.email, compGrantedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      await logAuditEvent({
+        action: "customer.free_license_grant", actor: c, targetType: "organization", targetId: id,
+        details: { planId, planName: planSnap.data().name || "", reason, until: compUntil ? compUntil.toDate().toISOString() : null, note },
+      });
+      return NextResponse.json({ ok: true });
+    }
+
     if (body.action === "markPaid") {
       const id = String(body.id || "");
       if (!id) throw { status: 400, message: "Customer id required" };
@@ -283,6 +346,8 @@ export async function POST(req) {
       await ref.set(
         {
           status: "active",
+          // Now paying, so any free license ends here.
+          billing: FieldValue.delete(), compReason: FieldValue.delete(), compUntil: FieldValue.delete(), compNote: FieldValue.delete(),
           subscriptionGateway: "manual",
           planId,
           planName: plan.name || "",
