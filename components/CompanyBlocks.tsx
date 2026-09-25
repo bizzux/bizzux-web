@@ -46,7 +46,7 @@ export function LeaderCard({ m, large = false }: { m: TeamMember; large?: boolea
     <div className={`text-center bg-white rounded-2xl border border-slate-100 shadow-sm ${large ? "p-8" : "p-6"}`}>
       <div
         className={`rounded-full overflow-hidden bg-slate-100 mx-auto mb-4 border-4 border-white shadow-md ${
-          large ? "w-32 h-32" : "w-24 h-24"
+          large ? "w-40 h-40" : "w-32 h-32"
         }`}
       >
         {m.photoUrl && (
