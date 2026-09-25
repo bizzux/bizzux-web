@@ -1015,19 +1015,6 @@ function SignupChart({ days }) {
 // business they belong to, and Delete for the Platform Owner.
 function UserDetailModal({ user: u, isOwner, onClose, onOpenBusiness, onDeleted }) {
   const [showDelete, setShowDelete] = useState(false);
-  const [showFree, setShowFree] = useState(false);
-  const isFree = customer.billing === "complimentary";
-
-  async function endFree() {
-    if (!confirm("End this free license? They'll get 7 days of trial to choose a paid plan.")) return;
-    try {
-      await api("/api/admin/customers", "POST", { action: "endFree", id: customer.id });
-      onChanged && onChanged();
-      onClose();
-    } catch (e) {
-      setErr(e.message);
-    }
-  }
   const fmt = (iso) => (iso ? new Date(iso).toLocaleString() : "N/A");
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -2195,6 +2182,19 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
   const [savingGuestSeats, setSavingGuestSeats] = useState(false);
   const [openingApp, setOpeningApp] = useState(null);
   const [showDelete, setShowDelete] = useState(false);
+  const [showFree, setShowFree] = useState(false);
+  const isFree = customer.billing === "complimentary";
+
+  async function endFree() {
+    if (!confirm("End this free license? They'll get 7 days of trial to choose a paid plan.")) return;
+    try {
+      await api("/api/admin/customers", "POST", { action: "endFree", id: customer.id });
+      onChanged && onChanged();
+      onClose();
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
 
   async function loadAdmins() {
     try {
