@@ -21,6 +21,16 @@ export async function POST(req) {
 
     const body = await req.json();
 
+    // Asked on its own the first time an owner opens Bizzux Business
+    // without one set (their org was created from a different app's quick
+    // setup, which only asks for the name) — bizzux-shop only seeds this on
+    // first SSO, so it has to be known before that hand-off happens.
+    if (body.businessTypeOnly) {
+      const businessType = BUSINESS_TYPES.includes(body.businessType) ? body.businessType : "shop";
+      await ref.set({ businessType, businessTypePending: false }, { merge: true });
+      return NextResponse.json({ ok: true });
+    }
+
     if (body.skip) {
       await ref.set({ onboarded: true }, { merge: true });
       return NextResponse.json({ ok: true });
@@ -52,6 +62,7 @@ export async function POST(req) {
         language,
         currency,
         businessType,
+        businessTypePending: false,
         onboarded: true,
         onboardedAt: FieldValue.serverTimestamp(),
       },

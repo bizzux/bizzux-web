@@ -71,6 +71,16 @@ export async function POST(req) {
       const userSnap = await adminDb().doc("users/" + c.uid).get();
       const u = userSnap.exists ? userSnap.data() : {};
 
+      // The dashboard's quick-setup step (asked only when someone first
+      // opens a company app) is the whole onboarding now — one name field,
+      // plus business type when the app is Bizzux Business, with currency
+      // and time zone taken from the browser. So the org is created already
+      // "onboarded"; OnboardingModal no longer pops up afterwards asking for
+      // the same name again.
+      const currency = ["INR", "USD", "GBP", "AED"].includes(body.currency) ? body.currency : "INR";
+      const timezone = String(body.timezone || "Asia/Kolkata").trim().slice(0, 60);
+      const businessType = ["shop", "travel", "medical", "services"].includes(body.businessType) ? body.businessType : null;
+
       await adminDb().doc("customers/" + c.uid).set({
         email: c.email,
         fullName: u.fullName || null,
@@ -79,13 +89,20 @@ export async function POST(req) {
         signupRegion: u.signupRegion || null,
         signupCity: u.signupCity || null,
         organizationName: name,
+        companyName: name,
+        currency,
+        timezone,
+        ...(businessType ? { businessType } : {}),
+        // The dashboard asks for it the first time Bizzux Business is opened.
+        businessTypePending: !businessType,
         createdAt: FieldValue.serverTimestamp(),
         trialStartDate: now,
         trialEndDate,
         status: "trial",
         planId: null,
         planName: null,
-        onboarded: false,
+        onboarded: true,
+        onboardedAt: FieldValue.serverTimestamp(),
         verifyEmailRequired: !!u.verifyEmailRequired,
         verifyMobileRequired: !!u.verifyMobileRequired,
         mustChangePassword: false,

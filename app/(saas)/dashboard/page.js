@@ -6,7 +6,7 @@ import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import Link from "next/link";
-import OnboardingModal from "@/components/OnboardingModal";
+import { BUSINESS_TYPES } from "@/components/OnboardingModal";
 import CheckoutSuccessModal from "@/components/CheckoutSuccessModal";
 import TrialExpiredModal from "@/components/TrialExpiredModal";
 import Nav from "@/components/Nav";
@@ -261,22 +261,26 @@ function VerifyMobileGate({ user, customer }) {
   );
 }
 
-// Rule 8's required view for a signed-in user who belongs to no
-// organization: Profile/Dashboard (via Nav/AccountTabs, unchanged) plus a
-// way to create an organization or wait on an invitation — nothing else.
-// No app tiles, no trial banner, no organization-scoped data at all.
+// Rule 8's view for a signed-in user who belongs to no organization yet.
+//
+// Shows every app straight away, ready to click, rather than a "create an
+// organization" form first. A brand-new user doesn't know what an
+// "organization" is or why they need one, and asking for it before they've
+// seen a single app, then asking for the same name again in a second
+// onboarding form, read as a paywall. Rule 1 still holds: nothing is
+// created at login. The organization gets created only when someone opens
+// an app that needs one, via QuickSetupModal: one name field (plus business
+// type for Bizzux Business), then that app opens. Personal apps with their
+// own sign-in (PaisaTrack, Assistant: plain links, no SSO) open right away
+// and never need an organization at all.
 //
 // Also checks for a pending invite addressed to this exact email (see
-// /api/my-pending-invite) — someone who signs in directly (e.g. Google)
-// before ever opening the invite email lands here with no way to act on an
-// invite that's already waiting for them, and the old copy ("check your
-// email") left them likely to click "Create organization" instead, which
-// creates a brand-new, disconnected org rather than joining the team they
-// were actually invited to. When a pending invite is found, it's surfaced
-// first, with a direct Accept button — Create an organization moves below
-// it with an explicit warning not to use it if that's the case.
+// /api/my-pending-invite). Someone who signs in directly (e.g. Google)
+// before opening the invite email would otherwise set up a brand-new,
+// disconnected org instead of joining their team, so the invite is shown
+// first with a direct Accept button, and the quick-setup modal repeats it.
 function NoOrganizationDashboard() {
-  const [showCreate, setShowCreate] = useState(false);
+  const [setupApp, setSetupApp] = useState(null);
   const [pendingInvite, setPendingInvite] = useState(undefined); // undefined = checking, null = none
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState("");
@@ -317,23 +321,30 @@ function NoOrganizationDashboard() {
     }
   }
 
+  function openApp(a) {
+    if (!a.sso) {
+      window.open(a.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setSetupApp(a);
+  }
+
+  const u = auth.currentUser;
+  const firstName = ((u && (u.displayName || u.email)) || "").split(/[@\s]/)[0];
+
   return (
     <div>
       <Nav />
       <AccountTabs active="dashboard" isAccountAdmin={false} isSuper={false} roleLabel="" />
-      <div className="admin-shell" style={{ maxWidth: 760 }}>
-        <h1 className="dash-heading" style={{ fontSize: 20, marginBottom: 6 }}>Welcome to Bizzux!</h1>
-        <p className="dash-sub" style={{ marginBottom: 20 }}>
-          {pendingInvite
-            ? "You've been invited to join a team — accept below to get started."
-            : "One quick step before you start: set up your business."}
-        </p>
+      <div className="dash-body">
+        <h1 className="dash-heading">Welcome to Bizzux{firstName ? `, ${firstName}` : ""}!</h1>
+        <p className="dash-sub">Pick an app to get started. Every app is free to try, no card needed.</p>
 
         {pendingInvite && (
-          <div className="card" style={{ marginBottom: 16, background: "#f0fdf4", borderColor: "#bbf7d0" }}>
+          <div className="card" style={{ marginBottom: 20, background: "#f0fdf4", borderColor: "#bbf7d0" }}>
             <h3 style={{ marginTop: 0, marginBottom: 4 }}>You've been invited!</h3>
             <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-              Join <strong>{pendingInvite.orgName}</strong> — no need to dig up the invite email, you can accept it right here.
+              Join <strong>{pendingInvite.orgName}</strong> to use Bizzux with your team. You can accept right here.
             </p>
             <button className="btn-primary-sm" onClick={acceptInvite} disabled={accepting}>
               {accepting ? "Joining…" : `Accept invite to ${pendingInvite.orgName}`}
@@ -342,60 +353,61 @@ function NoOrganizationDashboard() {
           </div>
         )}
 
-        <div className="card" style={{ marginBottom: 16, borderColor: pendingInvite ? undefined : "var(--teal)" }}>
-          {!pendingInvite && (
-            <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--teal)", marginBottom: 6 }}>
-              Step 1 of 1
-            </div>
-          )}
-          <h3 style={{ marginTop: 0, marginBottom: 4 }}>Set up your business</h3>
-          <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-            Just enter your business name — takes about 10 seconds. Then you can open CRM, Notes, Files and every other Bizzux app, and invite your team.
-          </p>
-          {pendingInvite && (
-            <p style={{ fontSize: 12.5, color: "var(--red)", marginBottom: 12 }}>
-              Only do this if you're starting a new company — you already have a pending invite above.
-            </p>
-          )}
-          <button className="btn-primary-sm" onClick={() => setShowCreate(true)}>Set up my business</button>
+        <div className="app-grid">
+          {APPS.filter((a) => a.live && a.url).map((a) => (
+            <button
+              key={a.key} type="button" onClick={() => openApp(a)}
+              className="app-tile"
+              style={{ textAlign: "left", border: "1px solid var(--line)" }}
+            >
+              <div className="app-tile-icon">{a.icon}</div>
+              <div className="app-tile-name">{a.name}</div>
+              <div className="app-tile-status live">Open app →</div>
+            </button>
+          ))}
         </div>
 
         {pendingInvite === null && (
-          <div className="card" style={{ marginBottom: 24 }}>
-            <h3 style={{ marginTop: 0, marginBottom: 4 }}>Joining someone else's business?</h3>
-            <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>
-              Don't set up a new one — open the invite link they emailed you instead, or ask them to double-check the email address they used.
-            </p>
-          </div>
+          <p className="muted" style={{ fontSize: 13, marginTop: 20 }}>
+            Joining your team's Bizzux? Open the invite link they emailed you instead.
+          </p>
         )}
-
-        {/* Preview of what's waiting — greyed out, not clickable, so a new
-            user can see why setting up their business is worth doing. */}
-        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Your apps</h3>
-        <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Set up your business to unlock these.</p>
-        <div className="app-grid" aria-label="Apps available after setup">
-          {APPS.map((a) => (
-            <div key={a.key} className="app-tile locked" aria-disabled="true">
-              <div className="app-tile-icon">{a.icon}</div>
-              <div className="app-tile-name">{a.name}</div>
-              <div className="app-tile-status">🔒 Set up your business to unlock</div>
-            </div>
-          ))}
-        </div>
       </div>
 
-      {showCreate && (
-        <CreateOrganizationModal
-          onClose={() => setShowCreate(false)}
-          onCreated={() => window.location.reload()}
+      {setupApp && (
+        <QuickSetupModal
+          app={setupApp}
+          pendingInvite={pendingInvite}
+          onAcceptInvite={acceptInvite}
+          onClose={() => setSetupApp(null)}
         />
       )}
     </div>
   );
 }
 
-function CreateOrganizationModal({ onClose, onCreated }) {
+// Best guess from the browser, so quick setup doesn't have to ask. Both can
+// be changed later; this just avoids a wrong default like INR for a Dubai shop.
+function detectLocale() {
+  let timezone = "Asia/Kolkata";
+  try {
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || timezone;
+  } catch {}
+  const currency =
+    timezone === "Asia/Dubai" ? "AED"
+    : timezone === "Europe/London" ? "GBP"
+    : timezone.startsWith("America/") ? "USD"
+    : "INR";
+  return { timezone, currency };
+}
+
+// The only setup step a new user sees. It's asked when they first open a
+// company app, so the question has an obvious reason. Creates the
+// organization, then opens the app they clicked.
+function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
+  const askBusinessType = app.key === "juicechatjunction";
   const [name, setName] = useState("");
+  const [businessType, setBusinessType] = useState("shop");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -405,37 +417,170 @@ function CreateOrganizationModal({ onClose, onCreated }) {
       setError("Enter your business name");
       return;
     }
+    // Opened synchronously, inside the click, then pointed at the app once
+    // its sign-in link is ready. Opening it after the awaits below would be
+    // treated as an unrequested pop-up and blocked.
+    const win = window.open("about:blank", "_blank");
     setBusy(true);
     setError("");
     try {
       const token = await auth.currentUser.getIdToken();
+      const { timezone, currency } = detectLocale();
       const r = await fetch("/api/organizations", {
         method: "POST",
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", name: name.trim() }),
+        body: JSON.stringify({
+          action: "create",
+          name: name.trim(),
+          timezone,
+          currency,
+          // POS is the shop billing counter, so opening it implies a shop.
+          businessType: askBusinessType ? businessType : app.key === "pos" ? "shop" : undefined,
+        }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Couldn't set up your business");
-      onCreated();
+
+      // Email/mobile verification is only enforced by the dashboard's
+      // gates, not by the SSO hand-off, so an account that still has to
+      // verify goes back to the dashboard (which now shows the gate)
+      // instead of straight into the app.
+      const cSnap = await getDoc(doc(db, "customers", auth.currentUser.uid));
+      const c = cSnap.exists() ? cSnap.data() : {};
+      const v = deriveVerificationFlags(c);
+      if ((v.verifyEmailRequired && !auth.currentUser.emailVerified) || (v.verifyMobileRequired && !c.phoneVerified)) {
+        if (win) win.close();
+        window.location.reload();
+        return;
+      }
+
+      const s = await fetch(app.ssoEndpoint || "/api/shop-sso", { headers: { Authorization: "Bearer " + token } });
+      const sd = await s.json();
+      if (!s.ok) throw new Error(sd.error || "Your business is set up, but " + app.name + " couldn't open. Try it again from the dashboard.");
+
+      if (win) {
+        win.opener = null;
+        win.location.href = sd.url;
+        window.location.reload();
+      } else {
+        window.location.href = sd.url;
+      }
     } catch (e2) {
+      if (win) win.close();
       setError(e2.message);
       setBusy(false);
     }
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={busy ? undefined : onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+        <div className="onboarding-hi">{app.icon} {app.name}</div>
+        <h2 style={{ marginBottom: 4 }}>What's your business called?</h2>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
+          Just this once, then {app.name} opens. It's also how your team will see you when you invite them.
+        </p>
+
+        {pendingInvite && (
+          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13 }}>
+            You already have an invite to <strong>{pendingInvite.orgName}</strong>. If that's your workplace,{" "}
+            <button type="button" className="link-btn" onClick={onAcceptInvite}>join it instead</button>.
+          </div>
+        )}
+
+        <form onSubmit={submit} noValidate>
+          <div style={{ marginBottom: 14 }}>
+            <label className="label">Business name *</label>
+            <input
+              className="input" value={name} onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Thilak Traders" autoFocus required
+            />
+          </div>
+          {askBusinessType && (
+            <div style={{ marginBottom: 14 }}>
+              <label className="label">What kind of business is it?</label>
+              <select className="input" value={businessType} onChange={(e) => setBusinessType(e.target.value)}>
+                {BUSINESS_TYPES.map((b) => (
+                  <option key={b.value} value={b.value}>{b.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
+            Free to try, no card needed. You can change the name later in your Profile.
+          </p>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn-outline-dark" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn-primary" disabled={busy}>{busy ? "Opening…" : `Open ${app.name}`}</button>
+          </div>
+          {error && <p className="error">{error}</p>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Asked once, the first time an owner opens Bizzux Business when their org
+// was set up from some other app (whose quick setup doesn't ask this).
+// bizzux-shop only takes the business type on its first sign-in, so it has
+// to be settled before that hand-off.
+function BusinessTypeModal({ user, app, onClose, onSaved }) {
+  const [businessType, setBusinessType] = useState("shop");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    // Same pop-up-blocker reasoning as QuickSetupModal.
+    const win = window.open("about:blank", "_blank");
+    setBusy(true);
+    setError("");
+    try {
+      const token = await user.getIdToken();
+      const r = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ businessTypeOnly: true, businessType }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Couldn't save that");
+      onSaved(businessType);
+
+      const s = await fetch(app.ssoEndpoint || "/api/shop-sso", { headers: { Authorization: "Bearer " + token } });
+      if (s.status === 402) throw new Error("Your trial has ended. Choose a plan to keep using Bizzux apps.");
+      const sd = await s.json();
+      if (!s.ok) throw new Error(sd.error || "Couldn't open " + app.name + " right now");
+      if (win) {
+        win.opener = null;
+        win.location.href = sd.url;
+      } else {
+        window.location.href = sd.url;
+      }
+      onClose();
+    } catch (e2) {
+      if (win) win.close();
+      setError(e2.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={busy ? undefined : onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <h2 style={{ marginBottom: 6 }}>Set up your business</h2>
-        <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>You can change this later.</p>
+        <div className="onboarding-hi">🏪 Bizzux Business</div>
+        <h2 style={{ marginBottom: 4 }}>What kind of business is it?</h2>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>So Bizzux Business shows the right tools for you.</p>
         <form onSubmit={submit} noValidate>
           <div style={{ marginBottom: 16 }}>
-            <label className="label">Business name *</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Thilak Traders" autoFocus required />
+            <select className="input" value={businessType} onChange={(e) => setBusinessType(e.target.value)} autoFocus>
+              {BUSINESS_TYPES.map((b) => (
+                <option key={b.value} value={b.value}>{b.label}</option>
+              ))}
+            </select>
           </div>
           <div className="row" style={{ justifyContent: "flex-end" }}>
-            <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
-            <button className="btn-primary" disabled={busy}>{busy ? "Setting up…" : "Continue"}</button>
+            <button type="button" className="btn-outline-dark" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn-primary" disabled={busy}>{busy ? "Saving…" : "Continue"}</button>
           </div>
           {error && <p className="error">{error}</p>}
         </form>
@@ -523,6 +668,8 @@ function DashboardInner() {
   // Shown instead of opening a live app when canAccessApps() (below) says
   // this account's trial has ended or its plan has lapsed.
   const [showLockedModal, setShowLockedModal] = useState(false);
+  // Set to the Bizzux Business app entry while BusinessTypeModal is open.
+  const [businessTypeApp, setBusinessTypeApp] = useState(null);
 
   useEffect(() => {
     if (searchParams.get("checkout") === "success") {
@@ -629,6 +776,12 @@ function DashboardInner() {
       window.open(a.url, "_blank", "noopener,noreferrer");
       return;
     }
+    // Org was set up from another app's quick setup, which doesn't ask for
+    // a business type. Ask now, before bizzux-shop's first sign-in seeds it.
+    if (a.key === "juicechatjunction" && isOwner && customer.businessTypePending) {
+      setBusinessTypeApp(a);
+      return;
+    }
     setOpeningKey(a.key);
     try {
       const token = await user.getIdToken();
@@ -660,13 +813,16 @@ function DashboardInner() {
         <div className="trial-banner">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <IconClock className="w-4 h-4" />
-            {remaining} day{remaining === 1 ? "" : "s"} left on your free trial. Enjoy exploring!
+            Free trial: all apps unlocked for {remaining} more day{remaining === 1 ? "" : "s"}. No card needed.
           </span>
-          {/* Keyed on `remaining` so the CTA remounts (and its two-burst
-              animation replays) whenever the day-count changes, most
-              notably when the trial reaches its final day, instead of
-              looping forever on every render. */}
-          <Link key={"trial-cta-" + remaining} href="/pricing" className="trial-banner-cta">Choose a plan →</Link>
+          {/* Only in the last week. Shown (and animated) from day one, it
+              read as "you have to pay before you can use this", and new
+              users were reaching out about being asked for a subscription.
+              Keyed on `remaining` so the CTA remounts (and its two-burst
+              animation replays) whenever the day-count changes. */}
+          {remaining <= 7 && (
+            <Link key={"trial-cta-" + remaining} href="/pricing" className="trial-banner-cta">Choose a plan →</Link>
+          )}
         </div>
       )}
       {/* Super Admin always has full access (see appsLocked above), so
@@ -687,11 +843,11 @@ function DashboardInner() {
 
       <div className="dash-body">
         <h1 className="dash-heading">
-          Welcome back{customer.companyName ? `, ${customer.companyName}` : ""}!
+          Welcome{customer.companyName ? `, ${customer.companyName}` : ""}!
         </h1>
         <OrgSwitcher />
         <p className="dash-sub" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span className={"status-pill " + status}>{status === "trial" ? "Trial" : status === "active" ? "Active" : "Expired"}</span>
+          <span className={"status-pill " + status}>{status === "trial" ? "Free trial" : status === "active" ? "Active" : "Expired"}</span>
           {customer.planName ? (
             <span
               style={{
@@ -702,7 +858,7 @@ function DashboardInner() {
             >
               Plan: {customer.planName}
             </span>
-          ) : (
+          ) : status === "trial" && !expired ? null : (
             <Link href="/pricing" className="btn-primary-sm">Choose a plan</Link>
           )}
         </p>
@@ -748,8 +904,16 @@ function DashboardInner() {
         </div>
       </div>
 
-      {isOwner && customer.onboarded !== true && (
-        <OnboardingModal user={user} organizationName={customer.organizationName} onDone={() => reloadCustomer(accountId)} />
+      {/* OnboardingModal used to pop up here on an owner's first visit.
+          Setup is now the single question asked when someone first opens
+          a company app (QuickSetupModal); a second form asking for the
+          same name again was one of the things confusing new users. */}
+      {businessTypeApp && (
+        <BusinessTypeModal
+          user={user} app={businessTypeApp}
+          onClose={() => setBusinessTypeApp(null)}
+          onSaved={(businessType) => setCustomer((c) => ({ ...c, businessType, businessTypePending: false }))}
+        />
       )}
 
       {showCheckoutSuccess && (

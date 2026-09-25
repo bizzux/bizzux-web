@@ -27,7 +27,7 @@ const USE_CASES = [
 // "shop" (retail/food POS) is the original, default experience; the other
 // three unlock the Enquiry -> Quotation -> Invoice billing module instead
 // (see bizzux-shop's app/admin/page.js, gated on settings.businessType).
-const BUSINESS_TYPES = [
+export const BUSINESS_TYPES = [
   { value: "shop", label: "Shop (retail / food counter, POS)" },
   { value: "travel", label: "Travel agency" },
   { value: "medical", label: "Medical / clinic" },
