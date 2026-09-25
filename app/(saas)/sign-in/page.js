@@ -206,6 +206,9 @@ export default function LoginPage() {
     } catch (err) {
       if (mode === "signup" && err?.code === "auth/email-already-in-use") {
         setError("Looks like you already have an account with this email. Try signing in instead.");
+      } else if (err?.code === "auth/user-disabled") {
+        // Closed by the Platform Owner (recoverable for 60 days).
+        setError("This account has been closed. If you think this is a mistake, contact sales@bizzux.com to get it back.");
       } else if (mode === "signup" && err?.code === "auth/weak-password") {
         setError("Password must be at least 8 characters.");
       } else {

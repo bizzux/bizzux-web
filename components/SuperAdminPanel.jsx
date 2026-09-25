@@ -31,7 +31,7 @@ const TABS = [
   { id: "security", label: "Security Settings" },
   { id: "storage", label: "Storage" },
   // Platform Owner only; filtered out of the tab bar for Platform Admins.
-  { id: "deleteuser", label: "Delete User", ownerOnly: true },
+  { id: "deleteuser", label: "Delete & Recover", ownerOnly: true },
 ];
 
 async function api(path, method, body) {
@@ -128,11 +128,7 @@ export default function SuperAdminPanel() {
       {tab === "auditlogs" && <AuditLogsPanel />}
       {tab === "security" && <SecuritySettingsPanel />}
       {tab === "storage" && <BlobCleanupPanel />}
-      {tab === "deleteuser" && platformRole === "OWNER" && (
-        <div className="card" style={{ maxWidth: 640 }}>
-          <DeleteUserPanel />
-        </div>
-      )}
+      {tab === "deleteuser" && platformRole === "OWNER" && <UsersLifecycleTab />}
     </div>
   );
 }
@@ -143,22 +139,27 @@ export default function SuperAdminPanel() {
 function DeleteUserPanel({ initialEmail = "", onDeleted }) {
   const [email, setEmail] = useState(initialEmail);
   const [info, setInfo] = useState(null);
+  const [recoveryDays, setRecoveryDays] = useState(60);
+  const [mode, setMode] = useState(null); // null | "close" | "delete"
   const [confirmEmail, setConfirmEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState("");
 
-  async function lookUp(e) {
+  async function lookUp(e, emailArg) {
     e && e.preventDefault();
+    const target = (emailArg ?? email).trim();
     setErr("");
     setDone("");
     setInfo(null);
+    setMode(null);
     setConfirmEmail("");
-    if (!email.trim()) return;
+    if (!target) return;
     setBusy(true);
     try {
-      const d = await api("/api/admin/users?email=" + encodeURIComponent(email.trim()), "GET");
+      const d = await api("/api/admin/users?email=" + encodeURIComponent(target), "GET");
       setInfo(d.user);
+      if (d.recoveryDays) setRecoveryDays(d.recoveryDays);
     } catch (e2) {
       setErr(e2.message);
     }
@@ -169,15 +170,30 @@ function DeleteUserPanel({ initialEmail = "", onDeleted }) {
     if (initialEmail) lookUp();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function doDelete() {
+  async function run(action) {
     setBusy(true);
     setErr("");
     try {
-      await api("/api/admin/users", "POST", { action: "delete", email: info.email, confirmEmail });
-      setDone(info.email + " was deleted. That email can now sign up again as a brand-new user.");
-      setInfo(null);
+      const d = await api("/api/admin/users", "POST", { action, email: info.email, confirmEmail });
+      if (action === "delete") {
+        const r = d.report || {};
+        setDone(
+          `${info.email} was deleted everywhere (${r.docs || 0} records, ${r.blobs || 0} uploaded files` +
+            (r.shopDocs ? `, ${r.shopDocs} Bizzux Business records` : "") +
+            "). That email can now sign up again as a brand-new user." +
+            (r.skipped?.length ? " Not reached: " + r.skipped.join("; ") + "." : "")
+        );
+        setInfo(null);
+        setEmail("");
+      } else if (action === "close") {
+        setDone(`${info.email} is closed. They can't sign in, and their data is kept for ${recoveryDays} days in case you need to recover it.`);
+        await lookUp(null, info.email);
+      } else if (action === "recover") {
+        setDone(`${info.email} is recovered and can sign in again, with everything as it was.`);
+        await lookUp(null, info.email);
+      }
+      setMode(null);
       setConfirmEmail("");
-      setEmail("");
       onDeleted && onDeleted();
     } catch (e2) {
       setErr(e2.message);
@@ -186,14 +202,16 @@ function DeleteUserPanel({ initialEmail = "", onDeleted }) {
   }
 
   const fmt = (iso) => (iso ? new Date(iso).toLocaleString() : "N/A");
+  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString() : "N/A");
   const confirmed = info && confirmEmail.trim().toLowerCase() === info.email.toLowerCase();
 
   return (
     <div>
-      <h3 style={{ fontSize: 15, marginBottom: 6 }}>Delete a user</h3>
+      <h3 style={{ fontSize: 15, marginBottom: 6 }}>Close, recover or delete a user</h3>
       <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
-        Permanently removes a sign-in and its Bizzux account records, so the same email can register again as a new
-        user. Useful for testing sign-up and onboarding. This can&apos;t be undone.
+        <strong>Close</strong> blocks sign-in and every app now but keeps all data for {recoveryDays} days, so you can
+        recover it. <strong>Delete now</strong> wipes everything immediately (best for test accounts) and frees the email
+        to sign up again.
       </p>
 
       <form onSubmit={lookUp} className="row" style={{ gap: 8, marginBottom: 14 }}>
@@ -204,58 +222,175 @@ function DeleteUserPanel({ initialEmail = "", onDeleted }) {
         <button className="btn-small" disabled={busy || !email.trim()}>{busy && !info ? "Looking up…" : "Look up"}</button>
       </form>
 
-      {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
-      {done && <p style={{ color: "#16a34a", fontSize: 13, marginBottom: 12 }}>{done}</p>}
+      {err && <p className="error" style={{ marginBottom: 12, overflowWrap: "anywhere" }}>{err}</p>}
+      {done && <p style={{ color: "#15803d", fontSize: 13, marginBottom: 12 }}>{done}</p>}
 
       {info && (
         <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 14 }}>
-          <div style={{ fontWeight: 700 }}>{info.displayName || info.email}</div>
-          <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{info.email}</div>
-          <div className="row" style={{ gap: 22, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>{info.displayName || info.email}</div>
+              <div className="muted" style={{ fontSize: 13 }}>{info.email}</div>
+            </div>
+            {info.closed && <span className="status-pill expired">Closed</span>}
+          </div>
+          <div className="row" style={{ gap: 22, flexWrap: "wrap", fontSize: 13, margin: "10px 0 12px" }}>
             <div><div className="label">Signed up</div>{fmt(info.createdAt)}</div>
             <div><div className="label">Last login</div>{fmt(info.lastLoginAt)}</div>
+            <div>
+              <div className="label">Business</div>
+              {info.ownsBusiness
+                ? `${info.ownsBusiness.organizationName || "(unnamed)"} · ${info.ownsBusiness.status}` +
+                  (info.ownsBusiness.teamCount ? ` · team of ${info.ownsBusiness.teamCount}` : "")
+                : info.memberOf
+                  ? `Team member of ${info.memberOf.organizationName || "another business"}`
+                  : "None yet"}
+            </div>
           </div>
 
-          <div className="label" style={{ marginBottom: 4 }}>Will be deleted</div>
-          <ul style={{ fontSize: 13, lineHeight: 1.7, paddingLeft: 18, margin: "0 0 12px" }}>
-            <li>Their sign-in (they&apos;ll be signed out everywhere)</li>
-            {info.ownsBusiness ? (
-              <li>
-                Their business <strong>{info.ownsBusiness.organizationName || "(unnamed)"}</strong> ({info.ownsBusiness.status})
-                {info.ownsBusiness.teamCount > 0 &&
-                  ` and its team list of ${info.ownsBusiness.teamCount}. Those team members keep their own logins but lose access to this business`}
-              </li>
-            ) : (
-              <li>They haven&apos;t set up a business yet</li>
-            )}
-            {info.memberOf && (
-              <li>Their place on the team of <strong>{info.memberOf.organizationName || "another business"}</strong></li>
-            )}
-          </ul>
-          <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
-            Data saved inside the apps (CRM records, notes, files, shop sales) isn&apos;t wiped, but nothing can reach it any
-            more. A new sign-up with this email always starts completely empty.
-          </p>
+          {info.closed && (
+            <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: 10, fontSize: 13, marginBottom: 12 }}>
+              Closed on {fmtDate(info.closed.closedAt)}. Everything is wiped automatically on{" "}
+              <strong>{fmtDate(info.closed.purgeAfter)}</strong> unless you recover it first.
+            </div>
+          )}
 
           {info.blockedReason ? (
             <p className="error">{info.blockedReason}</p>
+          ) : mode === null ? (
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              {info.closed ? (
+                <button className="btn-primary-sm" disabled={busy} onClick={() => run("recover")}>
+                  {busy ? "Recovering…" : "Recover account"}
+                </button>
+              ) : (
+                <button className="btn-small" onClick={() => setMode("close")}>Close account (recoverable)</button>
+              )}
+              <button
+                className="btn-small" style={{ color: "var(--red)", borderColor: "#fca5a5" }}
+                onClick={() => setMode("delete")}
+              >
+                Delete now…
+              </button>
+            </div>
+          ) : mode === "close" ? (
+            <div>
+              <p style={{ fontSize: 13, marginBottom: 10 }}>
+                {info.email} will be signed out and blocked from every app right away
+                {info.ownsBusiness?.teamCount ? ", and so will their team" : ""}. Nothing is deleted for {recoveryDays} days.
+                After that it's wiped automatically.
+              </p>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn-small" onClick={() => setMode(null)} disabled={busy}>Cancel</button>
+                <button
+                  className="btn-small" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }}
+                  disabled={busy} onClick={() => run("close")}
+                >
+                  {busy ? "Closing…" : "Close account"}
+                </button>
+              </div>
+            </div>
           ) : (
-            <>
+            <div>
+              <div className="label" style={{ marginBottom: 4 }}>Deleted immediately, in every app</div>
+              <ul style={{ fontSize: 13, lineHeight: 1.7, paddingLeft: 18, margin: "0 0 10px" }}>
+                <li>Their sign-in, profile, Mail inbox and Assistant data</li>
+                {info.ownsBusiness && (
+                  <li>
+                    Business <strong>{info.ownsBusiness.organizationName || "(unnamed)"}</strong> with all its CRM, Notes,
+                    Files, Projects, Chat and Bizzux Business data and uploaded files
+                    {info.ownsBusiness.teamCount > 0 && ". Team members keep their own logins but lose this business"}
+                  </li>
+                )}
+                {info.memberOf && <li>Their place on the team of {info.memberOf.organizationName || "another business"}</li>}
+              </ul>
+              <p className="error" style={{ fontSize: 12.5, marginBottom: 10 }}>This can't be undone.</p>
               <label className="label">Type <strong>{info.email}</strong> to confirm</label>
               <input
                 className="input" value={confirmEmail} onChange={(e) => setConfirmEmail(e.target.value)}
                 placeholder={info.email} style={{ marginBottom: 10 }}
               />
-              <button
-                type="button" className="btn-small" disabled={!confirmed || busy} onClick={doDelete}
-                style={confirmed ? { background: "#dc2626", color: "#fff" } : undefined}
-              >
-                {busy ? "Deleting…" : "Delete permanently"}
-              </button>
-            </>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn-small" onClick={() => setMode(null)} disabled={busy}>Cancel</button>
+                <button
+                  type="button" className="btn-small" disabled={!confirmed || busy} onClick={() => run("delete")}
+                  style={confirmed ? { background: "var(--red)", borderColor: "var(--red)", color: "#fff" } : undefined}
+                >
+                  {busy ? "Deleting…" : "Delete permanently"}
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Accounts closed but still recoverable, soonest wipe first.
+function ClosedAccountsList({ refreshKey, onPick }) {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api("/api/admin/users?closed=1", "GET");
+        setRows(d.closed || []);
+      } catch (e) {
+        setErr(e.message);
+        setRows([]);
+      }
+    })();
+  }, [refreshKey]);
+
+  if (rows === null) return <p className="muted">Loading closed accounts…</p>;
+  const daysLeft = (iso) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+  return (
+    <div>
+      <h3 style={{ fontSize: 15, marginBottom: 6 }}>Closed accounts</h3>
+      <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Still recoverable. Click one to recover it or delete it now.</p>
+      {err && <p className="error">{err}</p>}
+      {rows.length === 0 ? (
+        <p className="muted" style={{ margin: 0 }}>No closed accounts.</p>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead>
+              <tr><th>User</th><th>Business</th><th>Closed</th><th>Wiped in</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.uid} onClick={() => onPick(r.email)} style={{ cursor: "pointer" }}>
+                  <td>{r.email}</td>
+                  <td>{r.organizationName || <span className="muted">N/A</span>}</td>
+                  <td>{r.closedAt ? new Date(r.closedAt).toLocaleDateString() : "N/A"}</td>
+                  <td><strong>{daysLeft(r.purgeAfter)} days</strong></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The Platform Owner's "Delete & Recover" tab: the closed list plus the
+// look-up panel, wired so picking a closed row loads it into the panel.
+function UsersLifecycleTab() {
+  const [picked, setPicked] = useState({ email: "", n: 0 });
+  const [refreshKey, setRefreshKey] = useState(0);
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
+      <div className="card" style={{ flex: "1 1 460px", margin: 0 }}>
+        <DeleteUserPanel
+          key={picked.n} initialEmail={picked.email}
+          onDeleted={() => setRefreshKey((k) => k + 1)}
+        />
+      </div>
+      <div className="card" style={{ flex: "1 1 360px", margin: 0 }}>
+        <ClosedAccountsList refreshKey={refreshKey} onPick={(email) => setPicked((p) => ({ email, n: p.n + 1 }))} />
+      </div>
     </div>
   );
 }
@@ -789,6 +924,7 @@ function PlatformDashboard({ isOwner }) {
 }
 
 function StagePill({ user: u }) {
+  if (u.disabled || u.status === "closed") return <span className="status-pill expired">Closed</span>;
   if (u.kind === "none") return <span className="status-pill" style={{ background: "#f1f5f9", color: "#475569" }}>No business yet</span>;
   if (u.kind === "member") return <span className="status-pill" style={{ background: "#eef2ff", color: "#4338ca" }}>Team member</span>;
   const s = u.status || "trial";
