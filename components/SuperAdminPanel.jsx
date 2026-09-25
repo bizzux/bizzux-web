@@ -30,6 +30,8 @@ const TABS = [
   { id: "auditlogs", label: "Audit Logs" },
   { id: "security", label: "Security Settings" },
   { id: "storage", label: "Storage" },
+  // Platform Owner only; filtered out of the tab bar for Platform Admins.
+  { id: "deleteuser", label: "Delete User", ownerOnly: true },
 ];
 
 async function api(path, method, body) {
@@ -101,7 +103,7 @@ export default function SuperAdminPanel() {
       </div>
 
       <div className="admin-tabs" role="tablist">
-        {TABS.map((t) => (
+        {TABS.filter((t) => !t.ownerOnly || platformRole === "OWNER").map((t) => (
           <button
             key={t.id} role="tab" aria-selected={tab === t.id}
             className={"admin-tab" + (tab === t.id ? " active" : "")}
@@ -120,12 +122,140 @@ export default function SuperAdminPanel() {
       {tab === "planapps" && <PlanAppsManager />}
       {tab === "offers" && <OffersManager />}
       {tab === "resellers" && <ResellersManager />}
-      {tab === "customers" && <CustomersList />}
+      {tab === "customers" && <CustomersList isOwner={platformRole === "OWNER"} />}
       {tab === "organizations" && <OrganizationsManager />}
       {tab === "platformadmins" && <PlatformAdminsManager isOwner={platformRole === "OWNER"} />}
       {tab === "auditlogs" && <AuditLogsPanel />}
       {tab === "security" && <SecuritySettingsPanel />}
       {tab === "storage" && <BlobCleanupPanel />}
+      {tab === "deleteuser" && platformRole === "OWNER" && (
+        <div className="card" style={{ maxWidth: 640 }}>
+          <DeleteUserPanel />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Platform Owner -> Delete User (also opened from a customer's detail
+// panel). Look up by email, review exactly what goes, type the email to
+// confirm. See app/api/admin/users/route.js for what is and isn't removed.
+function DeleteUserPanel({ initialEmail = "", onDeleted }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [info, setInfo] = useState(null);
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState("");
+
+  async function lookUp(e) {
+    e && e.preventDefault();
+    setErr("");
+    setDone("");
+    setInfo(null);
+    setConfirmEmail("");
+    if (!email.trim()) return;
+    setBusy(true);
+    try {
+      const d = await api("/api/admin/users?email=" + encodeURIComponent(email.trim()), "GET");
+      setInfo(d.user);
+    } catch (e2) {
+      setErr(e2.message);
+    }
+    setBusy(false);
+  }
+
+  useEffect(() => {
+    if (initialEmail) lookUp();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function doDelete() {
+    setBusy(true);
+    setErr("");
+    try {
+      await api("/api/admin/users", "POST", { action: "delete", email: info.email, confirmEmail });
+      setDone(info.email + " was deleted. That email can now sign up again as a brand-new user.");
+      setInfo(null);
+      setConfirmEmail("");
+      setEmail("");
+      onDeleted && onDeleted();
+    } catch (e2) {
+      setErr(e2.message);
+    }
+    setBusy(false);
+  }
+
+  const fmt = (iso) => (iso ? new Date(iso).toLocaleString() : "N/A");
+  const confirmed = info && confirmEmail.trim().toLowerCase() === info.email.toLowerCase();
+
+  return (
+    <div>
+      <h3 style={{ fontSize: 15, marginBottom: 6 }}>Delete a user</h3>
+      <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+        Permanently removes a sign-in and its Bizzux account records, so the same email can register again as a new
+        user. Useful for testing sign-up and onboarding. This can&apos;t be undone.
+      </p>
+
+      <form onSubmit={lookUp} className="row" style={{ gap: 8, marginBottom: 14 }}>
+        <input
+          className="input" type="email" placeholder="user@example.com" value={email}
+          onChange={(e) => setEmail(e.target.value)} style={{ flex: 1 }}
+        />
+        <button className="btn-small" disabled={busy || !email.trim()}>{busy && !info ? "Looking up…" : "Look up"}</button>
+      </form>
+
+      {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+      {done && <p style={{ color: "#16a34a", fontSize: 13, marginBottom: 12 }}>{done}</p>}
+
+      {info && (
+        <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 14 }}>
+          <div style={{ fontWeight: 700 }}>{info.displayName || info.email}</div>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{info.email}</div>
+          <div className="row" style={{ gap: 22, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
+            <div><div className="label">Signed up</div>{fmt(info.createdAt)}</div>
+            <div><div className="label">Last login</div>{fmt(info.lastLoginAt)}</div>
+          </div>
+
+          <div className="label" style={{ marginBottom: 4 }}>Will be deleted</div>
+          <ul style={{ fontSize: 13, lineHeight: 1.7, paddingLeft: 18, margin: "0 0 12px" }}>
+            <li>Their sign-in (they&apos;ll be signed out everywhere)</li>
+            {info.ownsBusiness ? (
+              <li>
+                Their business <strong>{info.ownsBusiness.organizationName || "(unnamed)"}</strong> ({info.ownsBusiness.status})
+                {info.ownsBusiness.teamCount > 0 &&
+                  ` and its team list of ${info.ownsBusiness.teamCount}. Those team members keep their own logins but lose access to this business`}
+              </li>
+            ) : (
+              <li>They haven&apos;t set up a business yet</li>
+            )}
+            {info.memberOf && (
+              <li>Their place on the team of <strong>{info.memberOf.organizationName || "another business"}</strong></li>
+            )}
+          </ul>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+            Data saved inside the apps (CRM records, notes, files, shop sales) isn&apos;t wiped, but nothing can reach it any
+            more. A new sign-up with this email always starts completely empty.
+          </p>
+
+          {info.blockedReason ? (
+            <p className="error">{info.blockedReason}</p>
+          ) : (
+            <>
+              <label className="label">Type <strong>{info.email}</strong> to confirm</label>
+              <input
+                className="input" value={confirmEmail} onChange={(e) => setConfirmEmail(e.target.value)}
+                placeholder={info.email} style={{ marginBottom: 10 }}
+              />
+              <button
+                type="button" className="btn-small" disabled={!confirmed || busy} onClick={doDelete}
+                style={confirmed ? { background: "#dc2626", color: "#fff" } : undefined}
+              >
+                {busy ? "Deleting…" : "Delete permanently"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1549,7 +1679,7 @@ const DETAIL_TABS = [["account", "Account"], ["team", "Team"], ["activity", "Sho
 // modeled on how tools like Microsoft 365 admin center show one person's
 // full picture in a single slide-over instead of a dropdown of one-off
 // actions. Quick actions live inline per tab instead of a "⋯" menu.
-function CustomerDetailPanel({ customer, onClose, onChanged }) {
+function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
   const [tab, setTab] = useState("account");
   const [admins, setAdmins] = useState(null);
   const [activity, setActivity] = useState(null);
@@ -1561,6 +1691,7 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
   const [guestSeatsInput, setGuestSeatsInput] = useState(customer.guestSeats || 0);
   const [savingGuestSeats, setSavingGuestSeats] = useState(false);
   const [openingApp, setOpeningApp] = useState(null);
+  const [showDelete, setShowDelete] = useState(false);
 
   async function loadAdmins() {
     try {
@@ -1653,6 +1784,22 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
 
   return (
     <>
+      {showDelete && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setShowDelete(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560, width: "100%" }}>
+            <DeleteUserPanel
+              initialEmail={customer.email}
+              onDeleted={() => {
+                onChanged && onChanged();
+                onClose();
+              }}
+            />
+            <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+              <button type="button" className="btn-outline-dark" onClick={() => setShowDelete(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="modal-overlay" onClick={onClose}>
         <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640, width: "100%" }}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -1703,6 +1850,9 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
                 <button className="btn-small" onClick={() => setShowSetPassword(true)}>Set new password directly</button>
                 <button className="btn-small" disabled={busyUid === customer.id} onClick={() => revokeSessions(customer.id)}>Sign out of all devices</button>
                 <button className="btn-ghost" onClick={toggleSuspend}>{customer.status === "suspended" ? "Reactivate" : "Suspend"}</button>
+                {isOwner && (
+                  <button className="btn-ghost" style={{ color: "var(--red)" }} onClick={() => setShowDelete(true)}>Delete user…</button>
+                )}
               </div>
 
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
@@ -1822,7 +1972,7 @@ function CustomerDetailPanel({ customer, onClose, onChanged }) {
   );
 }
 
-function CustomersList() {
+function CustomersList({ isOwner }) {
   const [customers, setCustomers] = useState(null);
   const [viewingDetail, setViewingDetail] = useState(null); // customer row, or null
   const [err, setErr] = useState("");
@@ -1924,7 +2074,7 @@ function CustomersList() {
       )}
 
       {viewingDetail && (
-        <CustomerDetailPanel customer={viewingDetail} onClose={() => setViewingDetail(null)} onChanged={load} />
+        <CustomerDetailPanel customer={viewingDetail} isOwner={isOwner} onClose={() => setViewingDetail(null)} onChanged={load} />
       )}
     </div>
   );
