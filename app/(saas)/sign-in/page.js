@@ -87,7 +87,21 @@ export default function LoginPage() {
     } else if (result?.twoFactorEnabled && sessionStorage.getItem("2fa_verified") !== "true") {
       router.push("/verify-2fa");
     } else {
-      router.push("/dashboard");
+      router.push((await isPlatformAdmin()) ? "/admin" : "/dashboard");
+    }
+  }
+
+  // Platform Owner/Admins land on the admin dashboard (new sign-ups,
+  // trials, etc.) instead of the customer dashboard. Their own business
+  // dashboard is still one click away in the nav.
+  async function isPlatformAdmin() {
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + token } });
+      const d = await r.json();
+      return d.platformRole === "OWNER" || d.platformRole === "ADMIN";
+    } catch {
+      return false;
     }
   }
 

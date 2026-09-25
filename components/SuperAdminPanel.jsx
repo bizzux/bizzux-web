@@ -114,7 +114,7 @@ export default function SuperAdminPanel() {
         ))}
       </div>
 
-      {tab === "dashboard" && <PlatformDashboard />}
+      {tab === "dashboard" && <PlatformDashboard isOwner={platformRole === "OWNER"} />}
       {tab === "business" && <BusinessHealthPanel isOwner={platformRole === "OWNER"} />}
       {tab === "trial" && <TrialSettings />}
       {tab === "plans" && <PlansManager />}
@@ -528,50 +528,400 @@ function BusinessHealthPanel({ isOwner }) {
   );
 }
 
-function PlatformDashboard() {
-  const [customers, setCustomers] = useState(null);
+// Platform Admin landing view. Built on /api/admin/signups (every sign-in,
+// including people who never set up a business) rather than the customers
+// list, so the sign-up -> business -> app -> paid drop-off is visible.
+// Every tile is also a filter: click it to list exactly those users below,
+// then click a user to open their details.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const RANGES = [7, 30, 90];
 
+function daysUntil(iso) {
+  if (!iso) return null;
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / DAY_MS);
+}
+
+function PlatformDashboard({ isOwner }) {
+  const [users, setUsers] = useState(null);
+  const [customers, setCustomers] = useState([]);
+  const [err, setErr] = useState("");
+  const [range, setRange] = useState(30);
+  const [view, setView] = useState("new");
+  const [search, setSearch] = useState("");
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+
+  async function load() {
+    setErr("");
+    try {
+      const [s, c] = await Promise.all([api("/api/admin/signups", "GET"), api("/api/admin/customers", "GET")]);
+      setUsers(s.users || []);
+      setCustomers(c.customers || []);
+    } catch (e) {
+      setErr(e.message);
+      setUsers([]);
+    }
+  }
   useEffect(() => {
-    (async () => {
-      try {
-        const d = await api("/api/admin/customers", "GET");
-        setCustomers(d.customers || []);
-      } catch {
-        setCustomers([]);
-      }
-    })();
+    load();
   }, []);
 
-  if (customers === null) return <p className="muted">Loading…</p>;
+  if (users === null) return <p className="muted">Loading…</p>;
 
-  const counts = { trial: 0, active: 0, suspended: 0, other: 0 };
-  customers.forEach((c) => {
-    const s = c.status || "trial";
-    if (counts[s] !== undefined) counts[s]++;
-    else counts.other++;
-  });
-  const soon = customers.filter((c) => {
-    if ((c.status || "trial") !== "trial" || !c.trialEndDate) return false;
-    const days = Math.ceil((new Date(c.trialEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    return days >= 0 && days <= 3;
-  }).length;
+  const since = Date.now() - range * DAY_MS;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const people = users.filter((u) => u.kind !== "platform");
+  const isNew = (u) => u.createdAt && new Date(u.createdAt).getTime() >= since;
+  const hasBiz = (u) => u.kind === "owner" || u.kind === "member";
 
-  const cards = [
-    { label: "Organizations", value: customers.length },
-    { label: "Active subscriptions", value: counts.active },
-    { label: "On trial", value: counts.trial },
-    { label: "Trial ending in 3 days", value: soon },
-    { label: "Suspended", value: counts.suspended },
+  const VIEWS = {
+    new: { label: `New sign-ups (last ${range} days)`, test: isNew },
+    all: { label: "All users", test: () => true },
+    nobiz: { label: "Signed up, no business yet", test: (u) => u.kind === "none" },
+    biz: { label: "Set up or joined a business", test: hasBiz },
+    apps: { label: "Opened at least one app", test: (u) => u.kind === "owner" && u.appsUsed.length > 0 },
+    paid: { label: "Paid businesses", test: (u) => u.kind === "owner" && u.status === "active" },
+    ending: {
+      label: "Trial ends within 3 days",
+      test: (u) => {
+        const d = daysUntil(u.trialEndDate);
+        return u.kind === "owner" && u.status === "trial" && d !== null && d >= 0 && d <= 3;
+      },
+    },
+    suspended: { label: "Suspended", test: (u) => u.kind === "owner" && u.status === "suspended" },
+  };
+  const count = (key) => people.filter(VIEWS[key].test).length;
+  const pct = (n, d) => (d ? Math.round((n / d) * 100) : 0);
+
+  const newCount = count("new");
+  const todayCount = people.filter((u) => u.createdAt && new Date(u.createdAt) >= startOfToday).length;
+  const nobiz = count("nobiz");
+
+  const tiles = [
+    { key: "new", label: `New sign-ups · ${range}d`, value: newCount, sub: `${todayCount} today` },
+    { key: "all", label: "Total users", value: people.length, sub: "all time" },
+    { key: "nobiz", label: "No business yet", value: nobiz, sub: `${pct(nobiz, people.length)}% of users` },
+    { key: "biz", label: "Set up a business", value: count("biz"), sub: `${pct(count("biz"), people.length)}% of users` },
+    { key: "apps", label: "Opened an app", value: count("apps"), sub: "business owners" },
+    { key: "paid", label: "Paid", value: count("paid"), sub: "active subscriptions" },
+    { key: "ending", label: "Trial ending ≤ 3 days", value: count("ending"), sub: "follow up now" },
+    { key: "suspended", label: "Suspended", value: count("suspended"), sub: "blocked from apps" },
   ];
 
+  // Sign-ups per day across the selected range, oldest first.
+  const days = [];
+  for (let i = range - 1; i >= 0; i--) {
+    const d = new Date(startOfToday.getTime() - i * DAY_MS);
+    days.push({ date: d, total: 0, withBiz: 0 });
+  }
+  people.forEach((u) => {
+    if (!u.createdAt) return;
+    const t = new Date(u.createdAt);
+    t.setHours(0, 0, 0, 0);
+    const idx = Math.round((t.getTime() - days[0].date.getTime()) / DAY_MS);
+    if (idx >= 0 && idx < days.length) {
+      days[idx].total++;
+      if (hasBiz(u)) days[idx].withBiz++;
+    }
+  });
+
+  const funnel = [
+    { label: "Signed up", value: people.length },
+    { label: "Set up or joined a business", value: count("biz") },
+    { label: "Opened an app", value: count("apps") },
+    { label: "Paid", value: count("paid") },
+  ];
+
+  const q = search.trim().toLowerCase();
+  const list = people
+    .filter(VIEWS[view].test)
+    .filter((u) => !q || [u.name, u.email, u.organizationName, u.city, u.country].some((v) => v && v.toLowerCase().includes(q)));
+
+  function openUser(u) {
+    const c = u.kind === "owner" ? customers.find((x) => x.id === u.uid) : null;
+    if (c) setSelectedCustomer(c);
+    else setSelectedUser(u);
+  }
+
   return (
-    <div className="proj-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
-      {cards.map((c) => (
-        <div key={c.label} className="card">
-          <p className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>{c.label}</p>
-          <p style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>{c.value}</p>
+    <div>
+      {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <h3 style={{ fontSize: 17, margin: 0 }}>Platform overview</h3>
+        <div className="row" style={{ gap: 6 }} role="group" aria-label="Date range">
+          {RANGES.map((r) => (
+            <button
+              key={r} type="button" onClick={() => setRange(r)}
+              className={r === range ? "btn-primary-sm" : "btn-small"}
+              aria-pressed={r === range}
+            >
+              Last {r} days
+            </button>
+          ))}
+          <button type="button" className="btn-ghost" onClick={load} title="Reload">↻ Refresh</button>
         </div>
-      ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12, marginBottom: 16 }}>
+        {tiles.map((t) => (
+          <button
+            key={t.key} type="button" onClick={() => setView(t.key)} aria-pressed={view === t.key}
+            className="card"
+            style={{
+              textAlign: "left", cursor: "pointer", padding: 16, margin: 0,
+              font: "inherit", color: "inherit", background: "#fff",
+              border: view === t.key ? "2px solid var(--teal)" : "1px solid var(--line)",
+            }}
+          >
+            <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>{t.label}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.1 }}>{t.value}</div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{t.sub}</div>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
+        <div className="card" style={{ margin: 0, flex: "2 1 420px", minWidth: 0 }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>New sign-ups per day</div>
+          <div className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>
+            {newCount} in the last {range} days. Hover a bar for details.
+          </div>
+          <SignupChart days={days} />
+        </div>
+        <div className="card" style={{ margin: 0, flex: "1 1 280px", minWidth: 0 }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>Where users drop off</div>
+          <div className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>All time, share of everyone who signed up</div>
+          {funnel.map((f) => (
+            <div key={f.label} style={{ marginBottom: 12 }}>
+              <div className="row" style={{ justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                <span>{f.label}</span>
+                <span style={{ fontWeight: 700 }}>
+                  {f.value} <span className="muted" style={{ fontWeight: 400 }}>· {pct(f.value, funnel[0].value)}%</span>
+                </span>
+              </div>
+              <div style={{ height: 10, background: "#f1f5f9", borderRadius: 999, overflow: "hidden" }}>
+                <div style={{ width: `${pct(f.value, funnel[0].value)}%`, minWidth: f.value ? 4 : 0, height: "100%", background: "var(--teal)", borderRadius: 999 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ margin: 0 }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 700 }}>{VIEWS[view].label}</div>
+            <div className="muted" style={{ fontSize: 12.5 }}>{list.length} user{list.length === 1 ? "" : "s"} · click a row to view</div>
+          </div>
+          <input
+            className="input" placeholder="Search name, email, business, city…" value={search}
+            onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 300 }}
+          />
+        </div>
+        {list.length === 0 ? (
+          <p className="muted" style={{ margin: 0 }}>No users here.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>User</th><th>Signed up</th><th>Stage</th><th>Business</th><th>Apps used</th><th>Last login</th><th>Location</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((u) => (
+                  <tr key={u.uid} onClick={() => openUser(u)} style={{ cursor: "pointer" }}>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{u.name || u.email}</div>
+                      {u.name && <div className="muted" style={{ fontSize: 12 }}>{u.email}</div>}
+                    </td>
+                    <td title={u.createdAt ? new Date(u.createdAt).toLocaleString() : ""}>{timeAgo(u.createdAt)}</td>
+                    <td><StagePill user={u} /></td>
+                    <td>{u.organizationName || <span className="muted">N/A</span>}</td>
+                    <td>
+                      {u.appsUsed.length === 0 ? (
+                        <span className="muted" style={{ fontSize: 12 }}>None yet</span>
+                      ) : (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {u.appsUsed.map((k) => (
+                            <span key={k} className="status-pill active" style={{ fontSize: 11 }}>{APP_USAGE_LABELS[k] || k}</span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td title={u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : ""}>{timeAgo(u.lastLoginAt)}</td>
+                    <td>{[u.city, u.country].filter(Boolean).join(", ") || <span className="muted">N/A</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {selectedCustomer && (
+        <CustomerDetailPanel
+          customer={selectedCustomer} isOwner={isOwner}
+          onClose={() => setSelectedCustomer(null)} onChanged={load}
+        />
+      )}
+      {selectedUser && (
+        <UserDetailModal
+          user={selectedUser} isOwner={isOwner}
+          onClose={() => setSelectedUser(null)}
+          onOpenBusiness={(id) => {
+            const c = customers.find((x) => x.id === id);
+            if (c) {
+              setSelectedUser(null);
+              setSelectedCustomer(c);
+            }
+          }}
+          onDeleted={() => {
+            setSelectedUser(null);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function StagePill({ user: u }) {
+  if (u.kind === "none") return <span className="status-pill" style={{ background: "#f1f5f9", color: "#475569" }}>No business yet</span>;
+  if (u.kind === "member") return <span className="status-pill" style={{ background: "#eef2ff", color: "#4338ca" }}>Team member</span>;
+  const s = u.status || "trial";
+  return (
+    <span className={"status-pill " + (s === "suspended" ? "expired" : s)}>
+      {s === "trial" ? "Owner · trial" : s === "active" ? "Owner · paid" : "Owner · " + s}
+    </span>
+  );
+}
+
+// Single series, so no legend: the card title names it. Bars are anchored
+// to the baseline with rounded tops; each day has a full-height invisible
+// hit target so thin bars are still easy to hover.
+function SignupChart({ days }) {
+  const [hover, setHover] = useState(null);
+  const W = 720;
+  const H = 220;
+  const padL = 30;
+  const padB = 24;
+  const padT = 8;
+  const plotW = W - padL;
+  const plotH = H - padB - padT;
+  const max = Math.max(1, ...days.map((d) => d.total));
+  const niceMax = max <= 4 ? max : Math.ceil(max / 4) * 4;
+  const ticks = niceMax <= 4 ? Array.from({ length: niceMax + 1 }, (_, i) => i) : [0, niceMax / 4, niceMax / 2, (3 * niceMax) / 4, niceMax];
+  const slot = plotW / days.length;
+  const barW = Math.max(2, slot - 2);
+  const y = (v) => padT + plotH - (v / niceMax) * plotH;
+  const labelEvery = days.length <= 7 ? 1 : days.length <= 30 ? 5 : 15;
+  const fmt = (d) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+
+  function barPath(x, top, w, bottom) {
+    const h = bottom - top;
+    if (h <= 0) return "";
+    const r = Math.min(4, w / 2, h);
+    return `M${x},${bottom} V${top + r} Q${x},${top} ${x + r},${top} H${x + w - r} Q${x + w},${top} ${x + w},${top + r} V${bottom} Z`;
+  }
+
+  const hd = hover !== null ? days[hover] : null;
+  return (
+    <div style={{ position: "relative" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="New sign-ups per day" style={{ display: "block" }}>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={padL} x2={W} y1={y(t)} y2={y(t)} stroke="#e2e8f0" strokeWidth="1" />
+            <text x={padL - 6} y={y(t) + 4} textAnchor="end" fontSize="11" fill="#94a3b8">{t}</text>
+          </g>
+        ))}
+        {days.map((d, i) => {
+          const x = padL + i * slot + (slot - barW) / 2;
+          return (
+            <g key={i}>
+              <path d={barPath(x, y(d.total), barW, y(0))} fill="var(--teal)" opacity={hover === null || hover === i ? 1 : 0.45} />
+              {i % labelEvery === 0 && (
+                <text x={x + barW / 2} y={H - 6} textAnchor="middle" fontSize="11" fill="#94a3b8">{fmt(d.date)}</text>
+              )}
+              <rect
+                x={padL + i * slot} y={padT} width={slot} height={plotH} fill="transparent"
+                onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
+              />
+            </g>
+          );
+        })}
+      </svg>
+      {hd && (
+        <div
+          style={{
+            position: "absolute", top: 0, pointerEvents: "none",
+            left: `clamp(0px, calc(${((padL + (hover + 0.5) * slot) / W) * 100}% - 80px), calc(100% - 160px))`,
+            width: 160, background: "#0f172a", color: "#fff", borderRadius: 8, padding: "8px 10px", fontSize: 12,
+            boxShadow: "0 4px 12px rgba(15,23,42,0.2)",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>{hd.date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</div>
+          <div>{hd.total} sign-up{hd.total === 1 ? "" : "s"}</div>
+          <div style={{ opacity: 0.75 }}>{hd.withBiz} set up or joined a business</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// For users who don't own a business (no customers/ record, so the full
+// CustomerDetailPanel doesn't apply): the basics, plus a jump to the
+// business they belong to, and Delete for the Platform Owner.
+function UserDetailModal({ user: u, isOwner, onClose, onOpenBusiness, onDeleted }) {
+  const [showDelete, setShowDelete] = useState(false);
+  const fmt = (iso) => (iso ? new Date(iso).toLocaleString() : "N/A");
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560, width: "100%" }}>
+        {showDelete ? (
+          <DeleteUserPanel initialEmail={u.email} onDeleted={onDeleted} />
+        ) : (
+          <>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div>
+                <h2 style={{ marginBottom: 2 }}>{u.name || u.email}</h2>
+                <p className="muted" style={{ margin: 0, fontSize: 13 }}>{u.email}</p>
+              </div>
+              <StagePill user={u} />
+            </div>
+            <div className="row" style={{ gap: 22, flexWrap: "wrap", margin: "16px 0", fontSize: 13 }}>
+              <div><div className="label">Signed up</div>{fmt(u.createdAt)}</div>
+              <div><div className="label">Last login</div>{fmt(u.lastLoginAt)}</div>
+              <div><div className="label">Sign-in method</div>{u.provider}</div>
+              <div><div className="label">Email verified</div>{u.emailVerified ? "Yes" : "No"}</div>
+              <div><div className="label">Location</div>{[u.city, u.country].filter(Boolean).join(", ") || "N/A"}</div>
+            </div>
+            {u.kind === "none" && (
+              <p className="muted" style={{ fontSize: 13 }}>
+                Signed up but hasn't opened a company app yet, so no business has been set up.
+              </p>
+            )}
+            {u.kind === "member" && (
+              <p style={{ fontSize: 13 }}>
+                Team member of <strong>{u.organizationName || "a business"}</strong>.{" "}
+                <button type="button" className="link-btn" onClick={() => onOpenBusiness(u.organizationId)}>View that business</button>
+              </p>
+            )}
+          </>
+        )}
+        <div className="row" style={{ justifyContent: "space-between", marginTop: 16, gap: 8 }}>
+          {isOwner && !showDelete ? (
+            <button className="btn-small" style={{ color: "var(--red)", borderColor: "#fca5a5" }} onClick={() => setShowDelete(true)}>Delete user…</button>
+          ) : (
+            <span />
+          )}
+          <button type="button" className="btn-outline-dark" onClick={showDelete ? () => setShowDelete(false) : onClose}>
+            {showDelete ? "Back" : "Close"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
