@@ -5,32 +5,6 @@ import { snapshotMonthlyValue } from "@/lib/pricingMath";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Normalizes any billing period to a monthly figure so plans on different
-// cycles (day/week/month/year) can be summed into one MRR number. Every
-// plan doc itself is still priced monthly (billingPeriod stays "month") —
-// annual subscribers are tracked via the customer's own billingCycle (see
-// app/api/checkout/route.js and the webhook handlers), so their real
-// yearly price (plan.annualPrice, already net of the admin's annual
-// discount) is what gets divided by 12 here, not the monthly rate.
-function monthlyPrice(plan, billingCycle) {
-  if (!plan) return 0;
-  if (billingCycle === "year") {
-    const annual = Number(plan.annualPrice) || Number(plan.price) * 12 || 0;
-    return annual / 12;
-  }
-  const price = Number(plan.price) || 0;
-  switch (plan.billingPeriod) {
-    case "year":
-      return price / 12;
-    case "week":
-      return price * (52 / 12);
-    case "day":
-      return price * 30;
-    default:
-      return price; // "month"
-  }
-}
-
 // Rolling 12-week (84-day) signup trend, bucketed backward from "now" using
 // each customer's existing signup timestamp — no new tracking needed, just
 // a different grouping of the same createdAt already on every customer
@@ -58,20 +32,14 @@ function buildSignupTrend(customerDocsData) {
   });
 }
 
-// Super Admin only, same gate as the rest of /api/admin/*. Aggregates
-// straight from the customers/plans collections already used by
-// CustomersManager and PlansManager in SuperAdminPanel.jsx, so the numbers
-// here always match what's shown in Admin > Customers/Plans.
+// Super Admin only, same gate as the rest of /api/admin/*. Revenue comes from
+// each customer's own subscription price snapshot (lib/pricing.js), i.e.
+// what they actually agreed to pay, never from today's published price.
 export async function GET(req) {
   try {
     await requireSuperAdmin(req);
 
-    const [customersSnap, plansSnap] = await Promise.all([
-      adminDb().collection("customers").get(),
-      adminDb().collection("plans").get(),
-    ]);
-
-    const planById = new Map(plansSnap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+    const customersSnap = await adminDb().collection("customers").get();
 
     const byStatus = { trial: 0, active: 0, past_due: 0, cancelled: 0 };
     const byPlan = new Map(); // planId -> { planId, name, activeCount, monthlyRevenue }
@@ -87,12 +55,9 @@ export async function GET(req) {
       byStatus[status] = (byStatus[status] || 0) + 1;
 
       if (status === "active" && c.planId) {
-        const plan = planById.get(c.planId);
-        const name = c.planName || plan?.name || "Unknown plan";
+        const name = c.subscription?.planName || c.planName || "Unknown plan";
         const entry = byPlan.get(c.planId) || { planId: c.planId, name, activeCount: 0, monthlyRevenue: 0 };
-        // App/Suite subscribers carry the price they agreed to (lib/pricing.js);
-        // only older plan-based subscribers fall back to their plan doc.
-        const monthly = c.subscription ? snapshotMonthlyValue(c.subscription) : monthlyPrice(plan, c.billingCycle);
+        const monthly = snapshotMonthlyValue(c.subscription);
         entry.activeCount += 1;
         entry.monthlyRevenue += monthly;
         mrr += monthly;

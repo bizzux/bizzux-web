@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 // only be created from their Dashboard, not via API, which rules out a
 // self-service admin screen). Instead, redeeming a code auto-creates a
 // discounted-price Razorpay Plan / Stripe Price the same way regular plans
-// are created (lib/gatewayPlans.js) — the IDs get cached on razorpayPlanId
+// are created (lib/pricing.js getOrCreateGatewayPlan) — the IDs get cached on razorpayPlanId
 // / stripePriceId below so repeat redemptions of the same code reuse them
 // instead of creating a new discounted plan every time.
 const CODE_RE = /^[A-Z0-9_-]{3,32}$/;

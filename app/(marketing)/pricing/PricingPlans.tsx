@@ -8,7 +8,7 @@ import { db, auth } from "@/lib/firebase";
 import { CTAButton } from "@/components/Section";
 import { IconCheck } from "@/components/Icons";
 import {
-  appUnitPrices, cycleEnabled, purchasableApps, suiteApps, monthlyEquivalent, clampQuantity, formatMoney,
+  appUnitPrices, planPrices, cycleEnabled, purchasableApps, suiteApps, monthlyEquivalent, clampQuantity, formatMoney,
 } from "@/lib/pricingMath";
 import { TRIAL_POLICY_POINTS, TRIAL_CONTACT_URL, trialHeadline } from "@/lib/trialPolicy";
 
@@ -26,6 +26,14 @@ type Plan = {
   currency: string;
   monthlyPricePerUser: number;
   annualPricePerUser: number;
+  monthlyOfferPrice?: number | null;
+  annualOfferPrice?: number | null;
+  promotionEnabled?: boolean;
+  promotionLabel?: string;
+  promotionDescription?: string;
+  promotionStartDate?: string | null;
+  promotionEndDate?: string | null;
+  priceLockMonths?: number | null;
   monthlyBillingEnabled: boolean;
   annualBillingEnabled: boolean;
   discountLabel?: string;
@@ -47,6 +55,8 @@ type App = {
 };
 type Pricing = { plans: Plan[]; apps: App[]; settings: { usdRate: number; maxUsersPerCheckout: number }; trialDays: number };
 type Cycle = "month" | "year";
+type CyclePrice = { regular: number; price: number; onOffer: boolean; savings: number; discountPercent: number };
+type UnitPrices = { month: CyclePrice; year: CyclePrice };
 type Coupon = { valid: boolean; error?: string; discountedUnitPrice?: number; discountedTotal?: number };
 
 declare global {
@@ -142,13 +152,13 @@ export default function PricingPlans() {
     (customer.trialEndDate.toDate ? customer.trialEndDate.toDate() : new Date(customer.trialEndDate)).getTime() <= Date.now();
   const currentSub = status === "active" ? customer?.subscription || null : null;
 
-  function unitPricesFor(p: Plan) {
-    if (p.planType === "APP") {
-      // Before an app is picked, show the default Bizzux App price.
-      return selectedApp ? appUnitPrices(p, selectedApp) : { monthly: p.monthlyPricePerUser, annual: p.annualPricePerUser };
-    }
-    return { monthly: p.monthlyPricePerUser, annual: p.annualPricePerUser };
+  // Current selling prices (offer price while a promotion is live). Before
+  // an app is picked, the App card shows the default Bizzux App price.
+  function unitPricesFor(p: Plan): UnitPrices {
+    if (p.planType === "APP" && selectedApp) return appUnitPrices(p, selectedApp) as UnitPrices;
+    return planPrices(p) as UnitPrices;
   }
+  const appPlan = plans.find((p) => p.planType === "APP");
 
   async function applyCoupon() {
     const code = couponInput.trim();
@@ -303,7 +313,8 @@ export default function PricingPlans() {
         {plans.map((p) => {
           const prices = unitPricesFor(p);
           const offered: Cycle = cycleEnabled(p, cycle) ? cycle : cycle === "year" ? "month" : "year";
-          const unit = offered === "year" ? prices.annual : prices.monthly;
+          const cp = offered === "year" ? prices.year : prices.month;
+          const unit = cp.price;
           const otherCycle: Cycle = offered === "year" ? "month" : "year";
           const showOther = cycleEnabled(p, otherCycle);
           const coupon = offered === "month" ? coupons?.[p.planCode] : undefined;
@@ -314,7 +325,7 @@ export default function PricingPlans() {
           return (
             <div
               key={p.planCode}
-              className={`rounded-2xl p-7 border relative flex flex-col bg-white ${highlight ? "border-brand-blue shadow-lg" : "border-slate-200 shadow-sm"}`}
+              className={`rounded-2xl p-7 border relative flex flex-col bg-white ${highlight ? "border-2 border-brand-blue shadow-xl md:scale-[1.03]" : "border-slate-200 shadow-sm"}`}
             >
               {p.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white text-xs font-bold tracking-wide px-4 py-1">
@@ -324,17 +335,34 @@ export default function PricingPlans() {
               <h3 className="font-bold text-xl mb-1">{p.planName}</h3>
               {p.tagline && <p className="text-sm font-semibold text-brand-teal mb-4">{p.tagline}</p>}
 
+              {/* Same strike-through look the old plan cards used: orange
+                  crossed-out regular price, gradient offer pill, orange savings.
+                  Only shown while a real promotion is live (lib/pricingMath.js). */}
               <div className="mb-1 flex items-baseline gap-2 flex-wrap">
-                {coupon?.valid && <span className="text-lg font-bold text-[#FF4D00] line-through decoration-2">{money(unit)}</span>}
+                {(coupon?.valid || cp.onOffer) && (
+                  <span className="text-xl font-bold text-[#FF4D00] line-through decoration-2">{money(coupon?.valid ? unit : cp.regular)}</span>
+                )}
                 <span className="text-4xl font-extrabold">{money(chargeUnit)}</span>
                 <span className="text-slate-500 text-sm">/ user / {per}</span>
               </div>
+              {cp.onOffer && !coupon?.valid && (
+                <div className="flex items-center gap-2 mt-1.5 mb-2 flex-wrap">
+                  <span className="inline-block rounded-full bg-brand-gradient text-white text-[11px] font-bold px-3 py-1 tracking-wide uppercase">
+                    🔥 {cp.discountPercent}% {p.promotionLabel || "Launch Offer"}
+                  </span>
+                  <span className="text-xs font-semibold text-[#FF4D00]">Save {money(cp.savings)} per user/{per}</span>
+                </div>
+              )}
+              {cp.onOffer && p.promotionDescription && <p className="text-xs text-slate-500 mb-1">{p.promotionDescription}</p>}
+              {cp.onOffer && p.priceLockMonths ? (
+                <p className="text-xs text-slate-500 mb-1">Offer price locked for your first {p.priceLockMonths} months.</p>
+              ) : null}
               {offered === "year" ? (
                 <p className="text-sm text-slate-600 mb-1">
                   Equivalent to <strong>{money(monthlyEquivalent(unit))}</strong>/user/month
                 </p>
               ) : showOther ? (
-                <p className="text-sm text-slate-500 mb-1">or {money(prices.annual)} / user / year</p>
+                <p className="text-sm text-slate-500 mb-1">or {money(prices.year.price)} / user / year</p>
               ) : null}
               {(p.discountLabel || p.offerText) && p.annualBillingEnabled && (
                 <p className="text-xs font-semibold text-brand-teal mb-4">
@@ -343,7 +371,16 @@ export default function PricingPlans() {
               )}
               {coupon?.valid && <p className="text-xs font-semibold text-brand-teal mb-2">Promo code {couponCode} applied</p>}
 
-              {p.description && <p className="text-sm text-slate-600 mb-4">{p.description}</p>}
+              {p.description && <p className="text-sm text-slate-600 mb-3">{p.description}</p>}
+              {p.planType === "SUITE" && appPlan && (() => {
+                const appUnit = (planPrices(appPlan) as UnitPrices)[offered].price;
+                const diff = unit - appUnit;
+                return diff > 0 && cycleEnabled(appPlan, offered) ? (
+                  <p className="text-sm font-semibold text-ink mb-4">
+                    Get the complete Bizzux Suite for only {money(diff)} more than a single app.
+                  </p>
+                ) : null;
+              })()}
 
               {p.planType === "APP" ? (
                 <div className="mb-5">
@@ -355,7 +392,8 @@ export default function PricingPlans() {
                     <option value="">Select an app…</option>
                     {buyableApps.map((a) => {
                       const ap = appUnitPrices(p, a);
-                      const differs = ap.monthly !== p.monthlyPricePerUser || ap.annual !== p.annualPricePerUser;
+                      const base = planPrices(p) as UnitPrices;
+                      const differs = ap.monthly !== base.month.price || ap.annual !== base.year.price;
                       return (
                         <option key={a.appKey} value={a.appKey}>
                           {a.icon ? a.icon + " " : ""}{a.appName}{differs ? ` (${money(offered === "year" ? ap.annual : ap.monthly)}/user/${per})` : ""}

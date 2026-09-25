@@ -9,46 +9,33 @@ export const dynamic = "force-dynamic";
 
 // Bizzux's OWN running costs and breakeven math — for the Platform Owner/
 // Admins to manage Bizzux as a business, not anything a customer ever sees.
-// Deliberately separate from the customers/plans data this same file
+// Deliberately separate from the customer subscription data this same file
 // reads for its revenue side, and from portalSettings/config (product
 // configuration, not internal finances).
 //
 // Viewable by any Platform Admin or Owner (so staff can see the same
 // reality the Owner is planning against) but only the Owner can edit the
 // cost figures themselves — see the POST handler below.
-function monthlyPriceOf(plan) {
-  if (!plan) return 0;
-  const price = Number(plan.price) || 0;
-  switch (plan.billingPeriod) {
-    case "year": return (Number(plan.annualPrice) || price * 12) / 12;
-    case "week": return price * (52 / 12);
-    case "day": return price * 30;
-    default: return price; // "month"
-  }
-}
-
 export async function GET(req) {
   try {
     await requireSuperAdmin(req);
 
-    const [costsSnap, customersSnap, plansSnap] = await Promise.all([
+    const [costsSnap, customersSnap] = await Promise.all([
       adminDb().doc("platformFinance/costs").get(),
       adminDb().collection("customers").get(),
-      adminDb().collection("plans").get(),
     ]);
 
     const costs = costsSnap.exists ? costsSnap.data() : {};
     const recurring = Array.isArray(costs.recurring) ? costs.recurring : [];
     const oneTime = Array.isArray(costs.oneTime) ? costs.oneTime : [];
 
-    const planById = new Map(plansSnap.docs.map((d) => [d.id, d.data()]));
     let mrr = 0;
     let activeCount = 0;
     customersSnap.docs.forEach((d) => {
       const c = d.data();
       // Free licenses aren't revenue (see lib/trial.js isPayingCustomer).
       if (isPayingCustomer(c)) {
-        mrr += c.subscription ? snapshotMonthlyValue(c.subscription) : monthlyPriceOf(planById.get(c.planId));
+        mrr += snapshotMonthlyValue(c.subscription);
         activeCount += 1;
       }
     });

@@ -15,9 +15,22 @@ export const dynamic = "force-dynamic";
 
 const PLAN_FIELDS = [
   "planName", "tagline", "description", "currency", "monthlyPricePerUser", "annualPricePerUser",
+  "monthlyOfferPrice", "annualOfferPrice", "promotionEnabled", "promotionLabel", "promotionDescription",
+  "promotionStartDate", "promotionEndDate", "priceLockMonths",
   "monthlyBillingEnabled", "annualBillingEnabled", "discountLabel", "offerText", "badge", "ctaLabel",
   "active", "displayOrder",
 ];
+// Any change to these bumps the plan's priceVersion, which is stored on each
+// new subscription's snapshot.
+const PRICE_FIELDS = [
+  "currency", "monthlyPricePerUser", "annualPricePerUser", "monthlyOfferPrice", "annualOfferPrice",
+  "promotionEnabled", "promotionStartDate", "promotionEndDate", "priceLockMonths",
+];
+function dateOrNull(v, label) {
+  if (v === null || v === undefined || v === "") return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v))) throw { status: 400, message: `${label} must be a date` };
+  return String(v);
+}
 const APP_FIELDS = [
   "appName", "icon", "description", "overrideEnabled", "monthlyPriceOverride", "annualPriceOverride",
   "individualPurchaseEnabled", "suiteIncluded", "active", "displayOrder",
@@ -39,19 +52,40 @@ function cleanPlan(input, existing) {
   for (const f of PLAN_FIELDS) {
     if (!(f in input)) continue;
     const v = input[f];
-    if (f === "monthlyPricePerUser") out[f] = price(v, "Monthly price");
-    else if (f === "annualPricePerUser") out[f] = price(v, "Annual price");
-    else if (["monthlyBillingEnabled", "annualBillingEnabled", "active"].includes(f)) out[f] = !!v;
+    if (f === "monthlyPricePerUser") out[f] = price(v, "Regular monthly price");
+    else if (f === "annualPricePerUser") out[f] = price(v, "Regular annual price");
+    else if (f === "monthlyOfferPrice") out[f] = price(v, "Monthly offer price", { nullable: true });
+    else if (f === "annualOfferPrice") out[f] = price(v, "Annual offer price", { nullable: true });
+    else if (f === "promotionStartDate") out[f] = dateOrNull(v, "Offer start date");
+    else if (f === "promotionEndDate") out[f] = dateOrNull(v, "Offer end date");
+    else if (f === "priceLockMonths") {
+      out[f] = v === null || v === "" || v === undefined ? null : Math.floor(Number(v));
+      if (out[f] !== null && (!Number.isFinite(out[f]) || out[f] < 1)) throw { status: 400, message: "Price lock must be 1 month or more, or blank" };
+    }
+    else if (["monthlyBillingEnabled", "annualBillingEnabled", "active", "promotionEnabled"].includes(f)) out[f] = !!v;
     else if (f === "displayOrder") out[f] = Number(v) || 0;
     else if (f === "currency") {
       if (!CURRENCIES.includes(v)) throw { status: 400, message: "Currency must be INR for now" };
       out[f] = v;
-    } else out[f] = text(v, f === "description" ? 400 : 120);
+    } else out[f] = text(v, f === "description" || f === "promotionDescription" ? 400 : 120);
   }
   const merged = { ...existing, ...out };
   if (!merged.planName) throw { status: 400, message: "Plan name is required" };
   if (merged.active !== false && !merged.monthlyBillingEnabled && !merged.annualBillingEnabled) {
     throw { status: 400, message: "An active plan needs monthly or annual billing switched on" };
+  }
+  // No fake discounts: an offer price has to be below the regular price.
+  if (isPrice(merged.monthlyOfferPrice) && Number(merged.monthlyOfferPrice) >= Number(merged.monthlyPricePerUser)) {
+    throw { status: 400, message: "Monthly offer price must be lower than the regular monthly price" };
+  }
+  if (isPrice(merged.annualOfferPrice) && Number(merged.annualOfferPrice) >= Number(merged.annualPricePerUser)) {
+    throw { status: 400, message: "Annual offer price must be lower than the regular annual price" };
+  }
+  if (merged.promotionStartDate && merged.promotionEndDate && merged.promotionEndDate < merged.promotionStartDate) {
+    throw { status: 400, message: "Offer end date must be on or after the start date" };
+  }
+  if (PRICE_FIELDS.some((f) => f in out && JSON.stringify(out[f] ?? null) !== JSON.stringify(existing?.[f] ?? null))) {
+    out.priceVersion = (Number(existing?.priceVersion) || 1) + 1;
   }
   return out;
 }

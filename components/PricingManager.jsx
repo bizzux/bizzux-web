@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
-import { appUnitPrices, monthlyEquivalent, formatMoney } from "@/lib/pricingMath";
+import { appUnitPrices, monthlyEquivalent, formatMoney, promotionActive, planPrices } from "@/lib/pricingMath";
 
 // Global Admin → Billing & Pricing. Edits the published pricing in
 // Firestore through /api/admin/pricing. Every price field is independent:
@@ -73,7 +73,10 @@ export default function PricingManager() {
 function planForm(p) {
   return {
     planName: p.planName || "", tagline: p.tagline || "", description: p.description || "", currency: p.currency || "INR",
-    monthlyPricePerUser: p.monthlyPricePerUser ?? "", annualPricePerUser: p.annualPricePerUser ?? "",
+    monthlyPricePerUser: p.monthlyPricePerUser ?? "", monthlyOfferPrice: p.monthlyOfferPrice ?? "",
+    annualPricePerUser: p.annualPricePerUser ?? "", annualOfferPrice: p.annualOfferPrice ?? "",
+    promotionEnabled: !!p.promotionEnabled, promotionLabel: p.promotionLabel || "", promotionDescription: p.promotionDescription || "",
+    promotionStartDate: p.promotionStartDate || "", promotionEndDate: p.promotionEndDate || "", priceLockMonths: p.priceLockMonths ?? "",
     monthlyBillingEnabled: p.monthlyBillingEnabled !== false, annualBillingEnabled: p.annualBillingEnabled !== false,
     discountLabel: p.discountLabel || "", offerText: p.offerText || "", badge: p.badge || "", ctaLabel: p.ctaLabel || "",
     active: p.active !== false, displayOrder: p.displayOrder ?? 0,
@@ -84,12 +87,20 @@ const PLAN_ROWS = [
   { key: "planName", label: "Plan name" },
   { key: "tagline", label: "Tagline" },
   { key: "description", label: "Description" },
-  { key: "monthlyPricePerUser", label: "Monthly price / user", type: "price" },
-  { key: "annualPricePerUser", label: "Annual price / user", type: "price" },
+  { key: "monthlyPricePerUser", label: "Regular monthly price / user", type: "price" },
+  { key: "monthlyOfferPrice", label: "Offer monthly price / user", type: "price", placeholder: "blank = no offer" },
+  { key: "annualPricePerUser", label: "Regular annual price / user", type: "price" },
+  { key: "annualOfferPrice", label: "Offer annual price / user", type: "price", placeholder: "blank = no offer" },
+  { key: "promotionEnabled", label: "Offer enabled", type: "bool" },
+  { key: "promotionLabel", label: "Offer label", placeholder: "Launch Offer" },
+  { key: "promotionDescription", label: "Offer description (optional)", placeholder: "e.g. For the first 100 businesses" },
+  { key: "promotionStartDate", label: "Offer start date", type: "date" },
+  { key: "promotionEndDate", label: "Offer end date", type: "date" },
+  { key: "priceLockMonths", label: "Price lock (months)", type: "number", placeholder: "blank = for as long as they stay subscribed" },
   { key: "monthlyBillingEnabled", label: "Monthly billing enabled", type: "bool" },
   { key: "annualBillingEnabled", label: "Annual billing enabled", type: "bool" },
-  { key: "discountLabel", label: "Discount label", placeholder: "Save 17%" },
-  { key: "offerText", label: "Offer text", placeholder: "2 Months Free" },
+  { key: "discountLabel", label: "Annual toggle label", placeholder: "Save 17%" },
+  { key: "offerText", label: "Annual offer text", placeholder: "2 Months Free" },
   { key: "badge", label: "Badge", placeholder: "BEST VALUE" },
   { key: "ctaLabel", label: "Button text" },
   { key: "currency", label: "Currency", type: "currency" },
@@ -118,9 +129,11 @@ function PlansSection({ config, onSaved }) {
       setMsg((m) => ({ ...m, [p.planCode]: "No changes." }));
       return;
     }
-    const priceKeys = ["monthlyPricePerUser", "annualPricePerUser"].filter((k) => k in changes);
+    const PRICE_LABELS = { monthlyPricePerUser: "Regular monthly", monthlyOfferPrice: "Offer monthly", annualPricePerUser: "Regular annual", annualOfferPrice: "Offer annual" };
+    const priceKeys = Object.keys(PRICE_LABELS).filter((k) => k in changes);
     if (priceKeys.length) {
-      const lines = priceKeys.map((k) => `${k === "monthlyPricePerUser" ? "Monthly" : "Annual"}: ₹${original[k]} → ₹${changes[k]}`).join("\n");
+      const show = (x) => (x === "" || x === null || x === undefined ? "none" : "₹" + x);
+      const lines = priceKeys.map((k) => `${PRICE_LABELS[k]}: ${show(original[k])} → ${show(changes[k])}`).join("\n");
       if (!confirm(`Change ${p.planName} prices?\n\n${lines}\n\nNew checkouts use the new price. Existing customers keep their current price.`)) return;
     }
     setBusy(p.planCode);
@@ -164,10 +177,28 @@ function PlansSection({ config, onSaved }) {
                     ) : (
                       <input
                         className="input" value={v} placeholder={row.placeholder}
-                        type={row.type === "price" || row.type === "number" ? "number" : "text"}
+                        type={row.type === "price" || row.type === "number" ? "number" : row.type === "date" ? "date" : "text"}
                         min={row.type === "price" ? 0 : undefined} step={row.type === "price" ? "1" : undefined}
                         onChange={(e) => on(e.target.value)}
                       />
+                    )}
+                    {(row.key === "monthlyOfferPrice" || row.key === "annualOfferPrice") && v !== "" && (() => {
+                      const reg = Number(forms[p.planCode][row.key === "monthlyOfferPrice" ? "monthlyPricePerUser" : "annualPricePerUser"]);
+                      const off = Number(v);
+                      if (!(reg > 0) || !(off < reg)) return <div className="error" style={{ fontSize: 11.5, marginTop: 3 }}>Must be lower than the regular price</div>;
+                      return (
+                        <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
+                          {Math.round(((reg - off) / reg) * 100)}% off · save {formatMoney(reg - off)}
+                          {row.key === "annualOfferPrice" ? ` · = ${formatMoney(monthlyEquivalent(off))}/user/month` : ""}
+                        </div>
+                      );
+                    })()}
+                    {row.key === "promotionEnabled" && (
+                      <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
+                        {promotionActive({ ...forms[p.planCode], promotionStartDate: forms[p.planCode].promotionStartDate || null, promotionEndDate: forms[p.planCode].promotionEndDate || null })
+                          ? "Live now: offer price shown and charged"
+                          : "Not live: regular price shown and charged"}
+                      </div>
                     )}
                     {row.key === "annualPricePerUser" && Number(v) > 0 && (
                       <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
@@ -269,7 +300,7 @@ function AppsSection({ config, onSaved }) {
           <button className="btn-primary-sm" onClick={() => start(null)}>+ Add app</button>
         </div>
         <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
-          Every app inherits the Bizzux App price ({appPlan ? `${formatMoney(appPlan.monthlyPricePerUser)}/mo · ${formatMoney(appPlan.annualPricePerUser)}/yr per user` : "not set"})
+          Every app inherits the Bizzux App selling price ({appPlan ? `${formatMoney(planPrices(appPlan).month.price)}/mo · ${formatMoney(planPrices(appPlan).year.price)}/yr per user` : "not set"})
           unless you switch on an override. Tick which apps are sold on their own and which are in the Bizzux Suite.
         </p>
         <table className="table" style={{ width: "100%", minWidth: 720 }}>
@@ -339,11 +370,11 @@ function AppsSection({ config, onSaved }) {
               <div className="row" style={{ marginBottom: 12 }}>
                 <div style={{ flex: 1 }}>
                   <label className="label">Monthly / user (₹)</label>
-                  <input className="input" type="number" min="0" value={form.monthlyPriceOverride} placeholder={appPlan ? String(appPlan.monthlyPricePerUser) : ""} onChange={(e) => setForm({ ...form, monthlyPriceOverride: e.target.value })} />
+                  <input className="input" type="number" min="0" value={form.monthlyPriceOverride} placeholder={appPlan ? String(planPrices(appPlan).month.price) : ""} onChange={(e) => setForm({ ...form, monthlyPriceOverride: e.target.value })} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label className="label">Annual / user (₹)</label>
-                  <input className="input" type="number" min="0" value={form.annualPriceOverride} placeholder={appPlan ? String(appPlan.annualPricePerUser) : ""} onChange={(e) => setForm({ ...form, annualPriceOverride: e.target.value })} />
+                  <input className="input" type="number" min="0" value={form.annualPriceOverride} placeholder={appPlan ? String(planPrices(appPlan).year.price) : ""} onChange={(e) => setForm({ ...form, annualPriceOverride: e.target.value })} />
                 </div>
               </div>
             )}
@@ -397,7 +428,9 @@ function SettingsSection({ config, onSaved }) {
 }
 
 const FIELD_LABELS = {
-  monthlyPricePerUser: "Monthly price / user", annualPricePerUser: "Annual price / user",
+  monthlyPricePerUser: "Regular monthly price", annualPricePerUser: "Regular annual price",
+  monthlyOfferPrice: "Offer monthly price", annualOfferPrice: "Offer annual price", promotionEnabled: "Offer enabled",
+  promotionLabel: "Offer label", promotionStartDate: "Offer start", promotionEndDate: "Offer end", priceLockMonths: "Price lock (months)",
   monthlyPriceOverride: "Monthly override", annualPriceOverride: "Annual override",
   monthlyBillingEnabled: "Monthly billing", annualBillingEnabled: "Annual billing",
   individualPurchaseEnabled: "Sold individually", suiteIncluded: "In Suite", overrideEnabled: "Override on",
