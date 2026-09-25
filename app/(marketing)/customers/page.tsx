@@ -3,7 +3,8 @@ import type { Metadata } from "next";
 import { Container, CTAButton } from "@/components/Section";
 import { CompanyHero, ReviewCards } from "@/components/CompanyBlocks";
 import { IconJuice, IconBakery, IconRestaurant, IconStore, IconLayers, IconSpark } from "@/components/Icons";
-import { getApprovedReviews } from "@/lib/companyData";
+import { getApprovedReviews, getCustomerLogos } from "@/lib/companyData";
+import CustomerMarquee from "@/components/CustomerMarquee";
 
 export const metadata: Metadata = {
   title: "Customers | Bizzux",
@@ -13,8 +14,8 @@ export const metadata: Metadata = {
 // Shows the latest approved reviews; the admin reviews API revalidates this page.
 export const revalidate = 60;
 
-// Same business types as /solutions — who Bizzux is built for. No customer
-// names/logos here until real customers agree to be listed.
+// Same business types as /solutions — who Bizzux is built for. Real
+// customer names/logos come only from /admin → Customers (the marquee).
 const segments = [
   { icon: IconJuice, title: "Juice and beverage shops", desc: "Fast billing, daily sales and stock of fruit and supplies." },
   { icon: IconBakery, title: "Tea shops and cafés", desc: "Quick counter sales, menu items and daily expense tracking." },
@@ -26,13 +27,17 @@ const segments = [
 ];
 
 export default async function CustomersPage() {
-  const reviews = await getApprovedReviews(3);
+  const [reviews, logos] = await Promise.all([getApprovedReviews(3), getCustomerLogos()]);
   return (
     <>
       <CompanyHero eyebrow="Customers" title="Built for businesses that sell every day.">
         From a single juice counter to a multi-branch retail business, Bizzux gives owners one place to run the
         whole business.
       </CompanyHero>
+
+      <div className="border-b border-slate-100">
+        <CustomerMarquee logos={logos} title="Businesses running on Bizzux" />
+      </div>
 
       <section className="py-14">
         <Container>

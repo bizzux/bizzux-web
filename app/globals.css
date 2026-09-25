@@ -13,3 +13,25 @@ html {
 body {
   color: #0f172a;
 }
+
+/* Customer logo strip (components/CustomerMarquee.tsx): slides right to
+   left by half its width — the list is rendered twice, so it loops
+   seamlessly. Edges fade out; hover pauses. */
+@keyframes bzx-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.bzx-marquee {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+}
+.bzx-marquee-track {
+  animation: bzx-marquee 40s linear infinite;
+}
+.bzx-marquee:hover .bzx-marquee-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bzx-marquee-track { animation: none; }
+  .bzx-marquee { overflow-x: auto; }
+}

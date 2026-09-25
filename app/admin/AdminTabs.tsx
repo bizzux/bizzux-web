@@ -9,6 +9,7 @@ import AccountTabs from "@/components/AccountTabs";
 import { IconDownload } from "@/components/Icons";
 import { useMe } from "@/lib/useMe";
 import AdminTeamPanel from "@/components/AdminTeamPanel";
+import AdminCustomersPanel from "@/components/AdminCustomersPanel";
 import AdminReviewsPanel from "@/components/AdminReviewsPanel";
 import AdminLicensesPanel from "@/components/AdminLicensesPanel";
 import AdminBlogPanel from "@/components/AdminBlogPanel";
@@ -54,7 +55,7 @@ export default function AdminTabs() {
   const { user, me } = useMe();
   const isSuper = me ? me.superAdmin === true : null; // null = checking role
   const isAccountAdmin = me?.isAccountAdmin === true;
-  const [tab, setTab] = useState<"saas" | "career" | "analytics" | "team" | "reviews" | "licenses" | "blog">("saas");
+  const [tab, setTab] = useState<"saas" | "career" | "analytics" | "team" | "customers" | "reviews" | "licenses" | "blog">("saas");
   const [apps, setApps] = useState<Application[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -142,6 +143,7 @@ export default function AdminTabs() {
               {tab === "saas" ? "Bizzux SaaS platform" :
                tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` :
                tab === "team" ? "CEO and staff shown on bizzux.com/about" :
+               tab === "customers" ? "Customer logos scrolling on the home and Customers pages" :
                tab === "reviews" ? "Public reviews submitted from the About page" :
                tab === "licenses" ? "Bizzux Screen Recorder license keys" :
                tab === "blog" ? "Posts shown on bizzux.com/resources" :
@@ -175,6 +177,12 @@ export default function AdminTabs() {
             onClick={() => setTab("team")}
           >
             Team
+          </button>
+          <button
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "customers" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
+            onClick={() => setTab("customers")}
+          >
+            Customers
           </button>
           <button
             className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "reviews" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
@@ -298,6 +306,8 @@ export default function AdminTabs() {
         {tab === "analytics" && <AnalyticsPanel user={user} />}
 
         {tab === "team" && <AdminTeamPanel />}
+
+        {tab === "customers" && <AdminCustomersPanel />}
 
         {tab === "reviews" && <AdminReviewsPanel />}
 

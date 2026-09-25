@@ -7,6 +7,8 @@ import {
   IconArrowRight, IconChart, IconUsers,
 } from "@/components/Icons";
 import { BRAND_TAGLINE } from "@/lib/brand";
+import CustomerMarquee from "@/components/CustomerMarquee";
+import { getCustomerLogos } from "@/lib/companyData";
 
 // Quick-jump pills under the hero CTAs — every one of these is a real
 // module inside the platform (see app/(saas)/apps), so they all just point
@@ -61,7 +63,12 @@ const secureItems = [
   "Integration with your existing business tools",
 ];
 
-export default function Home() {
+// The customer-logo strip is managed from /admin → Customers; the admin API
+// revalidates "/" after every change, this is the fallback.
+export const revalidate = 60;
+
+export default async function Home() {
+  const customerLogos = await getCustomerLogos();
   return (
     <>
       <SuperAdminHomeRedirect />
@@ -157,6 +164,8 @@ export default function Home() {
           </div>
         </Container>
       </div>
+
+      <CustomerMarquee logos={customerLogos} />
 
       {/* Two core offerings */}
       <section className="pt-10 pb-12 md:pt-14 md:pb-14 border-b border-slate-100">

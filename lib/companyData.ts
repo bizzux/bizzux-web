@@ -4,7 +4,26 @@ import { adminDb } from "@/lib/firebaseAdmin";
 // on several Company pages (About, Leadership, Reviews, Customers). Every
 // page that renders them must also be listed in COMPANY_DATA_PATHS so the
 // admin APIs refresh it after a write — otherwise it stays frozen at build.
-export const COMPANY_DATA_PATHS = ["/about", "/leadership", "/reviews", "/customers"];
+export const COMPANY_DATA_PATHS = ["/", "/about", "/leadership", "/reviews", "/customers"];
+
+export type CustomerLogo = {
+  id: string;
+  name: string;
+  logoUrl: string;
+  website?: string;
+};
+
+// Only active logos, in the order set in /admin → Customers.
+export async function getCustomerLogos(): Promise<CustomerLogo[]> {
+  try {
+    const snap = await adminDb().collection("customerLogos").orderBy("order", "asc").get();
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }) as CustomerLogo & { active?: boolean })
+      .filter((c) => c.active !== false && !!c.logoUrl);
+  } catch {
+    return [];
+  }
+}
 
 export type TeamMember = {
   id: string;
