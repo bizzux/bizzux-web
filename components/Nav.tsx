@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { signOut } from "firebase/auth";
@@ -28,13 +29,101 @@ import AccountSwitcher from "@/components/AccountSwitcher";
 // pages. For Super Admins, a themed "Super Admin" button follows the CTA.
 const links = [
   { href: "/apps", label: "All apps" },
-  { href: "/careers", label: "Career" },
   { href: "/custom-solutions", label: "Build" },
   { href: "/pricing", label: "Pricing" },
   { href: "/resources", label: "Insights" },
-  { href: "/partners", label: "Partners" },
-  { href: "/about", label: "About" },
 ];
+
+// Everything about Bizzux-the-company lives under one "Company" menu (a
+// grouped dropdown on desktop, an always-expanded section in the mobile
+// menu) instead of separate top-level tabs.
+const companyGroups = [
+  {
+    title: "Company",
+    links: [
+      { href: "/about", label: "About Us" },
+      { href: "/leadership", label: "Leadership Team" },
+      { href: "/careers", label: "Careers" },
+      { href: "/contact", label: "Contact Us" },
+    ],
+  },
+  { title: "Partners", links: [{ href: "/partners", label: "Partner with Us" }] },
+  {
+    title: "Customers",
+    links: [
+      { href: "/customers", label: "Our Customers" },
+      { href: "/reviews", label: "Customer Reviews" },
+      { href: "/events", label: "Events" },
+    ],
+  },
+];
+
+// Opens on hover (desktop pointer) and on click/tap/Enter;
+// closes on mouse-leave, outside click, Escape, or any navigation.
+function CompanyMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const active = companyGroups.some((g) => g.links.some((l) => l.href === pathname));
+  return (
+    <div ref={ref} className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        // Always opens (never toggles): a mouse click lands right after the
+        // hover already opened it, and a toggle would snap it shut again.
+        onClick={() => setOpen(true)}
+        className="group relative inline-flex h-9 items-center gap-1 whitespace-nowrap text-sm font-medium"
+        style={{ color: "#000000" }}
+      >
+        <span>Company</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${open ? "rotate-180" : ""}`}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+        <span className={`pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left bg-brand-teal transition-transform duration-200 ${open || active ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"}`} />
+      </button>
+      {open && (
+        // pt-3 is a hover bridge so the pointer can travel from the button
+        // into the panel without crossing a gap that would close it.
+        <div className="absolute left-1/2 -translate-x-1/2 top-full pt-3 z-50">
+          <div className="grid grid-cols-3 w-[640px] rounded-2xl border border-slate-100 bg-white shadow-xl shadow-slate-900/10 overflow-hidden">
+            {companyGroups.map((g, i) => (
+              <div key={g.title} className={`p-6 ${i > 0 ? "border-l border-slate-100" : ""} ${i === 1 ? "bg-slate-50/70" : ""}`}>
+                <div className="text-base font-bold text-ink mb-3">{g.title}</div>
+                <ul className="space-y-1">
+                  {g.links.map((l) => (
+                    <li key={l.href}>
+                      <Link
+                        href={l.href}
+                        onClick={() => setOpen(false)}
+                        className={`block rounded-lg px-2 py-1.5 -mx-2 text-sm transition-colors hover:bg-teal-50 hover:text-brand-tealDark ${pathname === l.href ? "text-brand-tealDark font-semibold" : "text-slate-700"}`}
+                      >
+                        {l.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // A fixed h-9 box (same height as the logo) with the label vertically
 // centered inside it, and the hover underline drawn as an absolutely
@@ -126,6 +215,7 @@ export default function Nav() {
                 {l.label}
               </NavLink>
             ))}
+          {!isSuper && <CompanyMenu />}
         </nav>
         <div className="flex-1" />
         <div className="hidden lg:flex items-center gap-3 shrink-0">
@@ -230,6 +320,17 @@ export default function Nav() {
                 <Link key={l.href} href={l.href} onClick={closeMenu} className="py-2.5 text-sm font-medium text-ink border-b border-slate-50 last:border-0">
                   {l.label}
                 </Link>
+              ))}
+            {!isSuper &&
+              companyGroups.map((g) => (
+                <div key={g.title} className="pt-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 pb-1">{g.title}</div>
+                  {g.links.map((l) => (
+                    <Link key={l.href} href={l.href} onClick={closeMenu} className="block py-2 pl-3 text-sm font-medium text-ink border-l-2 border-slate-100 hover:border-brand-teal">
+                      {l.label}
+                    </Link>
+                  ))}
+                </div>
               ))}
           </nav>
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { COMPANY_DATA_PATHS } from "@/lib/companyData";
 import { adminDb, requireSuperAdmin } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    revalidatePath("/about");
+    COMPANY_DATA_PATHS.forEach((p) => revalidatePath(p));
     return NextResponse.json({ id: ref.id });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
@@ -59,7 +60,7 @@ export async function PATCH(req: NextRequest) {
     if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
     delete patch.createdAt;
     await teamCollection().doc(id).update({ ...patch, updatedAt: FieldValue.serverTimestamp() });
-    revalidatePath("/about");
+    COMPANY_DATA_PATHS.forEach((p) => revalidatePath(p));
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
@@ -73,7 +74,7 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
     await teamCollection().doc(id).delete();
-    revalidatePath("/about");
+    COMPANY_DATA_PATHS.forEach((p) => revalidatePath(p));
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
