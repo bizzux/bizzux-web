@@ -11,6 +11,7 @@ import {
   appUnitPrices, planPrices, cycleEnabled, purchasableApps, suiteApps, monthlyEquivalent, clampQuantity, formatMoney,
 } from "@/lib/pricingMath";
 import { TRIAL_POLICY_POINTS, TRIAL_CONTACT_URL, trialHeadline } from "@/lib/trialPolicy";
+import { PRICE_LOCK_NOTE, priceLockShort } from "@/lib/pricingPolicy";
 
 // Bizzux pricing: two published plans, Bizzux App and Bizzux Suite, priced
 // per user. Every number on this page comes from /api/pricing (Firestore,
@@ -366,7 +367,7 @@ export default function PricingPlans() {
               ) : null}
               {(p.discountLabel || p.offerText) && p.annualBillingEnabled && (
                 <p className="text-xs font-semibold text-brand-teal mb-4">
-                  {[p.discountLabel, p.offerText].filter(Boolean).join(" · ")}{offered === "month" ? " on annual billing" : ""}
+                  {[p.discountLabel, p.offerText].filter(Boolean).join(" · ")}{offered === "month" ? " on annual billing" : " vs paying monthly"}
                 </p>
               )}
               {coupon?.valid && <p className="text-xs font-semibold text-brand-teal mb-2">Promo code {couponCode} applied</p>}
@@ -434,11 +435,14 @@ export default function PricingPlans() {
                     {picking === p.planCode ? "Starting checkout…" : p.ctaLabel || `Get ${p.planName}`}
                   </button>
                 )}
+                {!isCurrent && <p className="text-[11.5px] text-slate-500 text-center mt-2">{priceLockShort(offered)}</p>}
               </div>
             </div>
           );
         })}
       </div>
+
+      <p className="max-w-2xl mx-auto text-center text-xs text-slate-500 mt-6">{PRICE_LOCK_NOTE}</p>
 
       {checkoutError && <p className="text-center text-sm text-red-600 mt-6">{checkoutError}</p>}
 
