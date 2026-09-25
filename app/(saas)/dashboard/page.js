@@ -321,10 +321,12 @@ function NoOrganizationDashboard() {
     <div>
       <Nav />
       <AccountTabs active="dashboard" isAccountAdmin={false} isSuper={false} roleLabel="" />
-      <div className="admin-shell" style={{ maxWidth: 640 }}>
+      <div className="admin-shell" style={{ maxWidth: 760 }}>
         <h1 className="dash-heading" style={{ fontSize: 20, marginBottom: 6 }}>Welcome to Bizzux!</h1>
         <p className="dash-sub" style={{ marginBottom: 20 }}>
-          You're signed in, but not part of an organization yet.
+          {pendingInvite
+            ? "You've been invited to join a team — accept below to get started."
+            : "One quick step before you start: set up your business."}
         </p>
 
         {pendingInvite && (
@@ -340,25 +342,46 @@ function NoOrganizationDashboard() {
           </div>
         )}
 
-        <div className="card" style={{ marginBottom: 16 }}>
-          <h3 style={{ marginTop: 0, marginBottom: 4 }}>Create an organization</h3>
-          <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Start your own Bizzux organization and invite your team.</p>
+        <div className="card" style={{ marginBottom: 16, borderColor: pendingInvite ? undefined : "var(--teal)" }}>
+          {!pendingInvite && (
+            <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--teal)", marginBottom: 6 }}>
+              Step 1 of 1
+            </div>
+          )}
+          <h3 style={{ marginTop: 0, marginBottom: 4 }}>Set up your business</h3>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+            Just enter your business name — takes about 10 seconds. Then you can open CRM, Notes, Files and every other Bizzux app, and invite your team.
+          </p>
           {pendingInvite && (
             <p style={{ fontSize: 12.5, color: "var(--red)", marginBottom: 12 }}>
               Only do this if you're starting a new company — you already have a pending invite above.
             </p>
           )}
-          <button className="btn-primary-sm" onClick={() => setShowCreate(true)}>Create organization</button>
+          <button className="btn-primary-sm" onClick={() => setShowCreate(true)}>Set up my business</button>
         </div>
 
         {pendingInvite === null && (
-          <div className="card">
-            <h3 style={{ marginTop: 0, marginBottom: 4 }}>Have an invitation?</h3>
+          <div className="card" style={{ marginBottom: 24 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 4 }}>Joining someone else's business?</h3>
             <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>
-              If someone invited you to their organization, check your email for the invite link to join — or ask them to double-check the email address they used.
+              Don't set up a new one — open the invite link they emailed you instead, or ask them to double-check the email address they used.
             </p>
           </div>
         )}
+
+        {/* Preview of what's waiting — greyed out, not clickable, so a new
+            user can see why setting up their business is worth doing. */}
+        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Your apps</h3>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Set up your business to unlock these.</p>
+        <div className="app-grid" aria-label="Apps available after setup">
+          {APPS.map((a) => (
+            <div key={a.key} className="app-tile locked" aria-disabled="true">
+              <div className="app-tile-icon">{a.icon}</div>
+              <div className="app-tile-name">{a.name}</div>
+              <div className="app-tile-status">🔒 Set up your business to unlock</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {showCreate && (
@@ -379,7 +402,7 @@ function CreateOrganizationModal({ onClose, onCreated }) {
   async function submit(e) {
     e.preventDefault();
     if (!name.trim()) {
-      setError("Enter an organization name");
+      setError("Enter your business name");
       return;
     }
     setBusy(true);
@@ -392,7 +415,7 @@ function CreateOrganizationModal({ onClose, onCreated }) {
         body: JSON.stringify({ action: "create", name: name.trim() }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Couldn't create organization");
+      if (!r.ok) throw new Error(d.error || "Couldn't set up your business");
       onCreated();
     } catch (e2) {
       setError(e2.message);
@@ -403,15 +426,16 @@ function CreateOrganizationModal({ onClose, onCreated }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <h2 style={{ marginBottom: 14 }}>Create organization</h2>
+        <h2 style={{ marginBottom: 6 }}>Set up your business</h2>
+        <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>You can change this later.</p>
         <form onSubmit={submit} noValidate>
           <div style={{ marginBottom: 16 }}>
-            <label className="label">Organization name *</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus required />
+            <label className="label">Business name *</label>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Thilak Traders" autoFocus required />
           </div>
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
-            <button className="btn-primary" disabled={busy}>{busy ? "Creating…" : "Create"}</button>
+            <button className="btn-primary" disabled={busy}>{busy ? "Setting up…" : "Continue"}</button>
           </div>
           {error && <p className="error">{error}</p>}
         </form>
