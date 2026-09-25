@@ -26,6 +26,9 @@ function loadServiceAccount() {
 }
 
 const apply = process.argv.includes("--apply");
+// --exclude=a@x.com,b@y.com leaves those accounts' trials running.
+const excludeArg = process.argv.find((a) => a.startsWith("--exclude="));
+const exclude = new Set((excludeArg ? excludeArg.slice(10).split(",") : []).map((e) => e.trim().toLowerCase()).filter(Boolean));
 initializeApp({ credential: cert(loadServiceAccount()) });
 const db = getFirestore();
 const now = Timestamp.now();
@@ -35,6 +38,7 @@ const targets = snap.docs.filter((d) => {
   const c = d.data();
   if ((c.status || "trial") !== "trial") return false;
   if (c.billing === "complimentary") return false;
+  if (exclude.has(String(c.email || "").toLowerCase())) return false;
   const end = c.trialEndDate?.toDate ? c.trialEndDate.toDate() : c.trialEndDate ? new Date(c.trialEndDate) : null;
   // Running (end in the future) or open-ended (no end date at all).
   return !end || end.getTime() > Date.now();
