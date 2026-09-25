@@ -10,6 +10,11 @@ export const metadata: Metadata = {
   description: `${COMPANY_LINE}`,
 };
 
+// Team and reviews are edited from /admin, so this page can't be frozen at
+// build time. The admin team/reviews APIs call revalidatePath("/about") after
+// every write for an instant refresh; this is the fallback.
+export const revalidate = 60;
+
 const beliefs = [
   "Technology should simplify work, not add complexity.",
   "Small businesses deserve professional digital tools.",

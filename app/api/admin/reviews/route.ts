@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { adminDb, requireSuperAdmin } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -27,6 +28,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "id and a valid status are required" }, { status: 400 });
     }
     await reviewsCollection().doc(id).update({ status, moderatedAt: FieldValue.serverTimestamp() });
+    revalidatePath("/about");
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
@@ -40,6 +42,7 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
     await reviewsCollection().doc(id).delete();
+    revalidatePath("/about");
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
