@@ -7,6 +7,7 @@ import "@fontsource/inter/800.css";
 import "./globals.css";
 import "./bzx-app.css";
 import UpdateToast from "@/components/UpdateToast";
+import { BRAND_TAGLINE, BRAND_DESCRIPTION, LEGAL_NAME } from "@/lib/brand";
 
 // tailwind.config.ts's `sans` stack points at --font-inter, but nothing
 // used to actually define that variable — it was silently falling back to
@@ -17,17 +18,16 @@ import UpdateToast from "@/components/UpdateToast";
 // and applies it site-wide, including the (saas) app section — see the
 // `font-family: inherit` change in app/bzx-app.css.
 export const metadata: Metadata = {
-  title: "Bizzux: Run your business smarter, every day.",
-  description:
-    "Bizzux is cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
+  title: `Bizzux | ${BRAND_TAGLINE}`,
+  description: BRAND_DESCRIPTION,
   metadataBase: new URL("https://bizzux.com"),
   applicationName: "Bizzux",
+  publisher: LEGAL_NAME,
   // favicon.ico, icon.png, and apple-icon.png are all auto-detected from the
   // app/ directory by Next.js's file convention — no metadata entry needed.
   openGraph: {
-    title: "Bizzux: Run your business smarter, every day.",
-    description:
-      "Cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
+    title: `Bizzux | ${BRAND_TAGLINE}`,
+    description: BRAND_DESCRIPTION,
     url: "https://bizzux.com",
     siteName: "Bizzux",
     type: "website",
@@ -35,9 +35,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Bizzux: Run your business smarter, every day.",
-    description:
-      "Cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
+    title: `Bizzux | ${BRAND_TAGLINE}`,
+    description: BRAND_DESCRIPTION,
     images: ["/og-image.png"],
   },
   alternates: {
@@ -54,9 +53,11 @@ const organizationJsonLd = {
   "@type": "Organization",
   name: "Bizzux",
   url: "https://bizzux.com",
+  legalName: LEGAL_NAME,
+  slogan: BRAND_TAGLINE,
   logo: "https://bizzux.com/bizzux-logo-full.png",
-  description:
-    "Bizzux is cloud-based POS, inventory, expense and profit management software for small and growing businesses.",
+  address: { "@type": "PostalAddress", addressLocality: "Chennai", addressRegion: "Tamil Nadu", addressCountry: "IN" },
+  description: BRAND_DESCRIPTION,
 };
 
 // Kept deliberately minimal — the marketing Nav/Footer chrome now lives in

@@ -4,8 +4,9 @@ import SuperAdminHomeRedirect from "@/components/SuperAdminHomeRedirect";
 import {
   IconPOS, IconBox, IconWallet, IconDatabase,
   IconLayers, IconSpark, IconCloud, IconShield, IconCheck,
-  IconArrowRight, IconChart,
+  IconArrowRight, IconChart, IconUsers,
 } from "@/components/Icons";
+import { BRAND_TAGLINE } from "@/lib/brand";
 
 // Quick-jump pills under the hero CTAs — every one of these is a real
 // module inside the platform (see app/(saas)/apps), so they all just point
@@ -13,6 +14,7 @@ import {
 // apps overview and picks up the sign-up flow from there same as the main
 // CTA does.
 const heroQuickLinks = [
+  { icon: IconUsers, label: "CRM" },
   { icon: IconPOS, label: "POS" },
   { icon: IconBox, label: "Inventory" },
   { icon: IconWallet, label: "Billing" },
@@ -73,8 +75,12 @@ export default function Home() {
         <Container className="relative !max-w-7xl pt-6 pb-4 md:pt-8 md:pb-4">
           <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-center">
             <div>
-              <div className="text-brand-teal font-semibold text-xs tracking-widest uppercase mb-3">
-                — Smart business. Brighter tomorrow.
+              {/* The category line — answers "what is Bizzux?" before the
+                  headline does, so it's treated as a brand statement, not a
+                  small decorative eyebrow. */}
+              <div className="inline-flex items-center gap-2 mb-3 text-brand-tealDark font-extrabold text-sm md:text-base tracking-wide uppercase">
+                <span className="w-6 h-[3px] rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark" />
+                {BRAND_TAGLINE}
               </div>
               <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight leading-tight text-ink">
                 Run Your Business. Build What&apos;s Next.{" "}
@@ -83,8 +89,8 @@ export default function Home() {
                 </span>
               </h1>
               <p className="mt-3 text-slate-600 max-w-lg text-sm md:text-base">
-                Manage sales, inventory, expenses, customers, POS and more with Bizzux. Powerful business apps,
-                now with AI, to help you work smarter and grow faster.
+                Manage CRM, sales, POS, inventory, billing, expenses, projects, files and more from one connected
+                platform. Bizzux brings AI-powered business apps together to help you work smarter and grow faster.
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <CTAButton href="/apps">Explore Bizzux Platform</CTAButton>

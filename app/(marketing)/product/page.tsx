@@ -1,4 +1,4 @@
-import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import { Container, Eyebrow, BrandTagline, CTAButton } from "@/components/Section";
 import { IconPOS, IconWallet, IconBox, IconChart } from "@/components/Icons";
 import type { Metadata } from "next";
 
@@ -19,6 +19,7 @@ export default function ProductPage() {
     <>
       <section className="pt-12 pb-10 bg-gradient-to-b from-teal-50/60 to-white text-center">
         <Container>
+          <BrandTagline />
           <Eyebrow>Product</Eyebrow>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             From sale to insight, automatically.

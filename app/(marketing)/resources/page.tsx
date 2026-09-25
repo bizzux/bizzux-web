@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import { Container, Eyebrow, BrandTagline, CTAButton } from "@/components/Section";
 import type { Metadata } from "next";
 import { getPublishedPosts } from "@/lib/blog";
 
@@ -18,6 +18,7 @@ export default async function ResourcesPage() {
     <section className="py-16 pb-24">
       <Container>
         <div className="text-center max-w-xl mx-auto mb-14">
+          <BrandTagline />
           <Eyebrow>Insights</Eyebrow>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             Practical guides, and what we're thinking about in security and AI.

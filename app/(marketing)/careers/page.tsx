@@ -1,4 +1,4 @@
-import { Container, Eyebrow } from "@/components/Section";
+import { Container, Eyebrow, BrandTagline } from "@/components/Section";
 import { IconLayers, IconCloud, IconSpark, IconTeam, IconChart, IconWhatsApp, IconCheck } from "@/components/Icons";
 import CareersForm from "./CareersForm";
 import type { Metadata } from "next";
@@ -26,6 +26,7 @@ export default function CareersPage() {
           background: "radial-gradient(55% 55% at 80% 10%, rgba(18,166,149,0.3) 0%, transparent 65%)"
         }} />
         <Container className="relative text-center max-w-2xl">
+          <BrandTagline light />
           <Eyebrow light>Careers &amp; Internships</Eyebrow>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             Build the future of business software with Bizzux.

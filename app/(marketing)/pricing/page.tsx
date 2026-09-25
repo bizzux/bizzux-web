@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Container } from "@/components/Section";
+import { Container, BrandTagline } from "@/components/Section";
 import PricingPlans from "./PricingPlans";
 import type { Metadata } from "next";
 
@@ -13,6 +13,7 @@ export default function PricingPage() {
     <>
       <section className="pt-8 pb-5 md:pt-10 md:pb-6 text-center bg-gradient-to-b from-teal-50/60 to-white">
         <Container>
+          <BrandTagline />
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight mb-0">
             One app or the whole suite. Simple per-user pricing.
           </h1>

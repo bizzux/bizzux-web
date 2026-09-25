@@ -1,4 +1,4 @@
-import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import { Container, Eyebrow, BrandTagline, CTAButton } from "@/components/Section";
 import { IconPOS, IconMenu, IconBox, IconWallet, IconUsers, IconChart, IconLayers } from "@/components/Icons";
 import type { Metadata } from "next";
 
@@ -26,6 +26,7 @@ export default function PlatformPage() {
           background: "radial-gradient(60% 50% at 20% 20%, rgba(18,166,149,0.35) 0%, transparent 60%)"
         }} />
         <Container className="relative text-center">
+          <BrandTagline light />
           <Eyebrow light>Bizzux Business Platform</Eyebrow>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             Cloud-based POS, Inventory, Expense &amp; Profit Management Software

@@ -1,4 +1,4 @@
-import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import { Container, Eyebrow, BrandTagline, CTAButton } from "@/components/Section";
 import { IconLayers, IconSpark, IconCloud, IconChart, IconDatabase, IconBox, IconShield, IconMail, IconTeam } from "@/components/Icons";
 import type { Metadata } from "next";
 
@@ -38,6 +38,7 @@ export default function CustomSolutionsPage() {
           background: "radial-gradient(50% 50% at 80% 20%, rgba(163,230,53,0.2) 0%, transparent 60%)"
         }} />
         <Container className="relative text-center">
+          <BrandTagline light />
           <Eyebrow light>Custom Cloud &amp; AI Solutions</Eyebrow>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             Software built around the way your business works.

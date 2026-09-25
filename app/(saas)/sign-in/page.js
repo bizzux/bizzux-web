@@ -14,6 +14,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import { IconEye, IconEyeOff } from "@/components/Icons";
 import { COUNTRIES, DEFAULT_COUNTRY_ISO2, findCountry, phoneLengthLabel, phoneLengthShortLabel, isValidPhoneLength } from "@/lib/countryCodes";
+import { BRAND_TAGLINE } from "@/lib/brand";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -234,6 +235,7 @@ export default function LoginPage() {
       <div className="login-wrap">
       <div className="login-shell">
       <div className="login-aside">
+        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.9, marginBottom: 10 }}>{BRAND_TAGLINE}</div>
         <h2>Run your business smarter, every day.</h2>
         <p>One account for POS, inventory, expenses and profit. Start free, no card required.</p>
         <ul>

@@ -2,16 +2,18 @@ import Link from "next/link";
 import Image from "next/image";
 import { IconWhatsApp } from "./Icons";
 import { customerVersionLabel } from "@/lib/version";
+import { BRAND_TAGLINE, LEGAL_NAME, COMPANY_LOCATION } from "@/lib/brand";
 
 export default function Footer() {
   return (
     <footer className="bg-navy text-slate-300">
       <div className="max-w-7xl mx-auto px-6 py-10 grid gap-6 md:grid-cols-4">
         <div>
-          <Image src="/logo-transparent.png" alt="Bizzux" width={120} height={49} className="h-8 w-auto mb-4" />
+          <Image src="/logo-transparent.png" alt="Bizzux" width={120} height={49} className="h-8 w-auto mb-3" />
+          <p className="text-xs font-bold tracking-wider uppercase text-brand-teal mb-3">{BRAND_TAGLINE}</p>
           <p className="text-sm text-slate-400">
-            Cloud software and AI solutions for growing businesses: a ready-to-use business platform, plus custom
-            cloud, AI and business solutions.
+            CRM, sales, POS, inventory, billing, expenses, projects, files and more in one connected platform, plus
+            custom cloud and AI solutions. Developed by {LEGAL_NAME}.
           </p>
         </div>
         <div>
@@ -50,7 +52,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="border-t border-white/10 py-4 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center text-xs text-slate-500">
-        <span>© {new Date().getFullYear()} Bizzux. All rights reserved.</span>
+        <span>© {new Date().getFullYear()} {LEGAL_NAME}. All rights reserved. {COMPANY_LOCATION}.</span>
         <span className="hidden sm:inline">·</span>
         <span className="flex items-center gap-4">
           <Link href="/terms" className="hover:text-brand-teal transition-colors">Terms of Service</Link>

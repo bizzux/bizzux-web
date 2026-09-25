@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import { Container, Eyebrow, BrandTagline, CTAButton } from "@/components/Section";
 import {
   IconWallet, IconUsers, IconCheck, IconClock, IconX, IconShare,
   IconUserCircle, IconGift, IconSwap,
@@ -460,6 +460,7 @@ export default function PartnersPage() {
         <Container className="relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-2">
             <div className="max-w-xl">
+              <BrandTagline light />
               <Eyebrow light>Partners</Eyebrow>
               <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
                 Refer Bizzux. Your customer saves.

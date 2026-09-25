@@ -1,12 +1,13 @@
 import Image from "next/image";
-import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import { Container, Eyebrow, BrandTagline, CTAButton } from "@/components/Section";
 import type { Metadata } from "next";
 import { adminDb } from "@/lib/firebaseAdmin";
 import ReviewForm from "@/components/ReviewForm";
+import { COMPANY_LINE, BRAND_TAGLINE } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "About | Bizzux",
-  description: "We build cloud and AI-enabled solutions for growing businesses.",
+  title: `About | Bizzux, ${BRAND_TAGLINE}`,
+  description: `${COMPANY_LINE}`,
 };
 
 const beliefs = [
@@ -73,16 +74,17 @@ export default async function AboutPage() {
           background: "radial-gradient(60% 60% at 50% 0%, rgba(18,166,149,0.3) 0%, transparent 70%)"
         }} />
         <Container className="relative text-center max-w-3xl">
+          <BrandTagline light />
           <Eyebrow light>About Bizzux</Eyebrow>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-6">
             We build cloud and AI-enabled solutions for growing businesses.
           </h1>
           <p className="text-lg text-slate-300 mb-4">
-            Bizzux is a cloud software and AI solutions company focused on helping businesses run better today
-            and build for tomorrow.
+            {COMPANY_LINE}
           </p>
           <p className="text-slate-400">
-            We offer a ready-to-use business management platform for sales, inventory, expenses and profit. We
+            We offer a connected suite of business apps for CRM, sales, POS, inventory, billing, expenses, projects
+            and files. We
             also design custom software, AI-enabled applications, e-commerce websites and secure cloud solutions
             for businesses with unique requirements.
           </p>

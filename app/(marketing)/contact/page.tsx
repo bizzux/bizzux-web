@@ -1,4 +1,4 @@
-import { Container, Eyebrow } from "@/components/Section";
+import { Container, Eyebrow, BrandTagline } from "@/components/Section";
 import { IconWhatsApp, IconMail, IconLayers } from "@/components/Icons";
 import ContactForm from "./ContactForm";
 import type { Metadata } from "next";
@@ -16,6 +16,7 @@ export default function ContactPage() {
           background: "radial-gradient(55% 55% at 50% 0%, rgba(18,166,149,0.3) 0%, transparent 65%)"
         }} />
         <Container className="relative max-w-2xl">
+          <BrandTagline light />
           <Eyebrow light>Contact</Eyebrow>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">
             Let&apos;s build what your business needs.
