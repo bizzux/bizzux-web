@@ -1683,6 +1683,7 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
   const [tab, setTab] = useState("account");
   const [admins, setAdmins] = useState(null);
   const [activity, setActivity] = useState(null);
+  const [activityErr, setActivityErr] = useState("");
   const [err, setErr] = useState("");
   const [busyUid, setBusyUid] = useState(null);
   const [showExtend, setShowExtend] = useState(false);
@@ -1707,7 +1708,11 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
       try {
         setActivity(await api(`/api/admin/customer-activity?id=${customer.id}`, "GET"));
       } catch (e) {
-        setErr(e.message);
+        // Kept to the Shop activity tab. A Bizzux Business hiccup (e.g. a
+        // missing Firestore index, whose raw message is a very long URL)
+        // shouldn't cover the Account tab everyone lands on.
+        console.error("Shop activity failed:", e);
+        setActivityErr("Couldn't load Bizzux Business activity right now. Try again in a few minutes.");
       }
     })();
   }, [customer.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1824,7 +1829,7 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
             ))}
           </div>
 
-          {err && <p className="error">{err}</p>}
+          {err && <p className="error" style={{ overflowWrap: "anywhere" }}>{err}</p>}
 
           {tab === "account" && (
             <div>
@@ -1843,16 +1848,40 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
                 <div><div className="label">Employees</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.employeeCount || "N/A"}</div></div>
                 <div><div className="label">Business type</div><div style={{ fontWeight: 700, fontSize: 13.5, textTransform: "capitalize" }}>{customer.businessType || "N/A"}</div></div>
               </div>
-              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <button className="btn-small" onClick={() => setShowExtend(true)}>Extend trial</button>
-                <button className="btn-small" onClick={() => setShowMarkPaid(true)}>Mark as paid</button>
-                <button className="btn-small" onClick={resetPasswordEmail}>Reset password (email link)</button>
-                <button className="btn-small" onClick={() => setShowSetPassword(true)}>Set new password directly</button>
-                <button className="btn-small" disabled={busyUid === customer.id} onClick={() => revokeSessions(customer.id)}>Sign out of all devices</button>
-                <button className="btn-ghost" onClick={toggleSuspend}>{customer.status === "suspended" ? "Reactivate" : "Suspend"}</button>
-                {isOwner && (
-                  <button className="btn-ghost" style={{ color: "var(--red)" }} onClick={() => setShowDelete(true)}>Delete user…</button>
-                )}
+              {/* Grouped by what they do, so the panel reads as a set of
+                  options rather than one long run of links. */}
+              <div style={{ paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                <div className="label" style={{ marginBottom: 8 }}>Subscription</div>
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn-small" onClick={() => setShowExtend(true)}>Extend trial</button>
+                  <button className="btn-small" onClick={() => setShowMarkPaid(true)}>Mark as paid</button>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                <div className="label" style={{ marginBottom: 8 }}>Sign-in &amp; security</div>
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn-small" onClick={resetPasswordEmail}>Email a reset link</button>
+                  <button className="btn-small" onClick={() => setShowSetPassword(true)}>Set new password</button>
+                  <button className="btn-small" disabled={busyUid === customer.id} onClick={() => revokeSessions(customer.id)}>Sign out everywhere</button>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 18, padding: 14, border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 12 }}>
+                <div className="label" style={{ marginBottom: 4, color: "var(--red)" }}>Danger zone</div>
+                <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+                  Suspend blocks every app right away and can be undone. Delete removes the user for good.
+                </p>
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={toggleSuspend}>
+                    {customer.status === "suspended" ? "Reactivate" : "Suspend"}
+                  </button>
+                  {isOwner && (
+                    <button className="btn-small" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => setShowDelete(true)}>
+                      Delete user…
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
@@ -1932,7 +1961,8 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
 
           {tab === "activity" && (
             <div>
-              {!activity && <p className="muted">Loading…</p>}
+              {activityErr && <p className="error">{activityErr}</p>}
+              {!activity && !activityErr && <p className="muted">Loading…</p>}
               {activity && (
                 <>
                   <p className="muted" style={{ marginTop: 0, marginBottom: 12, fontSize: 12.5 }}>
