@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { IconClock } from "@/components/Icons";
+import { TRIAL_CONTACT_URL } from "@/lib/trialPolicy";
 
 // Shown when someone whose trial has ended (or whose subscription has
 // lapsed) tries to open a live app from the dashboard. openApp() in
@@ -35,6 +36,12 @@ export default function TrialExpiredModal({ status, onClose }) {
         <Link href="/pricing" className="btn-primary" style={{ width: "100%", display: "flex", justifyContent: "center" }}>
           Choose a plan →
         </Link>
+        {!lapsed && (
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 14 }}>
+            Still evaluating Bizzux for your business?{" "}
+            <Link href={TRIAL_CONTACT_URL} className="link-btn">Contact us</Link> and we can extend your trial.
+          </p>
+        )}
         <button className="link-btn" style={{ display: "block", margin: "14px auto 0" }} onClick={onClose}>
           Maybe later
         </button>

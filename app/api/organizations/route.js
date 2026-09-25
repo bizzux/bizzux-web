@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { createOrganization } from "@/lib/organization";
 import { upsertOrganizationMembership } from "@/lib/organizationMembership";
 import { upsertOrganizationAppSubscription, upsertAppAssignment } from "@/lib/appAccess";
@@ -58,10 +58,10 @@ export async function POST(req) {
       const platformRole = await resolvePlatformRole(c.uid, c.email);
       const orgType = c.isSuper || platformRole ? "INTERNAL" : "CUSTOMER";
 
-      const settingsSnap = await adminDb().doc("portalSettings/config").get();
-      const trialDays = Number(settingsSnap.exists ? settingsSnap.data().trialDays ?? 14 : 14) || 14;
-      const now = Timestamp.now();
-      const trialEndDate = Timestamp.fromMillis(now.toMillis() + trialDays * 24 * 60 * 60 * 1000);
+      // No automatic free trial any more: the org starts "trial_pending" and
+      // the trial only begins once the owner verifies a phone number that
+      // hasn't had a trial before (/api/trial/start). Stops unlimited
+      // trials from throwaway email addresses.
 
       // Carries forward whatever /api/claim captured at signup (rule 1
       // means that's all it could do at the time) — same
@@ -96,9 +96,9 @@ export async function POST(req) {
         // The dashboard asks for it the first time Bizzux Business is opened.
         businessTypePending: !businessType,
         createdAt: FieldValue.serverTimestamp(),
-        trialStartDate: now,
-        trialEndDate,
-        status: "trial",
+        trialStartDate: null,
+        trialEndDate: null,
+        status: "trial_pending",
         planId: null,
         planName: null,
         onboarded: true,

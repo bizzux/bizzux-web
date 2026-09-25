@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, resolveAccount, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
-import { canAccessApps } from "@/lib/trial";
+import { appDenialFor } from "@/lib/firebaseAdmin";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 import { logAuditEvent } from "@/lib/audit";
@@ -125,7 +125,8 @@ export async function GET(req) {
       const customer = acct.isOwner
         ? acct.customer
         : (await adminDb().doc("customers/" + acct.accountId).get()).data();
-      if (!canAccessApps(customer)) {
+      const denial = await appDenialFor(customer, "juicechatjunction");
+      if (denial) {
         // A Platform Admin created later via the portal (not in
         // SUPER_ADMIN_EMAIL, so c.isSuper missed them above) should never be
         // blocked by their own account's trial/plan status — check
@@ -133,19 +134,13 @@ export async function GET(req) {
         // trial check has already failed, so this extra Firestore read
         // never lands on the common case (an in-trial or paying customer).
         const platformRole = await resolvePlatformRole(c.uid, c.email);
-        if (platformRole !== "OWNER" && platformRole !== "ADMIN") {
-          throw { status: 402, message: "Your trial has ended. Choose a plan to keep using Bizzux apps." };
-        }
+        if (platformRole !== "OWNER" && platformRole !== "ADMIN") throw denial;
         role = "super";
       } else {
         role = acct.isOwner ? "owner" : PROFILE_TO_SHOP_ROLE[acct.profile] || "shopkeeper";
-        if (customer?.planId) {
-          const planSnap = await adminDb().doc("plans/" + customer.planId).get();
-          const shopAccess = planSnap.exists ? planSnap.data()?.appAccess?.juicechatjunction : null;
-          if (shopAccess?.enabled && Array.isArray(shopAccess.features) && shopAccess.features.length > 0) {
-            features = shopAccess.features;
-          }
-        }
+        // No per-plan tab limits any more: a paid App or Suite unlocks the
+        // whole app. (The old plans/{id}.appAccess feature lists are no
+        // longer read; `features` is simply never sent.)
         businessType = customer?.businessType || null;
       }
     }
@@ -172,6 +167,6 @@ export async function GET(req) {
 
     return NextResponse.json({ url: `${SHOP_URL}/sso?token=${token}` }, { headers: CORS_HEADERS });
   } catch (e) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500, headers: CORS_HEADERS });
+    return NextResponse.json({ error: e.message || "Failed", ...(e.code ? { code: e.code } : {}) }, { status: e.status || 500, headers: CORS_HEADERS });
   }
 }

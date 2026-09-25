@@ -64,7 +64,7 @@ export async function GET(req) {
     } else {
       // Enforces auth + the same trial/plan gate as the app itself (defense
       // in depth), and gives us the resolved accountId/email.
-      const acct = await requireAccountWithAppsAccess(req);
+      const acct = await requireAccountWithAppsAccess(req, appKey);
       uid = acct.uid;
       email = acct.email;
       accountId = acct.accountId;
@@ -103,6 +103,6 @@ export async function GET(req) {
 
     return NextResponse.json({ url: `${targetUrl}/sso?token=${token}` }, { headers: CORS_HEADERS });
   } catch (e) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500, headers: CORS_HEADERS });
+    return NextResponse.json({ error: e.message || "Failed", ...(e.code ? { code: e.code } : {}) }, { status: e.status || 500, headers: CORS_HEADERS });
   }
 }

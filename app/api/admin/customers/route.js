@@ -4,11 +4,26 @@ import { logAuditEvent } from "@/lib/audit";
 import { findCountryByPhone } from "@/lib/countryCodes";
 import { Timestamp, FieldValue } from "firebase-admin/firestore";
 import { ACCOUNT_ADMIN_PROFILES } from "@/lib/roles";
+import { getPricingConfig, buildSubscriptionSnapshot, customerFieldsForSnapshot } from "@/lib/pricing";
+import { computeQuote } from "@/lib/pricingMath";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const TRIAL_EXTEND_UNITS = ["days", "weeks", "months", "years"];
+
+// Admin pickers send a purchase option id from /api/admin/plans
+// ("SUITE" or "APP:<appKey>") plus billingCycle and users.
+async function quoteForAdmin(body) {
+  const option = String(body.planId || "");
+  if (!option) throw { status: 400, message: "Choose a plan" };
+  const [planCode, appKey] = option.split(":");
+  const quote = computeQuote(await getPricingConfig({ fresh: true }), {
+    planCode, appKey, billingCycle: body.billingCycle === "year" ? "year" : "month", quantity: body.quantity,
+  });
+  if (!quote.ok) throw { status: 400, message: quote.error };
+  return quote;
+}
 
 function toIso(ts) {
   if (!ts) return null;
@@ -134,6 +149,11 @@ export async function GET(req) {
         status: data.status || "trial",
         customerType: customerType(data),
         planName: data.planName || null,
+        // The price this customer agreed to (App/Suite pricing only).
+        subscription: data.subscription
+          ? (({ planCode, displayName, appKey, billingCycle, quantity, unitPrice, listUnitPrice, totalPrice, currency, couponCode, agreedAt }) =>
+              ({ planCode, displayName, appKey, billingCycle, quantity, unitPrice, listUnitPrice, totalPrice, currency, couponCode, agreedAt }))(data.subscription)
+          : null,
         createdAt: toIso(data.createdAt),
         trialEndDate: toIso(data.trialEndDate),
         lastLoginAt: lastLoginByUid.get(d.id) || null,
@@ -290,7 +310,7 @@ export async function POST(req) {
           {
             status: "trial", billing: FieldValue.delete(), compReason: FieldValue.delete(), compUntil: FieldValue.delete(),
             compNote: FieldValue.delete(), compGrantedBy: FieldValue.delete(), compGrantedAt: FieldValue.delete(),
-            planId: null, planName: null,
+            planId: null, planName: null, subscription: FieldValue.delete(), seats: FieldValue.delete(),
             trialEndDate: Timestamp.fromMillis(Date.now() + days * 24 * 60 * 60 * 1000),
           },
           { merge: true }
@@ -299,10 +319,8 @@ export async function POST(req) {
         return NextResponse.json({ ok: true });
       }
 
-      const planId = String(body.planId || "");
-      if (!planId) throw { status: 400, message: "Choose a plan" };
-      const planSnap = await adminDb().doc("plans/" + planId).get();
-      if (!planSnap.exists) throw { status: 400, message: "That plan no longer exists" };
+      const quote = await quoteForAdmin(body);
+      const snapshot = { ...buildSubscriptionSnapshot(quote, { discountedUnitPrice: 0, gateway: "complimentary" }) };
       const reasons = ["internal", "family", "tester", "partner", "other"];
       const reason = reasons.includes(body.reason) ? body.reason : "other";
       let compUntil = null;
@@ -314,7 +332,8 @@ export async function POST(req) {
       const note = String(body.note || "").trim().slice(0, 300);
       await ref.set(
         {
-          status: "active", billing: "complimentary", planId, planName: planSnap.data().name || "",
+          status: "active", billing: "complimentary",
+          ...customerFieldsForSnapshot(snapshot),
           compReason: reason, compUntil, compNote: note || null,
           compGrantedBy: c.email, compGrantedAt: FieldValue.serverTimestamp(),
         },
@@ -322,7 +341,7 @@ export async function POST(req) {
       );
       await logAuditEvent({
         action: "customer.free_license_grant", actor: c, targetType: "organization", targetId: id,
-        details: { planId, planName: planSnap.data().name || "", reason, until: compUntil ? compUntil.toDate().toISOString() : null, note },
+        details: { planId: snapshot.planCode, planName: snapshot.displayName, users: snapshot.quantity, reason, until: compUntil ? compUntil.toDate().toISOString() : null, note },
       });
       return NextResponse.json({ ok: true });
     }
@@ -330,16 +349,19 @@ export async function POST(req) {
     if (body.action === "markPaid") {
       const id = String(body.id || "");
       if (!id) throw { status: 400, message: "Customer id required" };
-      const planId = String(body.planId || "");
-      if (!planId) throw { status: 400, message: "Choose a plan" };
-
       const ref = adminDb().doc("customers/" + id);
       const snap = await ref.get();
       if (!snap.exists) throw { status: 404, message: "Customer not found" };
 
-      const planSnap = await adminDb().doc("plans/" + planId).get();
-      if (!planSnap.exists) throw { status: 400, message: "That plan no longer exists" };
-      const plan = planSnap.data();
+      // Published price by default; a Platform Admin can record a negotiated
+      // per-user price instead. Either way it's frozen into the snapshot.
+      const quote = await quoteForAdmin(body);
+      let agreedUnitPrice;
+      if (body.unitPrice !== undefined && body.unitPrice !== null && body.unitPrice !== "") {
+        agreedUnitPrice = Number(body.unitPrice);
+        if (!Number.isFinite(agreedUnitPrice) || agreedUnitPrice < 0) throw { status: 400, message: "Price per user must be 0 or more" };
+      }
+      const snapshot = buildSubscriptionSnapshot(quote, { discountedUnitPrice: agreedUnitPrice, gateway: "manual" });
 
       const notes = String(body.notes || "").trim().slice(0, 300);
 
@@ -349,8 +371,7 @@ export async function POST(req) {
           // Now paying, so any free license ends here.
           billing: FieldValue.delete(), compReason: FieldValue.delete(), compUntil: FieldValue.delete(), compNote: FieldValue.delete(),
           subscriptionGateway: "manual",
-          planId,
-          planName: plan.name || "",
+          ...customerFieldsForSnapshot(snapshot),
           paymentCount: FieldValue.increment(1),
           lastChargedAt: FieldValue.serverTimestamp(),
           lastPaymentMethod: "manual",
@@ -362,7 +383,7 @@ export async function POST(req) {
 
       await logAuditEvent({
         action: "customer.mark_paid", actor: c, targetType: "organization", targetId: id,
-        details: { planId, planName: plan.name || "", notes },
+        details: { planId: snapshot.planCode, planName: snapshot.displayName, users: snapshot.quantity, billingCycle: snapshot.billingCycle, unitPrice: snapshot.unitPrice, totalPrice: snapshot.totalPrice, notes },
       });
 
       return NextResponse.json({ ok: true });

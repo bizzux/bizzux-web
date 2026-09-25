@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSuperAdmin, adminDb } from "@/lib/firebaseAdmin";
+import { snapshotMonthlyValue } from "@/lib/pricingMath";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,7 +90,9 @@ export async function GET(req) {
         const plan = planById.get(c.planId);
         const name = c.planName || plan?.name || "Unknown plan";
         const entry = byPlan.get(c.planId) || { planId: c.planId, name, activeCount: 0, monthlyRevenue: 0 };
-        const monthly = monthlyPrice(plan, c.billingCycle);
+        // App/Suite subscribers carry the price they agreed to (lib/pricing.js);
+        // only older plan-based subscribers fall back to their plan doc.
+        const monthly = c.subscription ? snapshotMonthlyValue(c.subscription) : monthlyPrice(plan, c.billingCycle);
         entry.activeCount += 1;
         entry.monthlyRevenue += monthly;
         mrr += monthly;

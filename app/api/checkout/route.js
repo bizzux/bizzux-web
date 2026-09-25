@@ -2,239 +2,172 @@ import { NextResponse } from "next/server";
 import { requireUser, adminDb } from "@/lib/firebaseAdmin";
 import { razorpay } from "@/lib/razorpay";
 import { stripe } from "@/lib/stripe";
-import { createRazorpayPlan, createStripePrice, computeDiscountedPrice } from "@/lib/gatewayPlans";
 import { resolveCode } from "@/lib/referral";
+import { getPricingConfig, getOrCreateGatewayPlan, buildSubscriptionSnapshot } from "@/lib/pricing";
+import { computeQuote, applyDiscount } from "@/lib/pricingMath";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Starts a recurring subscription checkout for a signed-in customer.
-// INR plans go through Razorpay Subscriptions (returns a subscription_id
-// the client opens with Razorpay Checkout.js). USD plans go through a
-// Stripe Checkout Session in subscription mode (returns a hosted URL to
-// redirect to). Either gateway needs the corresponding plan configured
-// with a razorpayPlanId / stripePriceId in Admin → Plans first — both are
-// auto-created there, see app/api/admin/plans/route.js.
+// Starts a recurring per-user subscription for a signed-in customer:
+// { planCode: "APP"|"SUITE", appKey (APP only), billingCycle: "month"|"year",
+//   quantity (users), gateway: "razorpay"|"stripe", couponCode? }
 //
-// Offer codes (Admin → Super Admin (SaaS) → Offers) are NOT implemented
-// via Razorpay's native "Offers" or Stripe's native "Coupons" — Razorpay
-// Offers can only be created from their Dashboard, not via API, which
-// rules out a self-service admin screen for them. Instead, redeeming a
-// valid code here auto-creates a discounted-price Razorpay Plan / Stripe
-// Price (same helpers used for regular plans, see lib/gatewayPlans.js) and
-// subscribes the customer to that instead of the regular one. For offers
-// that only cover a limited number of billing cycles (or just the first
-// payment), offerCyclesRemaining travels along in the subscription's
-// notes/metadata — the webhook handlers decrement it on each renewal and
-// switch the subscription back to the regular full-price plan once it
-// hits 0 (see app/api/webhooks/razorpay/route.js and .../stripe/route.js).
+// The price is computed here, server-side, from the published pricing in
+// Firestore (lib/pricing.js + lib/pricingMath.js). The client never sends
+// a price. The gateway is charged the per-user price x quantity, using a
+// gateway plan/price cached per distinct amount (getOrCreateGatewayPlan).
 //
-// Partner / reseller referral codes (see lib/referral.js) go through this
-// exact same path — resolveCode() checks offers/{CODE} first, then
-// referralCodes/{CODE}, and returns one common shape either way. When it's
-// a referral code, resolveCode also hands back the reseller's uid, which
-// gets stamped onto notes/metadata below (resellerId) so the payment
-// webhooks know who to credit a commission to once the sale goes through.
-async function resolveOfferForCheckout({ code, planId, plan, gateway, requester }) {
-  const resolved = await resolveCode(code, { ...plan, id: planId }, requester);
-  if (!resolved.valid) throw { status: 400, message: resolved.error };
-
-  const discountedPrice = computeDiscountedPrice(plan.price, resolved.discountType, resolved.discountValue);
-  const planFields = { name: `${plan.name} (${resolved.code})`, price: discountedPrice, billingPeriod: plan.billingPeriod };
-
-  // Cached per underlying plan id — a code scoped to "one app" or "all
-  // apps" can be redeemed against several different-priced plans (e.g.
-  // Essential vs Premium), each needing its OWN discounted gateway
-  // plan/price, not one shared id for the whole code.
-  const cached = resolved.discountedPlans?.[planId] || {};
-  let discountedPlanId;
-  if (gateway === "razorpay") {
-    discountedPlanId = cached.razorpayPlanId;
-    if (!discountedPlanId) {
-      discountedPlanId = await createRazorpayPlan(planFields);
-      if (!discountedPlanId) throw { status: 500, message: "Couldn't set up that discount right now. Please try again shortly." };
-      await resolved.ref.set({ discountedPlans: { [planId]: { razorpayPlanId: discountedPlanId } } }, { merge: true });
-    }
-  } else {
-    discountedPlanId = cached.stripePriceId;
-    if (!discountedPlanId) {
-      discountedPlanId = await createStripePrice(planFields);
-      if (!discountedPlanId) throw { status: 500, message: "Couldn't set up that discount right now. Please try again shortly." };
-      await resolved.ref.set({ discountedPlans: { [planId]: { stripePriceId: discountedPlanId } } }, { merge: true });
-    }
-  }
-
-  const cyclesRemaining = resolved.duration === "once" ? 1 : resolved.duration === "cycles" ? resolved.cyclesCount : null;
-  return {
-    code: resolved.code,
-    kind: resolved.kind,
-    discountedPlanId,
-    cyclesRemaining,
-    resellerId: resolved.resellerId || null,
-  };
-}
-
+// The agreed price is saved as a snapshot in subscriptions/{gatewayId} and
+// copied onto the customer when payment is confirmed (checkout/verify or
+// the webhooks). From then on the customer's price comes from that
+// snapshot, not from published pricing, so later price changes never
+// affect them.
+//
+// Offer, partner-referral and promo codes (lib/referral.js) still apply to
+// monthly billing only. A discounted code charges a discounted gateway
+// plan; for codes limited to N cycles, the webhooks switch the subscription
+// back to the regular plan afterwards (offerCyclesRemaining +
+// regularRazorpayPlanId / regularStripePriceId in notes/metadata).
 export async function POST(req) {
   try {
     const c = await requireUser(req);
-    const { planId, gateway, couponCode, billingCycle } = await req.json();
-    if (!planId) throw { status: 400, message: "Plan id required" };
-    if (gateway !== "razorpay" && gateway !== "stripe") {
-      throw { status: 400, message: "Unknown payment gateway" };
-    }
-    const annual = billingCycle === "year";
+    const body = await req.json();
+    const { gateway, couponCode } = body;
+    if (gateway !== "razorpay" && gateway !== "stripe") throw { status: 400, message: "Unknown payment gateway" };
 
-    const planSnap = await adminDb().doc("plans/" + planId).get();
-    if (!planSnap.exists || planSnap.data().active === false) {
-      throw { status: 404, message: "Plan not found" };
-    }
-    const plan = planSnap.data();
+    const config = await getPricingConfig({ fresh: true });
+    const quote = computeQuote(config, body);
+    if (!quote.ok) throw { status: 400, message: quote.error };
+    const annual = quote.billingCycle === "year";
+    const usdRate = config.settings.usdRate;
 
     const custRef = adminDb().doc("customers/" + c.uid);
     const custSnap = await custRef.get();
-    const customer = custSnap.exists ? custSnap.data() : {};
-
-    // Promo/referral codes are a discount off the monthly plan only —
-    // annual pricing is already its own discount (see Admin → Plans), so
-    // stacking the two is skipped rather than designed for right now.
-    let offerResult = null;
-    if (!annual && couponCode && String(couponCode).trim()) {
-      offerResult = await resolveOfferForCheckout({
-        code: couponCode, planId, plan, gateway,
-        requester: { uid: c.uid, paymentCount: customer.paymentCount || 0 },
-      });
+    if (!custSnap.exists) {
+      throw { status: 400, message: "Set up your business first: open any app from your dashboard, then come back to choose a plan." };
+    }
+    const customer = custSnap.data();
+    // A second gateway subscription would double-charge. Plan changes on a
+    // live paid subscription go through support until self-serve upgrades
+    // (cancel + prorate) are built.
+    if (customer.status === "active" && customer.billing !== "complimentary" && customer.subscriptionId) {
+      throw { status: 409, message: "You already have an active subscription. Contact us to change your plan or number of users." };
     }
 
-    if (gateway === "razorpay") {
-      const razorpayPlanId = annual
-        ? plan.annualRazorpayPlanId
-        : offerResult ? offerResult.discountedPlanId : plan.razorpayPlanId;
-      if (!razorpayPlanId) {
-        throw {
-          status: 400,
-          message: annual
-            ? `Annual billing isn't set up for the ${plan.name} plan yet. Add an annual discount in Admin → Plans.`
-            : `Razorpay isn't set up for the ${plan.name} plan yet. Add its Razorpay Plan ID in Admin → Plans.`,
-        };
-      }
-
-      // Reuse an existing Razorpay customer for this account if we've
-      // already created one; otherwise try to create one now. If Razorpay
-      // rejects it (e.g. a customer with this email already exists on
-      // their side), fall back to letting Checkout collect/match the
-      // customer itself — not fatal either way.
-      let razorpayCustomerId = customer.razorpayCustomerId || null;
-      if (!razorpayCustomerId) {
-        try {
-          const rc = await razorpay().customers.create({
-            name: customer.fullName || c.email,
-            email: c.email,
-            notes: { uid: c.uid },
-          });
-          razorpayCustomerId = rc.id;
-          await custRef.set({ razorpayCustomerId }, { merge: true });
-        } catch {
-          razorpayCustomerId = null;
-        }
-      }
-
-      const notes = { uid: c.uid, planId, planName: plan.name, billingCycle: annual ? "year" : "month" };
-      if (offerResult) {
-        // offerCode is set for every kind (offer/referral/promo) — the
-        // webhooks' decrementOfferCycles uses its mere presence (not what
-        // collection it's a key into) to know a discounted-cycle
-        // subscription needs reverting to full price once cyclesRemaining
-        // hits 0, for all three kinds alike. recordOfferRedemption, which
-        // DOES look it up in the offers/ collection specifically, already
-        // no-ops harmlessly for a referral/promo code (no matching doc).
-        // promoCode is a second, separate marker used only to mark a
-        // one-time Partner code "used" (markPromoCodeUsed) once payment
-        // succeeds — referral/offer codes don't need that at all.
-        notes.offerCode = offerResult.code;
-        if (offerResult.kind === "promo") notes.promoCode = offerResult.code;
-        if (offerResult.resellerId) notes.resellerId = offerResult.resellerId;
-        if (offerResult.cyclesRemaining !== null) {
-          notes.offerCyclesRemaining = String(offerResult.cyclesRemaining);
-          notes.regularRazorpayPlanId = plan.razorpayPlanId || "";
-        }
-      }
-
-      const subscription = await razorpay().subscriptions.create({
-        plan_id: razorpayPlanId,
-        customer_notify: 1,
-        // ~10 years of cycles — Razorpay subscriptions need a finite
-        // total_count; this is effectively "runs until cancelled".
-        total_count: annual ? 10 : 120,
-        notes,
+    let offer = null;
+    if (!annual && couponCode && String(couponCode).trim()) {
+      const resolved = await resolveCode(couponCode, { id: quote.planCode, appKey: quote.appKey }, {
+        uid: c.uid, paymentCount: customer.paymentCount || 0,
       });
+      if (!resolved.valid) throw { status: 400, message: resolved.error };
+      offer = {
+        code: resolved.code,
+        kind: resolved.kind,
+        resellerId: resolved.resellerId || null,
+        cyclesRemaining: resolved.duration === "once" ? 1 : resolved.duration === "cycles" ? resolved.cyclesCount : null,
+        unitPrice: applyDiscount(quote.unitPrice, resolved.discountType, resolved.discountValue),
+      };
+    }
 
+    const chargeUnitPrice = offer ? offer.unitPrice : quote.unitPrice;
+    const label = `${quote.displayName} (${annual ? "Annual" : "Monthly"}, per user)`;
+    const gatewayPlanId = await getOrCreateGatewayPlan({ gateway, amountInr: chargeUnitPrice, billingCycle: quote.billingCycle, label, usdRate });
+    if (!gatewayPlanId) {
+      throw { status: 503, message: `${gateway === "razorpay" ? "Razorpay" : "Card"} payments aren't available right now. Please try again shortly or contact us.` };
+    }
+    let regularPlanId = null;
+    if (offer && offer.cyclesRemaining !== null) {
+      regularPlanId = await getOrCreateGatewayPlan({ gateway, amountInr: quote.unitPrice, billingCycle: quote.billingCycle, label, usdRate });
+    }
+
+    // Kept short: Razorpay allows 15 note keys of 256 chars each.
+    const meta = {
+      uid: c.uid,
+      planId: quote.planCode,
+      planName: quote.displayName,
+      appKey: quote.appKey || "",
+      billingCycle: quote.billingCycle,
+      quantity: String(quote.quantity),
+    };
+    if (offer) {
+      meta.offerCode = offer.code;
+      if (offer.kind === "promo") meta.promoCode = offer.code;
+      if (offer.resellerId) meta.resellerId = offer.resellerId;
+      if (offer.cyclesRemaining !== null) {
+        meta.offerCyclesRemaining = String(offer.cyclesRemaining);
+        if (gateway === "razorpay") meta.regularRazorpayPlanId = regularPlanId || "";
+        else meta.regularStripePriceId = regularPlanId || "";
+      }
+    }
+
+    async function saveSnapshot(subscriptionId) {
+      const snapshot = buildSubscriptionSnapshot(quote, {
+        discountedUnitPrice: offer ? offer.unitPrice : undefined,
+        couponCode: offer?.code,
+        gateway,
+        subscriptionId,
+      });
+      await adminDb().doc("subscriptions/" + subscriptionId).set({
+        uid: c.uid, gateway, status: "created", snapshot, createdAt: FieldValue.serverTimestamp(),
+      });
       await custRef.set(
         {
-          pendingSubscription: {
-            gateway: "razorpay",
-            subscriptionId: subscription.id,
-            planId,
-            planName: plan.name,
-            billingCycle: annual ? "year" : "month",
-          },
+          pendingSubscription: { gateway, subscriptionId, planId: quote.planCode, planName: quote.displayName, billingCycle: quote.billingCycle },
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
+    }
+
+    if (gateway === "razorpay") {
+      let razorpayCustomerId = customer.razorpayCustomerId || null;
+      if (!razorpayCustomerId) {
+        try {
+          const rc = await razorpay().customers.create({ name: customer.fullName || c.email, email: c.email, notes: { uid: c.uid } });
+          razorpayCustomerId = rc.id;
+          await custRef.set({ razorpayCustomerId }, { merge: true });
+        } catch {
+          razorpayCustomerId = null; // Checkout can still collect/match the customer itself
+        }
+      }
+
+      const subscription = await razorpay().subscriptions.create({
+        plan_id: gatewayPlanId,
+        quantity: quote.quantity,
+        customer_notify: 1,
+        // Razorpay needs a finite count; ~10 years means "until cancelled".
+        total_count: annual ? 10 : 120,
+        notes: meta,
+      });
+      await saveSnapshot(subscription.id);
 
       return NextResponse.json({
         gateway: "razorpay",
         keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         subscriptionId: subscription.id,
-        planName: plan.name,
+        planName: quote.displayName,
       });
-    }
-
-    // Stripe
-    const stripePriceId = annual
-      ? plan.annualStripePriceId
-      : offerResult ? offerResult.discountedPlanId : plan.stripePriceId;
-    if (!stripePriceId) {
-      throw {
-        status: 400,
-        message: annual
-          ? `Annual billing isn't set up for the ${plan.name} plan yet. Add an annual discount in Admin → Plans.`
-          : `Stripe isn't set up for the ${plan.name} plan yet. Add its Stripe Price ID in Admin → Plans.`,
-      };
-    }
-
-    const metadata = { uid: c.uid, planId, planName: plan.name, billingCycle: annual ? "year" : "month" };
-    if (offerResult) {
-      // See the matching Razorpay branch above for why offerCode is set
-      // for every kind while promoCode is a separate, promo-only marker.
-      metadata.offerCode = offerResult.code;
-      if (offerResult.kind === "promo") metadata.promoCode = offerResult.code;
-      if (offerResult.resellerId) metadata.resellerId = offerResult.resellerId;
-      if (offerResult.cyclesRemaining !== null) {
-        metadata.offerCyclesRemaining = String(offerResult.cyclesRemaining);
-        metadata.regularStripePriceId = plan.stripePriceId || "";
-      }
     }
 
     const origin = req.headers.get("origin") || "https://bizzux.com";
     const sessionParams = {
       mode: "subscription",
-      line_items: [{ price: stripePriceId, quantity: 1 }],
+      line_items: [{ price: gatewayPlanId, quantity: quote.quantity }],
       success_url: `${origin}/dashboard?checkout=success`,
       cancel_url: `${origin}/pricing?checkout=cancelled`,
       client_reference_id: c.uid,
-      metadata,
-      subscription_data: { metadata },
+      metadata: meta,
+      subscription_data: { metadata: meta },
     };
-    if (customer.stripeCustomerId) {
-      sessionParams.customer = customer.stripeCustomerId;
-    } else {
-      sessionParams.customer_email = c.email;
-    }
+    if (customer.stripeCustomerId) sessionParams.customer = customer.stripeCustomerId;
+    else sessionParams.customer_email = c.email;
 
     const session = await stripe().checkout.sessions.create(sessionParams);
-
+    // The Stripe subscription id only exists after payment, so the snapshot
+    // is keyed by the checkout session id; the webhook looks it up by that.
+    await saveSnapshot(session.id);
     return NextResponse.json({ gateway: "stripe", url: session.url });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Checkout failed" }, { status: e.status || 500 });

@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { razorpay } from "@/lib/razorpay";
 import { resolvePartnerRates } from "@/lib/referral";
+import { loadSubscriptionSnapshot, customerFieldsForSnapshot } from "@/lib/pricing";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
@@ -197,6 +198,10 @@ export async function POST(req) {
       case "subscription.activated":
       case "subscription.charged":
         if (uid) {
+          // The price agreed at checkout (lib/pricing.js). Present for every
+          // subscription started under App/Suite pricing; absent for older
+          // plan-based ones, which keep their planId/planName from notes.
+          const snapshot = await loadSubscriptionSnapshot(sub.id);
           await adminDb().doc("customers/" + uid).set(
             {
               status: "active",
@@ -205,11 +210,15 @@ export async function POST(req) {
               planId: sub.notes?.planId || null,
               planName: sub.notes?.planName || null,
               billingCycle: sub.notes?.billingCycle === "year" ? "year" : "month",
+              ...(snapshot ? customerFieldsForSnapshot(snapshot) : {}),
               currentPeriodEnd: sub.current_end ? new Date(sub.current_end * 1000) : null,
               updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }
           );
+          if (snapshot) {
+            await adminDb().doc("subscriptions/" + sub.id).set({ status: "active" }, { merge: true });
+          }
         }
         // Offer redemption counting + discount-cycle tracking, and the
         // paymentCount used by the Super Admin Customers list to tell a

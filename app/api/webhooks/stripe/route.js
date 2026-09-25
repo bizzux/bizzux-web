@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { resolvePartnerRates } from "@/lib/referral";
+import { loadSubscriptionSnapshot, customerFieldsForSnapshot } from "@/lib/pricing";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
@@ -179,6 +180,10 @@ export async function POST(req) {
         const session = event.data.object;
         const uid = session.client_reference_id || session.metadata?.uid;
         if (uid) {
+          // Snapshot saved at checkout under the session id (the subscription
+          // id doesn't exist until payment) — see app/api/checkout/route.js.
+          const snapshot = await loadSubscriptionSnapshot(session.id);
+          if (snapshot) snapshot.subscriptionId = session.subscription || null;
           await adminDb().doc("customers/" + uid).set(
             {
               status: "active",
@@ -188,10 +193,18 @@ export async function POST(req) {
               planId: session.metadata?.planId || null,
               planName: session.metadata?.planName || null,
               billingCycle: session.metadata?.billingCycle === "year" ? "year" : "month",
+              ...(snapshot ? customerFieldsForSnapshot(snapshot) : {}),
+              pendingSubscription: FieldValue.delete(),
               updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }
           );
+          if (snapshot) {
+            await adminDb().doc("subscriptions/" + session.id).set(
+              { status: "active", stripeSubscriptionId: session.subscription || null },
+              { merge: true }
+            );
+          }
         }
         break;
       }

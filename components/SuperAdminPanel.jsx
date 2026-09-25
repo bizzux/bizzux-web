@@ -5,6 +5,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import OrganizationsManager from "@/components/OrganizationsManager";
+import PricingManager from "@/components/PricingManager";
 import { APP_CATALOG } from "@/lib/apps";
 import { IconTrash } from "@/components/Icons";
 
@@ -20,9 +21,7 @@ const TABS = [
   { id: "business", label: "Business Health" },
   { id: "organizations", label: "Organizations" },
   { id: "customers", label: "Support / Customers" },
-  { id: "plans", label: "Plans & Pricing" },
-  { id: "planlimits", label: "Plan Limits" },
-  { id: "planapps", label: "Products / Modules" },
+  { id: "pricing", label: "Billing & Pricing" },
   { id: "offers", label: "Offers" },
   { id: "resellers", label: "Partners" },
   { id: "trial", label: "Platform Configuration" },
@@ -117,9 +116,7 @@ export default function SuperAdminPanel() {
       {tab === "dashboard" && <PlatformDashboard isOwner={platformRole === "OWNER"} />}
       {tab === "business" && <BusinessHealthPanel isOwner={platformRole === "OWNER"} />}
       {tab === "trial" && <TrialSettings />}
-      {tab === "plans" && <PlansManager />}
-      {tab === "planlimits" && <PlanLimitsManager />}
-      {tab === "planapps" && <PlanAppsManager />}
+      {tab === "pricing" && <PricingManager />}
       {tab === "offers" && <OffersManager />}
       {tab === "resellers" && <ResellersManager />}
       {tab === "customers" && <CustomersList isOwner={platformRole === "OWNER"} />}
@@ -1326,274 +1323,6 @@ function TrialSettings() {
   );
 }
 
-const emptyPlan = { name: "", price: "", billingPeriod: "month", description: "", features: "", popular: false, active: true, sortOrder: 0, razorpayPlanId: "", stripePriceId: "", strikePrice: "", annualDiscountType: "percent", annualDiscountValue: "", appKey: "juicechatjunction" };
-
-function PlansManager() {
-  const [plans, setPlans] = useState(null);
-  const [form, setForm] = useState(emptyPlan);
-  const [editingId, setEditingId] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  // Snapshot of the plan's price/billing period at the moment Edit was
-  // clicked — compared against the live form below to warn before a save
-  // that would trigger a brand-new Razorpay/Stripe plan object (both
-  // platforms make these immutable once created; see the comment atop
-  // app/api/admin/plans/route.js). Not used at all for "Add a plan".
-  const [originalPricing, setOriginalPricing] = useState(null);
-
-  async function load() {
-    try {
-      const d = await api("/api/admin/plans", "GET");
-      setPlans(d.plans || []);
-    } catch {
-      setPlans([]);
-    }
-  }
-  useEffect(() => { load(); }, []);
-
-  function edit(p) {
-    setEditingId(p.id);
-    setForm({
-      name: p.name || "", price: p.price ?? "", billingPeriod: p.billingPeriod || "month",
-      description: p.description || "", features: (p.features || []).join(", "),
-      popular: !!p.popular, active: p.active !== false, sortOrder: p.sortOrder ?? 0,
-      razorpayPlanId: p.razorpayPlanId || "", stripePriceId: p.stripePriceId || "",
-      strikePrice: p.strikePrice ?? "",
-      annualDiscountType: p.annualDiscountType || "percent",
-      annualDiscountValue: p.annualDiscountValue ?? "",
-      appKey: p.appKey || "juicechatjunction",
-    });
-    setOriginalPricing({ price: p.price ?? "", billingPeriod: p.billingPeriod || "month" });
-  }
-  function resetForm() { setEditingId(null); setForm(emptyPlan); setOriginalPricing(null); }
-
-  // True once the person has actually changed Price or Billing period away
-  // from what this plan was saved with — the two fields that make saving
-  // create a fresh gateway plan instead of reusing the existing one (see
-  // resolveGatewayIds() in app/api/admin/plans/route.js).
-  const willCreateNewGatewayPlan =
-    editingId &&
-    originalPricing &&
-    (Number(form.price) !== Number(originalPricing.price) || form.billingPeriod !== originalPricing.billingPeriod);
-
-  async function submit(e) {
-    e.preventDefault();
-    setBusy(true);
-    setErr("");
-    try {
-      const payload = {
-        name: form.name, price: Number(form.price), billingPeriod: form.billingPeriod,
-        description: form.description, popular: !!form.popular, active: !!form.active,
-        sortOrder: Number(form.sortOrder) || 0,
-        features: form.features.split(",").map((s) => s.trim()).filter(Boolean),
-        strikePrice: form.strikePrice === "" ? null : Number(form.strikePrice),
-        annualDiscountType: form.annualDiscountType,
-        annualDiscountValue: form.annualDiscountValue === "" ? 0 : Number(form.annualDiscountValue),
-        appKey: form.appKey,
-        // No razorpayPlanId/stripePriceId here on purpose — the API
-        // auto-creates (or reuses) both from name/price/billingPeriod. See
-        // app/api/admin/plans/route.js's resolveGatewayIds().
-      };
-      if (editingId) {
-        await api("/api/admin/plans", "POST", { action: "update", id: editingId, ...payload });
-      } else {
-        await api("/api/admin/plans", "POST", { action: "create", ...payload });
-      }
-      resetForm();
-      await load();
-    } catch (e2) {
-      setErr(e2.message);
-    }
-    setBusy(false);
-  }
-
-  async function remove(id) {
-    if (!confirm("Delete this plan?")) return;
-    try {
-      await api("/api/admin/plans", "POST", { action: "delete", id });
-      await load();
-    } catch (e2) {
-      setErr(e2.message);
-    }
-  }
-
-  if (plans === null) return <p className="muted">Loading…</p>;
-
-  return (
-    <div style={{ display: "grid", gap: 24, gridTemplateColumns: "1.1fr 1fr" }}>
-      <div className="card">
-        <h3 style={{ marginBottom: 14 }}>{editingId ? "Edit plan" : "Add a plan"}</h3>
-        <form onSubmit={submit}>
-          <div style={{ marginBottom: 12 }}>
-            <label className="label">App</label>
-            <select className="input" value={form.appKey} onChange={(e) => setForm({ ...form, appKey: e.target.value })}>
-              {APP_CATALOG.map((a) => (
-                <option key={a.key} value={a.key}>{a.icon} {a.name}</option>
-              ))}
-            </select>
-            <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-              Which app this plan sells access to. Each app can have its own plans and prices — pricing isn&apos;t
-              shared across apps.
-            </p>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label className="label">Name</label>
-            <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          </div>
-          <div className="row" style={{ marginBottom: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label className="label">Price (₹)</label>
-              <input className="input" type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label className="label">Billing period</label>
-              <select className="input" value={form.billingPeriod} onChange={(e) => setForm({ ...form, billingPeriod: e.target.value })}>
-                <option value="day">Day</option>
-                <option value="week">Week</option>
-                <option value="month">Month</option>
-                <option value="year">Year</option>
-              </select>
-            </div>
-          </div>
-          {willCreateNewGatewayPlan && (
-            <p
-              className="muted"
-              style={{ fontSize: 12.5, marginTop: -6, marginBottom: 12, color: "#B23C00", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 10px" }}
-            >
-              Razorpay and Stripe don&apos;t allow editing a plan&apos;s price after it&apos;s created, so saving this
-              will set up a brand-new plan there instead of changing the existing one. Anyone already subscribed
-              keeps their current price; only new checkouts will use this one. If you were just testing a value,
-              change it back before saving to avoid leaving an unused plan behind at the gateway.
-            </p>
-          )}
-          <div style={{ marginBottom: 12 }}>
-            <label className="label">Marketing price (strike-through, optional)</label>
-            <input
-              className="input" type="number" min="0" placeholder="e.g. 699"
-              value={form.strikePrice} onChange={(e) => setForm({ ...form, strikePrice: e.target.value })}
-            />
-            <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-              Shown crossed out next to the real price on the pricing page, with a "Limited offer" badge, to
-              make the current price look like an active discount. Purely cosmetic. Leave blank to hide it.
-            </p>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label className="label">Annual discount (off 12x the monthly price above)</label>
-            <div className="row">
-              <select
-                className="input" style={{ flex: 1 }}
-                value={form.annualDiscountType}
-                onChange={(e) => setForm({ ...form, annualDiscountType: e.target.value })}
-              >
-                <option value="percent">% off</option>
-                <option value="amount">₹ off</option>
-              </select>
-              <input
-                className="input" style={{ flex: 1 }} type="number" min="0" placeholder="e.g. 15"
-                value={form.annualDiscountValue} onChange={(e) => setForm({ ...form, annualDiscountValue: e.target.value })}
-              />
-            </div>
-            {(() => {
-              const monthly = Number(form.price) || 0;
-              const base = monthly * 12;
-              const discountValue = Number(form.annualDiscountValue) || 0;
-              const annual =
-                form.annualDiscountType === "amount"
-                  ? Math.max(0, Math.round(base - discountValue))
-                  : Math.max(0, Math.round(base * (1 - discountValue / 100)));
-              const savings = base - annual;
-              const savingsPct = base > 0 ? Math.round((savings / base) * 100) : 0;
-              return (
-                <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-                  {monthly > 0
-                    ? `₹${base.toLocaleString("en-IN")}/year → ₹${annual.toLocaleString("en-IN")}/year — customer saves ₹${savings.toLocaleString("en-IN")} (${savingsPct}%). Most SaaS apps offer 15–20% off (roughly 2 months free) for annual billing.`
-                    : "Enter the monthly price above to see the annual price preview."}
-                </p>
-              );
-            })()}
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label className="label">Description</label>
-            <input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label className="label">Features (comma-separated)</label>
-            <input className="input" value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} placeholder="Up to 3 users, Email support" />
-          </div>
-          <div className="row" style={{ marginBottom: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label className="label">Razorpay Plan</label>
-              <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-                {form.razorpayPlanId
-                  ? `Created: ${form.razorpayPlanId}`
-                  : "Created automatically when you save, from the price above."}
-              </p>
-            </div>
-            <div style={{ flex: 1 }}>
-              <label className="label">Stripe Price</label>
-              <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-                {form.stripePriceId
-                  ? `Created: ${form.stripePriceId}`
-                  : "Created automatically when you save, from the price above."}
-              </p>
-            </div>
-          </div>
-          <div className="row" style={{ marginBottom: 16 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
-              <input type="checkbox" checked={form.popular} onChange={(e) => setForm({ ...form, popular: e.target.checked })} /> Mark as popular
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
-              <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Active (visible on pricing page)
-            </label>
-          </div>
-          <div className="row">
-            <button className="btn-primary" disabled={busy}>{busy ? "Saving…" : editingId ? "Save changes" : "Add plan"}</button>
-            {editingId && <button type="button" className="btn-outline-dark" onClick={resetForm}>Cancel</button>}
-          </div>
-          {err && <p className="error">{err}</p>}
-        </form>
-      </div>
-
-      <div className="card">
-        <h3 style={{ marginBottom: 14 }}>Existing plans</h3>
-        {plans.length === 0 && <p className="muted">No plans yet.</p>}
-        {plans.map((p) => (
-          <div key={p.id} style={{ borderBottom: "1px solid var(--line)", padding: "12px 0" }}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <strong>
-                <span className="muted" style={{ fontWeight: 400, fontSize: 12.5, marginRight: 6 }}>
-                  {APP_CATALOG.find((a) => a.key === (p.appKey || "juicechatjunction"))?.icon || ""}{" "}
-                  {APP_CATALOG.find((a) => a.key === (p.appKey || "juicechatjunction"))?.name || p.appKey}
-                </span>
-                {p.name} ({p.strikePrice > p.price && <span style={{ textDecoration: "line-through", opacity: 0.6 }}>₹{p.strikePrice}</span>}{" "}
-                ₹{p.price}/{p.billingPeriod})
-              </strong>
-              {p.active === false && <span className="muted" style={{ fontSize: 12 }}>hidden</span>}
-            </div>
-            <div className="row" style={{ marginTop: 4, gap: 12 }}>
-              <span className="muted" style={{ fontSize: 12 }}>
-                Razorpay {p.razorpayPlanId ? "✓" : "not set up yet"}
-              </span>
-              <span className="muted" style={{ fontSize: 12 }}>
-                Stripe {p.stripePriceId ? "✓" : "not set up yet"}
-              </span>
-            </div>
-            {p.annualPrice > 0 && (
-              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                Annual: ₹{p.annualPrice.toLocaleString("en-IN")}/year ({p.annualDiscountValue || 0}{p.annualDiscountType === "amount" ? "₹" : "%"} off ₹{(p.price * 12).toLocaleString("en-IN")})
-              </div>
-            )}
-            <div className="row" style={{ marginTop: 6 }}>
-              <button className="link-btn" onClick={() => edit(p)}>Edit</button>
-              <button className="link-btn danger" onClick={() => remove(p.id)}>Delete</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const emptyOffer = {
   code: "", scope: "plan", planId: "", appKey: "juicechatjunction", discountType: "percent", discountValue: "",
   duration: "forever", cyclesCount: "", expiresAt: "", maxRedemptions: "", active: true,
@@ -1820,336 +1549,6 @@ function OffersManager() {
   );
 }
 
-// Default plan blueprints used by the one-click "Add default plans" seeder
-// below — a starting point, not fixed values. Everything here (price,
-// features, limits) can be edited afterward from the Plans / Plan Limits
-// tabs like any other plan.
-const DEFAULT_PLANS = [
-  {
-    name: "Essential", price: 499, strikePrice: 699, billingPeriod: "month", sortOrder: 1,
-    description: "Everything you need to run one counter.",
-    features: ["1 shop location", "Up to 2 staff logins", "Digital menu & self-order", "Basic sales reports"],
-    popular: false, active: true,
-    limits: { maxStaffLogins: 2, maxShops: 1, maxMenuItems: 50, maxMonthlyOrders: 500, supportLevel: "Email" },
-  },
-  {
-    name: "Business", price: 999, strikePrice: 1299, billingPeriod: "month", sortOrder: 2,
-    description: "For growing shops with more staff and locations.",
-    features: ["Up to 3 shop locations", "Up to 8 staff logins", "Inventory & purchases", "Priority email support"],
-    popular: true, active: true,
-    limits: { maxStaffLogins: 8, maxShops: 3, maxMenuItems: 300, maxMonthlyOrders: 3000, supportLevel: "Priority Email" },
-  },
-  {
-    name: "Premium", price: 1999, strikePrice: 2299, billingPeriod: "month", sortOrder: 3,
-    description: "Unlimited scale with every feature unlocked.",
-    features: ["Unlimited shop locations", "Unlimited staff logins", "Full CapEx/OpEx & analytics", "Phone & priority support"],
-    popular: false, active: true,
-    limits: { maxStaffLogins: "", maxShops: "", maxMenuItems: "", maxMonthlyOrders: "", supportLevel: "Phone & Priority" },
-  },
-];
-
-const LIMIT_FIELDS = [
-  { key: "maxStaffLogins", label: "Staff logins" },
-  { key: "maxShops", label: "Shop locations" },
-  { key: "maxMenuItems", label: "Menu items" },
-  { key: "maxMonthlyOrders", label: "Orders / month" },
-];
-
-const SUPPORT_LEVELS = ["Email", "Priority Email", "Phone & Priority"];
-
-function PlanLimitsManager() {
-  const [plans, setPlans] = useState(null);
-  const [edits, setEdits] = useState({}); // planId -> { ...limit fields }
-  const [savingId, setSavingId] = useState(null);
-  const [seeding, setSeeding] = useState(false);
-  const [err, setErr] = useState("");
-
-  async function load() {
-    try {
-      const d = await api("/api/admin/plans", "GET");
-      const list = d.plans || [];
-      setPlans(list);
-      const next = {};
-      for (const p of list) {
-        const l = p.limits || {};
-        next[p.id] = {
-          maxStaffLogins: l.maxStaffLogins ?? "", maxShops: l.maxShops ?? "",
-          maxMenuItems: l.maxMenuItems ?? "", maxMonthlyOrders: l.maxMonthlyOrders ?? "",
-          supportLevel: l.supportLevel || SUPPORT_LEVELS[0],
-        };
-      }
-      setEdits(next);
-    } catch {
-      setPlans([]);
-    }
-  }
-  useEffect(() => { load(); }, []);
-
-  function setField(planId, field, value) {
-    setEdits((e) => ({ ...e, [planId]: { ...e[planId], [field]: value } }));
-  }
-
-  async function saveLimits(planId) {
-    setSavingId(planId);
-    setErr("");
-    try {
-      const f = edits[planId];
-      const limits = {
-        maxStaffLogins: f.maxStaffLogins === "" ? "" : Number(f.maxStaffLogins),
-        maxShops: f.maxShops === "" ? "" : Number(f.maxShops),
-        maxMenuItems: f.maxMenuItems === "" ? "" : Number(f.maxMenuItems),
-        maxMonthlyOrders: f.maxMonthlyOrders === "" ? "" : Number(f.maxMonthlyOrders),
-        supportLevel: f.supportLevel,
-      };
-      await api("/api/admin/plans", "POST", { action: "setLimits", id: planId, limits });
-      await load();
-    } catch (e2) {
-      setErr(e2.message);
-    }
-    setSavingId(null);
-  }
-
-  async function seedDefaults() {
-    setSeeding(true);
-    setErr("");
-    try {
-      const existingNames = new Set((plans || []).map((p) => (p.name || "").trim().toLowerCase()));
-      for (const dp of DEFAULT_PLANS) {
-        if (existingNames.has(dp.name.toLowerCase())) continue; // don't duplicate one that's already there
-        await api("/api/admin/plans", "POST", { action: "create", ...dp });
-      }
-      await load();
-    } catch (e2) {
-      setErr(e2.message);
-    }
-    setSeeding(false);
-  }
-
-  if (plans === null) return <p className="muted">Loading…</p>;
-
-  const missingDefaults = DEFAULT_PLANS.filter(
-    (dp) => !plans.some((p) => (p.name || "").trim().toLowerCase() === dp.name.toLowerCase())
-  );
-
-  return (
-    <div>
-      <div className="card" style={{ marginBottom: 16 }}>
-        <p className="section-title" style={{ marginTop: 0 }}>Plan tiers</p>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Set usage limits per plan: staff logins, shop locations, menu items, and monthly self-orders.
-          Leave a field blank for <b>Unlimited</b>. These numbers are for reference and billing conversations
-          for now; they aren&apos;t automatically enforced inside Bizzux Business yet.
-        </p>
-        {missingDefaults.length > 0 && (
-          <button className="btn-primary" disabled={seeding} onClick={seedDefaults}>
-            {seeding ? "Adding…" : `+ Add default plans (${missingDefaults.map((d) => d.name).join(", ")})`}
-          </button>
-        )}
-        {err && <p className="error" style={{ marginTop: 10 }}>{err}</p>}
-      </div>
-
-      {plans.length === 0 && <p className="muted">No plans yet. Add one from the Plans tab, or use the button above.</p>}
-
-      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-        {plans.map((p) => {
-          const f = edits[p.id] || {};
-          return (
-            <div key={p.id} className="card">
-              <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
-                <strong>{p.name}</strong>
-                {p.popular && <span className="muted" style={{ fontSize: 12 }}>★ Popular</span>}
-              </div>
-
-              {LIMIT_FIELDS.map((lf) => (
-                <div key={lf.key} style={{ marginBottom: 10 }}>
-                  <label className="label">{lf.label}</label>
-                  <input
-                    className="input" type="number" min="0"
-                    placeholder="Unlimited"
-                    value={f[lf.key] ?? ""}
-                    onChange={(e) => setField(p.id, lf.key, e.target.value)}
-                  />
-                </div>
-              ))}
-
-              <div style={{ marginBottom: 12 }}>
-                <label className="label">Support level</label>
-                <select
-                  className="input"
-                  value={f.supportLevel || SUPPORT_LEVELS[0]}
-                  onChange={(e) => setField(p.id, "supportLevel", e.target.value)}
-                >
-                  {SUPPORT_LEVELS.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-
-              <button className="btn-primary" disabled={savingId === p.id} onClick={() => saveLimits(p.id)}>
-                {savingId === p.id ? "Saving…" : "Save limits"}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// Lets a Super Admin pick, per plan, which Bizzux apps are included and
-// (optionally) which named features within each app are unlocked — e.g.
-// "Business" gets Shop + POS + Orders, with POS limited to "Single till".
-// Mirrors the Plan Limits tab's per-plan-card layout. See lib/apps.js for
-// the app catalog and app/api/admin/plans/route.js's setAppAccess action.
-function PlanAppsManager() {
-  const [plans, setPlans] = useState(null);
-  // planId -> { [appKey]: { enabled, features: string[], featuresText: string } }
-  // `features` (array) drives the checklist for apps with a known real tab
-  // list (APP_CATALOG entry has `features`); `featuresText` (raw string,
-  // kept separate so a mid-typed comma is never eaten) drives the free-text
-  // fallback for apps whose feature list isn't known yet.
-  const [edits, setEdits] = useState({});
-  const [savingId, setSavingId] = useState(null);
-  const [err, setErr] = useState("");
-
-  async function load() {
-    try {
-      const d = await api("/api/admin/plans", "GET");
-      const list = d.plans || [];
-      setPlans(list);
-      const next = {};
-      for (const p of list) {
-        const access = p.appAccess || {};
-        const forPlan = {};
-        for (const app of APP_CATALOG) {
-          const a = access[app.key] || {};
-          const featuresArr = Array.isArray(a.features) ? a.features : [];
-          forPlan[app.key] = { enabled: !!a.enabled, features: featuresArr, featuresText: featuresArr.join(", ") };
-        }
-        next[p.id] = forPlan;
-      }
-      setEdits(next);
-    } catch {
-      setPlans([]);
-    }
-  }
-  useEffect(() => { load(); }, []);
-
-  function setAppField(planId, appKey, field, value) {
-    setEdits((e) => ({
-      ...e,
-      [planId]: { ...e[planId], [appKey]: { ...e[planId]?.[appKey], [field]: value } },
-    }));
-  }
-
-  // Checklist apps only — toggles one real tab id in or out of the plan's
-  // allowed set.
-  function toggleFeature(planId, appKey, featureId) {
-    setEdits((e) => {
-      const current = e[planId]?.[appKey]?.features || [];
-      const next = current.includes(featureId) ? current.filter((f) => f !== featureId) : [...current, featureId];
-      return { ...e, [planId]: { ...e[planId], [appKey]: { ...e[planId]?.[appKey], features: next } } };
-    });
-  }
-
-  async function saveAppAccess(planId) {
-    setSavingId(planId);
-    setErr("");
-    try {
-      const forPlan = edits[planId] || {};
-      const appAccess = {};
-      for (const app of APP_CATALOG) {
-        const a = forPlan[app.key] || {};
-        // Checklist apps save straight from the `features` array; free-text
-        // apps parse `featuresText` the same way they always did.
-        const features = app.features
-          ? (a.features || []).filter(Boolean)
-          : (a.featuresText || "").split(",").map((s) => s.trim()).filter(Boolean);
-        appAccess[app.key] = { enabled: !!a.enabled, features };
-      }
-      await api("/api/admin/plans", "POST", { action: "setAppAccess", id: planId, appAccess });
-      await load();
-    } catch (e2) {
-      setErr(e2.message);
-    }
-    setSavingId(null);
-  }
-
-  if (plans === null) return <p className="muted">Loading…</p>;
-
-  return (
-    <div>
-      <div className="card" style={{ marginBottom: 16 }}>
-        <p className="section-title" style={{ marginTop: 0 }}>App access per plan</p>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Choose which Bizzux apps come with each plan. Apps with a known tab structure, like Bizzux Business,
-          show a checklist of their real tabs to include or exclude; the rest still take a free-text list of
-          feature names for reference. Enforcement currently reaches Bizzux Business, since it's the only app
-          live today, through the sign-in hand-off.
-        </p>
-        {err && <p className="error" style={{ marginTop: 10 }}>{err}</p>}
-      </div>
-
-      {plans.length === 0 && <p className="muted">No plans yet. Add one from the Plans tab.</p>}
-
-      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
-        {plans.map((p) => {
-          const forPlan = edits[p.id] || {};
-          return (
-            <div key={p.id} className="card">
-              <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
-                <strong>{p.name}</strong>
-                {p.popular && <span className="muted" style={{ fontSize: 12 }}>★ Popular</span>}
-              </div>
-
-              {APP_CATALOG.map((app) => {
-                const a = forPlan[app.key] || { enabled: false, features: [], featuresText: "" };
-                return (
-                  <div key={app.key} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--line)" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, marginBottom: a.enabled ? 6 : 0 }}>
-                      <input
-                        type="checkbox" checked={a.enabled}
-                        onChange={(e) => setAppField(p.id, app.key, "enabled", e.target.checked)}
-                      />
-                      <span>{app.icon} {app.name}</span>
-                    </label>
-
-                    {a.enabled && app.features && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "5px 14px", paddingLeft: 22 }}>
-                        {app.features.map((f) => (
-                          <label key={f.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--muted)" }}>
-                            <input
-                              type="checkbox"
-                              checked={a.features.includes(f.id)}
-                              onChange={() => toggleFeature(p.id, app.key, f.id)}
-                            />
-                            {f.label}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-
-                    {a.enabled && !app.features && (
-                      <input
-                        className="input" placeholder="Unlocked features (comma-separated, optional)"
-                        value={a.featuresText}
-                        onChange={(e) => setAppField(p.id, app.key, "featuresText", e.target.value)}
-                        style={{ fontSize: 12.5 }}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-
-              <button className="btn-primary" disabled={savingId === p.id} onClick={() => saveAppAccess(p.id)}>
-                {savingId === p.id ? "Saving…" : "Save app access"}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // Small "⋯" more-actions menu — same pattern used in Bizzux Files.
 // Matches the keys appUsage.<key> is stamped with (app-sso/route.js,
 // shop-sso/route.js) to the display name shown in the Apps Used column.
@@ -2339,7 +1738,20 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
                 <div><div className="label">Plan</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.planName || "N/A"}</div></div>
                 <div><div className="label">Signed up</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.createdAt ? new Date(customer.createdAt).toLocaleDateString() : "N/A"}</div></div>
                 <div><div className="label">Last login</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{timeAgo(customer.lastLoginAt)}</div></div>
-                <div><div className="label">Trial ends</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.trialEndDate ? new Date(customer.trialEndDate).toLocaleDateString() : "N/A"}</div></div>
+                <div><div className="label">Trial ends</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.status === "trial_pending" ? "Not started (phone not verified)" : customer.trialEndDate ? new Date(customer.trialEndDate).toLocaleDateString() : "N/A"}</div></div>
+                {customer.subscription && (
+                  <div>
+                    <div className="label">Locked-in price</div>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>
+                      {customer.subscription.quantity} user{customer.subscription.quantity === 1 ? "" : "s"} × ₹{Number(customer.subscription.unitPrice).toLocaleString("en-IN")} = ₹{Number(customer.subscription.totalPrice).toLocaleString("en-IN")}/{customer.subscription.billingCycle === "year" ? "year" : "month"}
+                    </div>
+                    <div className="muted" style={{ fontSize: 11.5 }}>
+                      Since {customer.subscription.agreedAt ? new Date(customer.subscription.agreedAt).toLocaleDateString() : "—"}
+                      {customer.subscription.listUnitPrice !== customer.subscription.unitPrice ? ` · list ₹${customer.subscription.listUnitPrice}` : ""}
+                      {customer.subscription.couponCode ? ` · code ${customer.subscription.couponCode}` : ""}
+                    </div>
+                  </div>
+                )}
               </div>
               {/* Sales follow-up context, from the "Set up your Bizzux account"
                   onboarding wizard — why this trial exists and who to ask for
@@ -2892,12 +2304,72 @@ const FREE_REASONS = [
 ];
 const freeReasonLabel = (v) => FREE_REASONS.find((r) => r.value === v)?.label || "Free";
 
-// Platform Owner -> give a business a free license: a real plan (so its
-// features/limits apply) that's never charged and doesn't count as revenue.
-// See the grantFree action in app/api/admin/customers/route.js.
+// Shared plan/cycle/users picker for Free license and Mark as paid. Options
+// come from /api/admin/plans's purchaseOptions (published Bizzux App per
+// app, and Bizzux Suite), so these always match live pricing.
+function usePurchaseOptions(defaultToSuite) {
+  const [options, setOptions] = useState(null);
+  const [optionId, setOptionId] = useState("");
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await api("/api/admin/plans", "GET");
+        const list = d.purchaseOptions || [];
+        setOptions(list);
+        const suite = list.find((o) => !o.appKey);
+        if (list.length) setOptionId((defaultToSuite && suite ? suite : list[0]).id);
+      } catch (e) {
+        setErr(e.message);
+        setOptions([]);
+      }
+    })();
+  }, [defaultToSuite]);
+  return { options, optionId, setOptionId, err };
+}
+
+function PlanPicker({ options, optionId, setOptionId, cycle, setCycle, users, setUsers, showPrice }) {
+  const opt = options?.find((o) => o.id === optionId);
+  if (options === null) return <p className="muted">Loading plans…</p>;
+  if (!options.length) return <p className="error">No plans are on sale. Check Billing &amp; Pricing first.</p>;
+  return (
+    <>
+      <label className="label">Plan</label>
+      <select className="input" value={optionId} onChange={(e) => setOptionId(e.target.value)} style={{ marginBottom: 12 }}>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>{o.name}{showPrice ? ` (₹${o.monthly}/mo · ₹${o.annual}/yr per user)` : ""}</option>
+        ))}
+      </select>
+      <div className="row" style={{ marginBottom: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label className="label">Billing</label>
+          <select className="input" value={cycle} onChange={(e) => setCycle(e.target.value)}>
+            <option value="month">Monthly</option>
+            <option value="year">Annual</option>
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label className="label">Users</label>
+          <input className="input" type="number" min="1" value={users} onChange={(e) => setUsers(e.target.value)} />
+        </div>
+      </div>
+      {showPrice && opt && (
+        <p className="muted" style={{ fontSize: 12.5, marginTop: -4, marginBottom: 12 }}>
+          Published price: {Number(users) || 1} × ₹{(cycle === "year" ? opt.annual : opt.monthly).toLocaleString("en-IN")} ={" "}
+          <strong>₹{((Number(users) || 1) * (cycle === "year" ? opt.annual : opt.monthly)).toLocaleString("en-IN")}/{cycle === "year" ? "year" : "month"}</strong>
+        </p>
+      )}
+    </>
+  );
+}
+
+// Platform Owner -> give a business a free license: a real plan (App or
+// Suite) that's never charged and doesn't count as revenue. See the
+// grantFree action in app/api/admin/customers/route.js.
 function FreeLicenseModal({ customer, onClose, onDone }) {
-  const [plans, setPlans] = useState(null);
-  const [planId, setPlanId] = useState("");
+  const { options, optionId, setOptionId, err: loadErr } = usePurchaseOptions(true);
+  const [cycle, setCycle] = useState("year");
+  const [users, setUsers] = useState(5);
   const [reason, setReason] = useState("internal");
   const [hasEnd, setHasEnd] = useState(false);
   const [until, setUntil] = useState("");
@@ -2905,30 +2377,15 @@ function FreeLicenseModal({ customer, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const d = await api("/api/admin/plans", "GET");
-        const active = (d.plans || []).filter((p) => p.active !== false);
-        setPlans(active);
-        // Default to the top plan: a free license usually means "everything".
-        if (active.length) setPlanId(active[active.length - 1].id);
-      } catch (e) {
-        setErr(e.message);
-        setPlans([]);
-      }
-    })();
-  }, []);
-
   async function submit(e) {
     e.preventDefault();
-    if (!planId) return setErr("Choose a plan");
+    if (!optionId) return setErr("Choose a plan");
     if (hasEnd && !until) return setErr("Pick an end date, or choose No end date");
     setBusy(true);
     setErr("");
     try {
       await api("/api/admin/customers", "POST", {
-        action: "grantFree", id: customer.id, planId, reason,
+        action: "grantFree", id: customer.id, planId: optionId, billingCycle: cycle, quantity: Number(users) || 1, reason,
         until: hasEnd ? new Date(until + "T23:59:59").toISOString() : null, note,
       });
       onDone();
@@ -2948,16 +2405,7 @@ function FreeLicenseModal({ customer, onClose, onDone }) {
           counted as revenue.
         </p>
         <form onSubmit={submit} noValidate>
-          <label className="label">Plan</label>
-          {plans === null ? (
-            <p className="muted">Loading plans…</p>
-          ) : (
-            <select className="input" value={planId} onChange={(e) => setPlanId(e.target.value)} style={{ marginBottom: 14 }}>
-              {plans.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          )}
+          <PlanPicker options={options} optionId={optionId} setOptionId={setOptionId} cycle={cycle} setCycle={setCycle} users={users} setUsers={setUsers} />
 
           <label className="label">Why is it free?</label>
           <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
@@ -2990,10 +2438,10 @@ function FreeLicenseModal({ customer, onClose, onDone }) {
             placeholder="e.g. Brother's shop, testing POS" style={{ marginBottom: 16 }}
           />
 
-          {err && <p className="error">{err}</p>}
+          {(err || loadErr) && <p className="error">{err || loadErr}</p>}
           <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
             <button type="button" className="btn-outline-dark" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn-primary" disabled={busy || !plans?.length}>{busy ? "Saving…" : "Give free license"}</button>
+            <button className="btn-primary" disabled={busy || !options?.length}>{busy ? "Saving…" : "Give free license"}</button>
           </div>
         </form>
       </div>
@@ -3002,35 +2450,27 @@ function FreeLicenseModal({ customer, onClose, onDone }) {
 }
 
 function MarkPaidModal({ customer, onClose, onMarked }) {
-  const [plans, setPlans] = useState(null);
-  const [planId, setPlanId] = useState("");
+  const { options, optionId, setOptionId, err: loadErr } = usePurchaseOptions(false);
+  const [cycle, setCycle] = useState("month");
+  const [users, setUsers] = useState(1);
+  const [unitPrice, setUnitPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const d = await api("/api/admin/plans", "GET");
-        const active = (d.plans || []).filter((p) => p.active !== false);
-        setPlans(active);
-        if (active.length) setPlanId(active[0].id);
-      } catch {
-        setPlans([]);
-      }
-    })();
-  }, []);
-
   async function submit(e) {
     e.preventDefault();
     setError("");
-    if (!planId) {
+    if (!optionId) {
       setError("Choose a plan");
       return;
     }
     setBusy(true);
     try {
-      await api("/api/admin/customers", "POST", { action: "markPaid", id: customer.id, planId, notes });
+      await api("/api/admin/customers", "POST", {
+        action: "markPaid", id: customer.id, planId: optionId, billingCycle: cycle, quantity: Number(users) || 1,
+        unitPrice: unitPrice === "" ? undefined : Number(unitPrice), notes,
+      });
       onMarked();
     } catch (e2) {
       setError(e2.message);
@@ -3044,21 +2484,14 @@ function MarkPaidModal({ customer, onClose, onMarked }) {
         <h2 style={{ marginBottom: 4 }}>Mark as paid</h2>
         <p className="muted" style={{ marginBottom: 14, fontSize: 13 }}>
           {customer.email} — for a payment collected outside checkout (cash, bank transfer, etc.).
-          This activates the account on the plan below, same as a real online payment would.
+          This activates the account on the plan below and locks in the price per user.
         </p>
         <form onSubmit={submit} noValidate>
-          {plans === null && <p className="muted">Loading plans…</p>}
-          {plans && plans.length === 0 && <p className="error">No active plans configured yet — add one on the Plans &amp; Pricing tab first.</p>}
-          {plans && plans.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <label className="label">Plan *</label>
-              <select className="input" value={planId} onChange={(e) => setPlanId(e.target.value)} autoFocus>
-                {plans.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} — ₹{p.price}/{p.billingPeriod}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          <PlanPicker options={options} optionId={optionId} setOptionId={setOptionId} cycle={cycle} setCycle={setCycle} users={users} setUsers={setUsers} showPrice />
+          <div style={{ marginBottom: 12 }}>
+            <label className="label">Agreed price per user (optional)</label>
+            <input className="input" type="number" min="0" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="Leave blank to use the published price" />
+          </div>
           <div style={{ marginBottom: 16 }}>
             <label className="label">Notes (optional)</label>
             <input
@@ -3068,9 +2501,9 @@ function MarkPaidModal({ customer, onClose, onMarked }) {
           </div>
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
-            <button className="btn-primary" disabled={busy || !plans?.length}>{busy ? "Saving…" : "Mark as paid"}</button>
+            <button className="btn-primary" disabled={busy || !options?.length}>{busy ? "Saving…" : "Mark as paid"}</button>
           </div>
-          {error && <p className="error">{error}</p>}
+          {(error || loadErr) && <p className="error">{error || loadErr}</p>}
         </form>
       </div>
     </div>

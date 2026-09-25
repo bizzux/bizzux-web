@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, resolveAccount, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
-import { canAccessApps } from "@/lib/trial";
+import { appDenialFor } from "@/lib/firebaseAdmin";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 import { logAuditEvent } from "@/lib/audit";
@@ -76,14 +76,11 @@ export async function GET(req) {
       const customer = acct.isOwner
         ? acct.customer
         : (await adminDb().doc("customers/" + acct.accountId).get()).data();
-      if (!canAccessApps(customer)) {
-        // Same Platform-Admin trial bypass shop-sso/app-sso already have —
-        // this route was missing it (a pre-existing gap, not introduced by
-        // the asOrg feature above).
+      const denial = await appDenialFor(customer, "pos");
+      if (denial) {
+        // Same Platform-Admin trial bypass shop-sso/app-sso already have.
         const platformRole = await resolvePlatformRole(c.uid, c.email);
-        if (platformRole !== "OWNER" && platformRole !== "ADMIN") {
-          throw { status: 402, message: "Your trial has ended. Choose a plan to keep using Bizzux apps." };
-        }
+        if (platformRole !== "OWNER" && platformRole !== "ADMIN") throw denial;
         role = "super";
       }
     }
@@ -108,6 +105,6 @@ export async function GET(req) {
 
     return NextResponse.json({ url: `${POS_URL}/sso?token=${token}` }, { headers: CORS_HEADERS });
   } catch (e) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500, headers: CORS_HEADERS });
+    return NextResponse.json({ error: e.message || "Failed", ...(e.code ? { code: e.code } : {}) }, { status: e.status || 500, headers: CORS_HEADERS });
   }
 }

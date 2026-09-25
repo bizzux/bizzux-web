@@ -16,7 +16,7 @@ export async function GET(req) {
     const resellerDiscountPercent = data.resellerDiscountPercent ?? DEFAULT_RESELLER_DISCOUNT_PERCENT;
     const resellerCommissionPercent = data.resellerCommissionPercent ?? DEFAULT_RESELLER_COMMISSION_PERCENT;
     return NextResponse.json({
-      trialDays: trialDays ?? 14,
+      trialDays: trialDays ?? 30,
       verifyEmail,
       verifyMobile,
       resellerDiscountPercent,

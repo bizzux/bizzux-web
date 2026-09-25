@@ -137,7 +137,7 @@ export async function POST(req) {
       }
 
       const settingsSnap = await adminDb().doc("portalSettings/config").get();
-      const trialDays = Number((settingsSnap.exists ? settingsSnap.data().trialDays : null) ?? 14) || 14;
+      const trialDays = Number((settingsSnap.exists ? settingsSnap.data().trialDays : null) ?? 30) || 30;
       const now = Timestamp.now();
       const trialEndDate = Timestamp.fromMillis(now.toMillis() + trialDays * 24 * 60 * 60 * 1000);
 

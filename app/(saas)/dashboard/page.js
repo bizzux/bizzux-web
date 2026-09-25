@@ -9,6 +9,7 @@ import Link from "next/link";
 import { BUSINESS_TYPES } from "@/components/OnboardingModal";
 import CheckoutSuccessModal from "@/components/CheckoutSuccessModal";
 import TrialExpiredModal from "@/components/TrialExpiredModal";
+import StartTrialModal from "@/components/StartTrialModal";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
 import { IconClock } from "@/components/Icons";
@@ -338,7 +339,7 @@ function NoOrganizationDashboard() {
       <AccountTabs active="dashboard" isAccountAdmin={false} isSuper={false} roleLabel="" />
       <div className="dash-body">
         <h1 className="dash-heading">Welcome to Bizzux{firstName ? `, ${firstName}` : ""}!</h1>
-        <p className="dash-sub">Pick an app to get started. Every app is free to try, no card needed.</p>
+        <p className="dash-sub">Pick an app to get started. Try every app free after a quick mobile verification, no card needed.</p>
 
         {pendingInvite && (
           <div className="card" style={{ marginBottom: 20, background: "#f0fdf4", borderColor: "#bbf7d0" }}>
@@ -453,6 +454,13 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
         window.location.reload();
         return;
       }
+      // New businesses start with the free trial not yet started: the
+      // dashboard asks for mobile verification first, then opens this app.
+      if (c.status === "trial_pending") {
+        if (win) win.close();
+        window.location.href = "/dashboard?startTrial=" + encodeURIComponent(app.key);
+        return;
+      }
 
       const s = await fetch(app.ssoEndpoint || "/api/shop-sso", { headers: { Authorization: "Bearer " + token } });
       const sd = await s.json();
@@ -507,7 +515,7 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
             </div>
           )}
           <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
-            Free to try, no card needed. You can change the name later in your Profile.
+            Free trial after a quick mobile verification, no card needed. You can change the name later in your Profile.
           </p>
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn-outline-dark" onClick={onClose} disabled={busy}>Cancel</button>
@@ -670,6 +678,24 @@ function DashboardInner() {
   const [showLockedModal, setShowLockedModal] = useState(false);
   // Set to the Bizzux Business app entry while BusinessTypeModal is open.
   const [businessTypeApp, setBusinessTypeApp] = useState(null);
+  // Phone-verified trial start (org status "trial_pending"): the app the
+  // person was trying to open, or {} when started from the banner.
+  const [trialApp, setTrialApp] = useState(null);
+  const [trialDays, setTrialDays] = useState(null);
+
+  useEffect(() => {
+    if (customer?.status !== "trial_pending") return;
+    fetch("/api/pricing")
+      .then((r) => r.json())
+      .then((d) => setTrialDays(d.trialDays || null))
+      .catch(() => {});
+    const key = searchParams.get("startTrial");
+    if (key) {
+      setTrialApp(APPS.find((a) => a.key === key) || {});
+      router.replace("/dashboard");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.status]);
 
   useEffect(() => {
     if (searchParams.get("checkout") === "success") {
@@ -762,8 +788,16 @@ function DashboardInner() {
   // always bypasses this, same as /api/shop-sso already treats them as
   // unlimited access regardless of their own account's trial/plan status.
   const appsLocked = !isSuper && !canAccessApps(customer);
+  const trialPending = !isSuper && status === "trial_pending";
 
   async function openApp(a) {
+    if (trialPending) {
+      // Plain-link personal apps (own sign-in) never needed a business
+      // trial; everything else waits for the phone-verified trial.
+      if (!a.sso && !a.internal) window.open(a.url, "_blank", "noopener,noreferrer");
+      else setTrialApp(a);
+      return;
+    }
     if (appsLocked) {
       setShowLockedModal(true);
       return;
@@ -790,11 +824,14 @@ function DashboardInner() {
       // this account's trial/plan lapsed after the page loaded) and answers
       // 402 when it does — surface the same friendly modal rather than a
       // raw alert for that case too.
+      const d = await r.json();
       if (r.status === 402) {
-        setShowLockedModal(true);
+        if (d.code === "TRIAL_NOT_STARTED") setTrialApp(a);
+        else if (d.code === "APP_NOT_IN_PLAN") {
+          if (confirm(d.error + "\n\nSee plans now?")) router.push("/pricing");
+        } else setShowLockedModal(true);
         return;
       }
-      const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Couldn't open that app right now");
       window.open(d.url, "_blank", "noopener,noreferrer");
     } catch (e) {
@@ -809,6 +846,15 @@ function DashboardInner() {
       <Nav />
       <AccountTabs active="dashboard" isAccountAdmin={isAccountAdmin} isSuper={isSuper} roleLabel={isSuper ? "Platform " + (me?.platformRole === "OWNER" ? "Owner" : "Admin") : roleLabel(me)} />
 
+      {trialPending && (
+        <div className="trial-banner">
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <IconClock className="w-4 h-4" />
+            Start your {trialDays ? `${trialDays}-day ` : ""}free trial: verify your mobile number and every app unlocks. No card needed.
+          </span>
+          <button type="button" className="trial-banner-cta" onClick={() => setTrialApp({})}>Start free trial →</button>
+        </div>
+      )}
       {!isSuper && status === "trial" && !expired && remaining !== null && (
         <div className="trial-banner">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -847,7 +893,9 @@ function DashboardInner() {
         </h1>
         <OrgSwitcher />
         <p className="dash-sub" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span className={"status-pill " + status}>{status === "trial" ? "Free trial" : status === "active" ? "Active" : "Expired"}</span>
+          <span className={"status-pill " + (status === "trial_pending" ? "trial" : status)}>
+            {status === "trial" ? "Free trial" : status === "trial_pending" ? "Trial not started" : status === "active" ? "Active" : "Expired"}
+          </span>
           {customer.planName ? (
             <span
               style={{
@@ -858,7 +906,7 @@ function DashboardInner() {
             >
               Plan: {customer.planName}
             </span>
-          ) : status === "trial" && !expired ? null : (
+          ) : (status === "trial" && !expired) || trialPending ? null : (
             <Link href="/pricing" className="btn-primary-sm">Choose a plan</Link>
           )}
         </p>
@@ -870,13 +918,13 @@ function DashboardInner() {
             // "coming soon" tiles already use) once access is gated, so the
             // trial-ended state is visible before someone even clicks —
             // the modal on click is the explanation, this is the hint.
-            const tileLocked = a.live && appsLocked;
+            const tileLocked = a.live && appsLocked && !trialPending;
             const content = (
               <>
                 <div className="app-tile-icon">{a.icon}</div>
                 <div className="app-tile-name">{a.name}</div>
                 <div className={"app-tile-status" + (a.live && !tileLocked ? " live" : "")}>
-                  {!a.live ? a.desc : tileLocked ? "Trial ended, choose a plan" : opening ? "Opening…" : "Open app →"}
+                  {!a.live ? a.desc : tileLocked ? "Trial ended, choose a plan" : opening ? "Opening…" : trialPending && a.sso ? "Start free trial →" : "Open app →"}
                 </div>
               </>
             );
@@ -922,6 +970,17 @@ function DashboardInner() {
 
       {showLockedModal && (
         <TrialExpiredModal status={status} onClose={() => setShowLockedModal(false)} />
+      )}
+
+      {trialApp && (
+        <StartTrialModal
+          appName={trialApp.name}
+          trialDays={trialDays}
+          defaultPhone={customer.phone}
+          onClose={() => setTrialApp(null)}
+          onStarted={() => reloadCustomer(accountId).catch(() => {})}
+          onOpenApp={trialApp.key ? () => { const a = trialApp; setTrialApp(null); openApp(a); } : undefined}
+        />
       )}
     </div>
   );

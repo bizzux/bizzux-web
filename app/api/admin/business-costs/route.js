@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSuperAdmin, adminDb } from "@/lib/firebaseAdmin";
 import { isPayingCustomer } from "@/lib/trial";
+import { snapshotMonthlyValue } from "@/lib/pricingMath";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
@@ -47,7 +48,7 @@ export async function GET(req) {
       const c = d.data();
       // Free licenses aren't revenue (see lib/trial.js isPayingCustomer).
       if (isPayingCustomer(c)) {
-        mrr += monthlyPriceOf(planById.get(c.planId));
+        mrr += c.subscription ? snapshotMonthlyValue(c.subscription) : monthlyPriceOf(planById.get(c.planId));
         activeCount += 1;
       }
     });

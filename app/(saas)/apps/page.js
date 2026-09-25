@@ -172,7 +172,13 @@ export default function AllAppsPage() {
       router.push("/dashboard");
       return;
     }
-    if (customer === null || appsLocked) {
+    // Business set up but the phone-verified free trial not started yet:
+    // the dashboard runs that step, then opens this app.
+    if (!isSuper && customer?.status === "trial_pending" && a.sso) {
+      router.push("/dashboard?startTrial=" + encodeURIComponent(a.key));
+      return;
+    }
+    if (customer === null || (appsLocked && !(customer?.status === "trial_pending" && !a.sso))) {
       setShowLockedModal(true);
       return;
     }
@@ -184,11 +190,14 @@ export default function AllAppsPage() {
     try {
       const token = await user.getIdToken();
       const r = await fetch(a.ssoEndpoint || "/api/shop-sso", { headers: { Authorization: "Bearer " + token } });
+      const d = await r.json();
       if (r.status === 402) {
-        setShowLockedModal(true);
+        if (d.code === "TRIAL_NOT_STARTED") router.push("/dashboard?startTrial=" + encodeURIComponent(a.key));
+        else if (d.code === "APP_NOT_IN_PLAN") {
+          if (confirm(d.error + "\n\nSee plans now?")) router.push("/pricing");
+        } else setShowLockedModal(true);
         return;
       }
-      const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Couldn't open that app right now");
       window.open(d.url, "_blank", "noopener,noreferrer");
     } catch (e) {
