@@ -36,7 +36,7 @@ export default function AdminCustomersPanel() {
   async function api(method: string, body?: any, query = "") {
     const headers: Record<string, string> = await authHeader();
     if (body) headers["Content-Type"] = "application/json";
-    const r = await fetch("/api/admin/customers" + query, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const r = await fetch("/api/admin/customer-logos" + query, { method, headers, body: body ? JSON.stringify(body) : undefined });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || "Request failed");
     return d;
@@ -95,7 +95,7 @@ export default function AdminCustomersPanel() {
       if (logoFile) {
         const fd = new FormData();
         fd.append("logo", logoFile);
-        const r = await fetch("/api/admin/customers/logo-upload", { method: "POST", headers: await authHeader(), body: fd });
+        const r = await fetch("/api/admin/customer-logos/logo-upload", { method: "POST", headers: await authHeader(), body: fd });
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || "Logo upload failed");
         logoUrl = d.url;
