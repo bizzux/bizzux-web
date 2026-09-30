@@ -79,6 +79,11 @@ export default function SessionTimeout({
   // `reason=expired` is appended so the sign-in page can explain why.
   signInUrl = "/sign-in",
   policyUrl = "https://www.bizzux.com/api/session-policy",
+  // Cross-app activity (see app/api/session-activity in bizzux-web): a
+  // heartbeat about once a minute while active, and a look-up before any
+  // idle warning/sign-out — so time spent in another Bizzux app counts as
+  // activity here too.
+  activityUrl = "https://www.bizzux.com/api/session-activity",
   // sessionStorage keys to wipe on sign-out (e.g. an unsaved POS cart), so
   // the next person at the device never sees them.
   clearKeys = [],
@@ -116,6 +121,7 @@ export default function SessionTimeout({
   // doesn't restart the timers below.
   const propsRef = useRef({ clearKeys, signInUrl });
   propsRef.current = { clearKeys, signInUrl };
+  const beatRef = useRef(() => {});
 
   const doSignOut = useCallback(async (reason) => {
     if (signingOutRef.current) return;
@@ -143,6 +149,23 @@ export default function SessionTimeout({
     // against a fresh sign-in.
     if (readNumber(ACTIVITY_KEY) < signedInAt) writeActivity(Date.now());
 
+    const authed = async (init = {}) => {
+      const token = await user.getIdToken();
+      return fetch(activityUrl, { ...init, headers: { ...(init.headers || {}), Authorization: "Bearer " + token } });
+    };
+
+    let lastBeat = 0;
+    const beat = (at) => {
+      lastBeat = at;
+      authed({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ at, app: appKey }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+    beatRef.current = beat;
+
     let lastWrite = 0;
     const onActivity = () => {
       if (warningRef.current) return; // only the button dismisses a warning
@@ -151,12 +174,38 @@ export default function SessionTimeout({
         lastWrite = now;
         writeActivity(now);
       }
+      if (now - lastBeat > 60000) beat(now);
+    };
+
+    // Before warning or signing out, ask whether the user has been active in
+    // another Bizzux app since. At most one look-up per 30s; if it hangs,
+    // stop waiting after 10s and carry on (fail closed → sign-out proceeds).
+    let lastServerCheck = 0;
+    let pendingSince = 0;
+    const activeElsewhere = (now) => {
+      if (pendingSince) return now - pendingSince < 10000;
+      if (now - lastServerCheck < 30000) return false;
+      lastServerCheck = pendingSince = now;
+      authed()
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const la = Math.min(Number(d?.lastActive) || 0, Date.now());
+          if (la > readNumber(ACTIVITY_KEY)) writeActivity(la);
+        })
+        .catch(() => {})
+        .finally(() => {
+          pendingSince = 0;
+        });
+      return true;
     };
 
     const check = () => {
       const now = Date.now();
       if (now - signedInAt >= maxMs) return doSignOut("expired");
-      const idle = now - (readNumber(ACTIVITY_KEY) || now);
+      let idle = now - (readNumber(ACTIVITY_KEY) || now);
+      const due = idle >= idleMs || (idle >= idleMs - warnMs && !warningRef.current);
+      if (due && activeElsewhere(now)) return;
+      idle = now - (readNumber(ACTIVITY_KEY) || now);
       if (idle >= idleMs) return doSignOut("timeout");
       if (idle >= idleMs - warnMs) {
         warningRef.current = true;
@@ -182,11 +231,13 @@ export default function SessionTimeout({
       warningRef.current = false;
       setWarnLeft(null);
     };
-  }, [user, policy, doSignOut]);
+  }, [user, policy, doSignOut, appKey, activityUrl]);
 
   const staySignedIn = () => {
+    const now = Date.now();
     warningRef.current = false;
-    writeActivity(Date.now());
+    writeActivity(now);
+    beatRef.current(now);
     setWarnLeft(null);
   };
 

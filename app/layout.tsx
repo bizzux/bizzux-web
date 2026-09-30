@@ -80,7 +80,7 @@ export default function RootLayout({
         />
         {children}
         <UpdateToast />
-        <SessionTimeout appKey="portal" signInUrl="/sign-in" policyUrl="/api/session-policy" />
+        <SessionTimeout appKey="portal" signInUrl="/sign-in" policyUrl="/api/session-policy" activityUrl="/api/session-activity" />
       </body>
     </html>
   );
