@@ -7,6 +7,7 @@ import "@fontsource/inter/800.css";
 import "./globals.css";
 import "./bzx-app.css";
 import UpdateToast from "@/components/UpdateToast";
+import SessionTimeout from "@/components/SessionTimeout";
 import { BRAND_TAGLINE, BRAND_DESCRIPTION, LEGAL_NAME } from "@/lib/brand";
 
 // tailwind.config.ts's `sans` stack points at --font-inter, but nothing
@@ -79,6 +80,7 @@ export default function RootLayout({
         />
         {children}
         <UpdateToast />
+        <SessionTimeout appKey="portal" signInUrl="/sign-in" policyUrl="/api/session-policy" />
       </body>
     </html>
   );

@@ -392,8 +392,117 @@ function UsersLifecycleTab() {
   );
 }
 
+// Session timeout for the portal and every Bizzux app — read by each app's
+// components/SessionTimeout.jsx via the public /api/session-policy. Owner
+// edits; Platform Admins see it read-only.
+function SessionPolicyCard() {
+  const [data, setData] = useState(null);
+  const [form, setForm] = useState(null);
+  const [err, setErr] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api("/api/admin/session-policy", "GET")
+      .then((d) => {
+        setData(d);
+        setForm(d.policy);
+      })
+      .catch((e) => setErr(e.message || "Couldn't load session policy"));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    setErr("");
+    setSaved(false);
+    try {
+      const d = await api("/api/admin/session-policy", "PUT", form);
+      setForm(d.policy);
+      setSaved(true);
+    } catch (e) {
+      setErr(e.message || "Couldn't save");
+    }
+    setSaving(false);
+  }
+
+  if (!form) return <div className="card" style={{ maxWidth: 640, marginBottom: 16 }}>{err ? <p className="error">⚠️ {err}</p> : <p className="muted">Loading session policy…</p>}</div>;
+
+  const ro = !data.canEdit;
+  const setField = (k, v) => { setSaved(false); setForm({ ...form, [k]: v }); };
+  const setApp = (app, k, v) => {
+    setSaved(false);
+    setForm({ ...form, apps: { ...form.apps, [app]: { ...(form.apps?.[app] || {}), [k]: v } } });
+  };
+  const num = { className: "input", type: "number", disabled: ro, style: { width: 110 } };
+  const hint = (f) => `${data.limits[f][0]}–${data.limits[f][1]}`;
+
+  return (
+    <div className="card" style={{ maxWidth: 640, marginBottom: 16 }}>
+      <h3 style={{ fontSize: 15, marginBottom: 6 }}>Session timeout</h3>
+      <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+        Applies to bizzux.com and every Bizzux app. Users see a countdown warning before they&apos;re signed out
+        for inactivity, and must sign in again once the maximum session length is reached. Changes reach all apps
+        within about 15 minutes.
+      </p>
+      {err && <p className="error">⚠️ {err}</p>}
+      <div className="row" style={{ gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
+        <label style={{ fontSize: 13 }}>
+          <div className="label">Sign out after inactivity (minutes)</div>
+          <input {...num} value={form.idleMinutes} onChange={(e) => setField("idleMinutes", e.target.value)} />
+          <div className="muted" style={{ fontSize: 11 }}>{hint("idleMinutes")}</div>
+        </label>
+        <label style={{ fontSize: 13 }}>
+          <div className="label">Maximum session (hours)</div>
+          <input {...num} value={form.maxHours} onChange={(e) => setField("maxHours", e.target.value)} />
+          <div className="muted" style={{ fontSize: 11 }}>{hint("maxHours")}</div>
+        </label>
+        <label style={{ fontSize: 13 }}>
+          <div className="label">Warning before sign-out (seconds)</div>
+          <input {...num} value={form.warnSeconds} onChange={(e) => setField("warnSeconds", e.target.value)} />
+          <div className="muted" style={{ fontSize: 11 }}>{hint("warnSeconds")}</div>
+        </label>
+      </div>
+
+      <div className="label" style={{ marginBottom: 6 }}>Per-app overrides (leave blank to use the values above)</div>
+      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse", marginBottom: 16 }}>
+        <thead>
+          <tr className="muted" style={{ textAlign: "left", fontSize: 12 }}>
+            <th style={{ padding: "4px 0" }}>App</th>
+            <th>Inactivity (min)</th>
+            <th>Max session (h)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.apps.map((a) => (
+            <tr key={a.key} style={{ borderTop: "1px solid #eef2f7" }}>
+              <td style={{ padding: "6px 0" }}>{a.name}</td>
+              <td>
+                <input {...num} placeholder={String(form.idleMinutes)} value={form.apps?.[a.key]?.idleMinutes ?? ""} onChange={(e) => setApp(a.key, "idleMinutes", e.target.value)} />
+              </td>
+              <td>
+                <input {...num} placeholder={String(form.maxHours)} value={form.apps?.[a.key]?.maxHours ?? ""} onChange={(e) => setApp(a.key, "maxHours", e.target.value)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {ro ? (
+        <p className="muted" style={{ fontSize: 12 }}>Only the Platform Owner can change the session policy.</p>
+      ) : (
+        <div className="row" style={{ gap: 10, alignItems: "center" }}>
+          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save session policy"}</button>
+          {saved && <span style={{ color: "#16a34a", fontSize: 13 }}>✓ Saved</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SecuritySettingsPanel() {
   return (
+    <>
+    <SessionPolicyCard />
     <div className="card" style={{ maxWidth: 640 }}>
       <h3 style={{ fontSize: 15, marginBottom: 10 }}>Multi-factor authentication</h3>
       <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
@@ -414,6 +523,7 @@ function SecuritySettingsPanel() {
         <li>Every sensitive platform action is recorded in Audit Logs.</li>
       </ul>
     </div>
+    </>
   );
 }
 
