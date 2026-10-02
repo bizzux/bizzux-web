@@ -71,10 +71,13 @@ export async function GET(req) {
         const orgSnap = await adminDb().doc("customers/" + acct.accountId).get();
         membershipOrgEmail = orgSnap.exists ? orgSnap.data().email : null;
       }
-    } catch {
-      // /api/claim hasn't run yet for this sign-in (e.g. right after
-      // Google sign-in, before the client calls it) — no account yet.
-      hasAccount = false;
+    } catch (e) {
+      // Only a genuine "no customers/ and no memberships/ doc" (404) means this
+      // login has no account yet. Any OTHER failure (Firestore quota, network,
+      // timeout) is temporary and must NOT be reported as "no account": that
+      // showed existing team members the "What's your business called?" prompt.
+      if (e && e.status === 404) hasAccount = false;
+      else throw e;
     }
     // Real platformAdmins-backed role (Platform Owner / Platform Admin),
     // not just the raw env-var isSuper check — see lib/firebaseAdmin.js.
@@ -102,7 +105,13 @@ export async function GET(req) {
       twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null, twoFactorRequired: !!twoFactor.required,
       canManageOrgs: isSuper || isAccountAdmin,
     });
-  } catch {
-    return NextResponse.json({ superAdmin: false, isAccountAdmin: false, hasAccount: false, canManageOrgs: false });
+  } catch (e) {
+    // Signed out / bad token keeps the old shape; a temporary server problem
+    // is flagged `unavailable` so screens say "try again" instead of "no account".
+    const unavailable = !(e && (e.status === 401 || e.status === 403));
+    return NextResponse.json(
+      { superAdmin: false, isAccountAdmin: false, hasAccount: unavailable ? undefined : false, unavailable, canManageOrgs: false },
+      { status: unavailable ? 503 : 200 }
+    );
   }
 }

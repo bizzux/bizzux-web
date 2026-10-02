@@ -753,6 +753,21 @@ function DashboardInner() {
     return <NoOrganizationDashboard />;
   }
 
+  // /api/me couldn't reach the database (temporary). Never fall through to the
+  // "set up your business" flow for someone who may already have an account.
+  if (user && me && me.unavailable) {
+    return (
+      <div>
+        <Nav />
+        <div className="py-24 text-center">
+          <h2 style={{ marginBottom: 6 }}>We couldn't load your account just now</h2>
+          <p className="muted" style={{ marginBottom: 16 }}>This is temporary and your data is safe. Please try again in a moment.</p>
+          <button className="btn-primary-sm" onClick={() => window.location.reload()}>Try again</button>
+        </div>
+      </div>
+    );
+  }
+
   if (!user || customer === null || !accountId) {
     // Was the same dark, full-viewport .login-wrap the sign-in page uses —
     // fine for an actual takeover screen, but as a ~1-2s loading state
