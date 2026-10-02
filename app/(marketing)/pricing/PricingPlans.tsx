@@ -475,7 +475,7 @@ export default function PricingPlans() {
 
       <div className="max-w-2xl mx-auto mt-12 rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="text-lg font-bold mb-1">{trialHeadline(data?.trialDays)}, no card needed</h2>
-        <p className="text-sm text-slate-600 mb-3">Sign up, set up your business, verify your mobile number, and every app unlocks.</p>
+        <p className="text-sm text-slate-600 mb-3">Sign up, set up your business, start your free trial, and every app unlocks.</p>
         <ul className="list-disc ml-5 space-y-1.5 text-sm text-slate-600">
           {TRIAL_POLICY_POINTS.map((t) => <li key={t}>{t}</li>)}
         </ul>

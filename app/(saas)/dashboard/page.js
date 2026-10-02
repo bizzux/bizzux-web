@@ -341,7 +341,7 @@ function NoOrganizationDashboard() {
       <AccountTabs active="dashboard" isAccountAdmin={false} isSuper={false} roleLabel="" />
       <div className="dash-body">
         <h1 className="dash-heading">Welcome to Bizzux{firstName ? `, ${firstName}` : ""}!</h1>
-        <p className="dash-sub">Pick an app to get started. Try every app free after a quick mobile verification, no card needed.</p>
+        <p className="dash-sub">Pick an app to get started. Try every app free, no card needed.</p>
 
         {pendingInvite && (
           <div className="card" style={{ marginBottom: 20, background: "#f0fdf4", borderColor: "#bbf7d0" }}>
@@ -517,7 +517,7 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
             </div>
           )}
           <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
-            Free trial after a quick mobile verification, no card needed. You can change the name later in your Profile.
+            Free trial, no card needed. You can change the name later in your Profile.
           </p>
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn-outline-dark" onClick={onClose} disabled={busy}>Cancel</button>
@@ -852,7 +852,7 @@ function DashboardInner() {
         <div className="trial-banner">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <IconClock className="w-4 h-4" />
-            Start your {trialDays ? `${trialDays}-day ` : ""}free trial: verify your mobile number and every app unlocks. No card needed.
+            Start your {trialDays ? `${trialDays}-day ` : ""}free trial and every app unlocks. No card needed.
           </span>
           <button type="button" className="trial-banner-cta" onClick={() => setTrialApp({})}>Start free trial →</button>
         </div>
