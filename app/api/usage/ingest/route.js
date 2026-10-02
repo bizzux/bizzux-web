@@ -16,8 +16,10 @@ export const dynamic = "force-dynamic";
 // SHOP_SSO_SECRET). The signed orgId is the ONLY tenant this request can
 // write to, so one org can never report usage as another.
 //
-// Body: { events: [{ module, userId?, date?, transactions?, reads?, writes?,
-//                    deletes?, storageGB? }] }   (max 500)
+// Body: { events: [{ module?, app?, userId?, date?, transactions?, reads?, writes?,
+//                    deletes?, storageGB?, service?, units? }] }   (max 500)
+// app: shop|crm|notes|files|projects|assistant|attendance|capture|chat|mail|finance|portal
+// service+units: aiTokens|ocrPages|smsCount|whatsappCount|emailCount|authOps|fileUploads|fileDownloads|apiCalls|egressGB
 // module: (omit/"other" for org-wide ops) pos | attendance | crm | inventory | expenses | purchases | invoices | payments
 export async function POST(req) {
   try {

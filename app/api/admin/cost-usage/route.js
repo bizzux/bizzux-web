@@ -39,7 +39,7 @@ export async function GET(req) {
     const data = buildDashboard({ from: fetchFrom, to, usageByDate, days, tenants, rates, today: dateKey() });
     // buildDashboard covered fetchFrom..to for month cost; recompute the picked range for everything else.
     const picked = fetchFrom === from ? data : buildDashboard({ from, to, usageByDate, days, tenants, rates, today: dateKey() });
-    if (picked !== data) { picked.kpis.cost.currentMonthCost = data.kpis.cost.currentMonthCost; picked.finops = data.finops; }
+    if (picked !== data) { picked.kpis.cost.currentMonthCost = data.kpis.cost.currentMonthCost; picked.finops = data.finops; picked.alerts = data.alerts; picked.unitEconomics.monthCost = data.unitEconomics.monthCost; picked.unitEconomics.projectedMonthCost = data.unitEconomics.projectedMonthCost; }
     return NextResponse.json({ ...picked, rates, defaultRates: DEFAULT_RATES, today: dateKey(), billing: await loadSyncStatus() });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });

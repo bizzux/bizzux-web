@@ -10,7 +10,7 @@ import { APP_CATALOG } from "@/lib/apps";
 import { IconTrash } from "@/components/Icons";
 import dynamic from "next/dynamic";
 
-// Charting code only loads when the Cost & Usage tab is opened.
+// Charting code only loads when the FinOps tab is opened.
 const CostUsagePanel = dynamic(() => import("@/components/CostUsagePanel"), {
   loading: () => <p className="muted">Loading…</p>,
 });
@@ -25,7 +25,7 @@ const CostUsagePanel = dynamic(() => import("@/components/CostUsagePanel"), {
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "business", label: "Business Health" },
-  { id: "costusage", label: "Cost & Usage" },
+  { id: "costusage", label: "FinOps" },
   { id: "organizations", label: "Organizations" },
   { id: "customers", label: "Support / Customers" },
   { id: "pricing", label: "Billing & Pricing" },
