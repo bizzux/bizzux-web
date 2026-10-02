@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { dateKey, addDays } from "@/lib/costAnalytics";
+import { billingConfigured, syncBilling, recordSyncError } from "@/lib/billingBigQuery";
+import { buildDashboard } from "@/lib/costAnalytics";
+import { notifyHighAlerts } from "@/lib/costAlerts";
 import { loadRange, loadRates, loadTenants, materializeDays, dateRange } from "@/lib/usageMetrics";
 
 export const runtime = "nodejs";
@@ -18,9 +21,22 @@ export async function GET(req) {
   try {
     const to = dateKey();
     const from = addDays(to, -8);
+    // Real billing first (when the BigQuery export is connected), so the rollup below folds it in.
+    let billing = null;
+    if (billingConfigured()) {
+      try { billing = await syncBilling(addDays(to, -35), to); } catch (e) { await recordSyncError(e.message); billing = { error: e.message }; }
+    }
     const [rates, tenants, { usageByDate, days }] = await Promise.all([loadRates(), loadTenants(), loadRange(from, to)]);
     const written = await materializeDays(dateRange(from, to), usageByDate, days, rates, tenants, { force: true });
-    return NextResponse.json({ ok: true, from, to, written });
+    // Alert the Platform Owner by email about abnormal usage (best effort).
+    let alerted = 0;
+    try {
+      const a0 = addDays(to, -29);
+      const r = await loadRange(a0, to);
+      const dash = buildDashboard({ from: a0, to, usageByDate: r.usageByDate, days: r.days, tenants, rates, today: to });
+      alerted = (await notifyHighAlerts(dash.alerts)).sent;
+    } catch {}
+    return NextResponse.json({ ok: true, from, to, written, billing, alerted });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
   }

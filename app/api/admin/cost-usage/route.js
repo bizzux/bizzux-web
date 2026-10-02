@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSuperAdmin, requirePlatformOwner, adminDb } from "@/lib/firebaseAdmin";
 import { logAuditEvent } from "@/lib/audit";
 import { buildDashboard, dateKey, addDays, isDateKey, monthStart, DEFAULT_RATES, mergeRates } from "@/lib/costAnalytics";
+import { loadSyncStatus, billingConfigured, syncBilling, recordSyncError } from "@/lib/billingBigQuery";
 import { loadRange, loadRates, loadTenants, materializeDays, dateRange } from "@/lib/usageMetrics";
 
 export const runtime = "nodejs";
@@ -35,11 +36,11 @@ export async function GET(req) {
     await materializeDays(dateRange(fetchFrom, to), usageByDate, days, rates, tenants);
 
     // KPIs for the picked range; month-to-date is derived inside from days >= month start.
-    const data = buildDashboard({ from: fetchFrom, to, usageByDate, days, tenants, rates });
+    const data = buildDashboard({ from: fetchFrom, to, usageByDate, days, tenants, rates, today: dateKey() });
     // buildDashboard covered fetchFrom..to for month cost; recompute the picked range for everything else.
-    const picked = fetchFrom === from ? data : buildDashboard({ from, to, usageByDate, days, tenants, rates });
-    if (picked !== data) picked.kpis.cost.currentMonthCost = data.kpis.cost.currentMonthCost;
-    return NextResponse.json({ ...picked, rates, defaultRates: DEFAULT_RATES, today: dateKey() });
+    const picked = fetchFrom === from ? data : buildDashboard({ from, to, usageByDate, days, tenants, rates, today: dateKey() });
+    if (picked !== data) { picked.kpis.cost.currentMonthCost = data.kpis.cost.currentMonthCost; picked.finops = data.finops; }
+    return NextResponse.json({ ...picked, rates, defaultRates: DEFAULT_RATES, today: dateKey(), billing: await loadSyncStatus() });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
@@ -57,6 +58,17 @@ export async function POST(req) {
       await adminDb().doc("platformFinance/costRates").set({ ...rates, updatedAt: new Date(), updatedBy: c.email });
       await logAuditEvent({ action: "cost_rates_updated", actor: c, targetType: "platformFinance", targetId: "costRates", details: rates });
       return NextResponse.json({ ok: true, rates });
+    }
+    if (body.action === "syncBilling") {
+      await requireSuperAdmin(req);
+      const to = dateKey();
+      try {
+        const out = await syncBilling(addDays(to, -35), to);
+        return NextResponse.json({ ok: true, ...out });
+      } catch (e) {
+        if (billingConfigured()) await recordSyncError(e.message);
+        throw e;
+      }
     }
     if (body.action === "rebuild") {
       await requireSuperAdmin(req);

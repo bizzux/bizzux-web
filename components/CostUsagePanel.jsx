@@ -31,8 +31,10 @@ const compact = (v) => {
   if (a >= 1e3) return (v / 1e3).toFixed(1) + "k";
   return String(Math.round(v * 10) / 10);
 };
+let CURRENCY = "INR";
 function money(v) {
   const x = Number(v) || 0;
+  if (CURRENCY !== "INR") return new Intl.NumberFormat("en-US", { style: "currency", currency: CURRENCY, maximumFractionDigits: Math.abs(x) < 100 ? 2 : 0 }).format(x);
   if (x === 0) return "₹0";
   if (Math.abs(x) < 0.1) return "₹" + x.toFixed(4);
   if (Math.abs(x) < 100) return "₹" + x.toFixed(2);
@@ -51,7 +53,7 @@ function LineChart({ dates, series, fmt = money, height = 220 }) {
   const [hover, setHover] = useState(null);
   const ref = useRef(null);
   const W = 640, H = height, pl = 46, pr = 12, pt = 12, pb = 24;
-  const all = series.flatMap((s) => s.values);
+  const all = series.flatMap((s) => s.values).filter((v) => v !== null && v !== undefined);
   const max = Math.max(1e-9, ...all) * 1.08;
   const x = (i) => pl + (dates.length <= 1 ? (W - pl - pr) / 2 : (i * (W - pl - pr)) / (dates.length - 1));
   const y = (v) => pt + (1 - v / max) * (H - pt - pb);
@@ -80,19 +82,19 @@ function LineChart({ dates, series, fmt = money, height = 220 }) {
         ))}
         {series.map((s) => (
           <g key={s.name}>
-            <path d={s.values.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join(" ")} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeDasharray={s.dashed ? "5 4" : undefined} />
-            {dates.length <= 31 && s.values.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r="2.2" fill={s.color} />)}
+            <path d={s.values.map((v, i) => (v === null || v === undefined ? "" : (i === 0 || s.values[i - 1] === null || s.values[i - 1] === undefined ? "M" : "L") + x(i).toFixed(1) + " " + y(v).toFixed(1))).join(" ")} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeDasharray={s.dashed ? "5 4" : undefined} />
+            {dates.length <= 31 && s.values.map((v, i) => v === null || v === undefined ? null : <circle key={i} cx={x(i)} cy={y(v)} r="2.2" fill={s.color} />)}
           </g>
         ))}
         {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={pt} y2={H - pb} stroke="#94a3b8" />}
-        {hover !== null && series.map((s) => <circle key={s.name} cx={x(hover)} cy={y(s.values[hover])} r="4" fill="#fff" stroke={s.color} strokeWidth="2" />)}
+        {hover !== null && series.map((s) => s.values[hover] === null || s.values[hover] === undefined ? null : <circle key={s.name} cx={x(hover)} cy={y(s.values[hover])} r="4" fill="#fff" stroke={s.color} strokeWidth="2" />)}
       </svg>
       {hover !== null && (
         <div style={{ position: "absolute", top: 4, left: `clamp(0px, calc(${hx}% - 70px), calc(100% - 150px))`, background: "#0f172a", color: "#fff", fontSize: 11.5, padding: "6px 10px", borderRadius: 8, pointerEvents: "none", boxShadow: "0 6px 18px rgba(15,23,42,.25)" }}>
           <div style={{ fontWeight: 700, marginBottom: 2 }}>{shortDate(dates[hover])}</div>
           {series.map((s) => (
             <div key={s.name} style={{ display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: s.color }} />{s.name}: <strong>{fmt(s.values[hover])}</strong>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: s.color }} />{s.name}: <strong>{s.values[hover] === null || s.values[hover] === undefined ? "n/a" : fmt(s.values[hover])}</strong>
             </div>
           ))}
         </div>
@@ -184,6 +186,16 @@ export default function CostUsagePanel({ isOwner }) {
   const [range, setRange] = useState({ preset: "30d", from: "", to: "" });
   const [sort, setSort] = useState({ key: "cost", dir: -1 });
   const [rateEdit, setRateEdit] = useState(null);
+  const [dismissed, setDismissed] = useState(false);
+  const dayKey = new Date().toISOString().slice(0, 10);
+  useEffect(() => { try { setDismissed(localStorage.getItem("bzx-cost-alert-dismissed") === dayKey); } catch {} }, [dayKey]);
+  function dismiss() { setDismissed(true); try { localStorage.setItem("bzx-cost-alert-dismissed", dayKey); } catch {} }
+  async function syncNow() {
+    setBusy(true);
+    try { await api("/api/admin/cost-usage", "POST", { action: "syncBilling" }); await api("/api/admin/cost-usage", "POST", { action: "rebuild", from: data.range.from, to: data.range.to }); await load(); }
+    catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
 
   const load = useCallback(async () => {
     setErr("");
@@ -240,7 +252,11 @@ export default function CostUsagePanel({ isOwner }) {
   );
 
   if (data === null) return err ? <p className="error">{err}</p> : <p className="muted">Loading…</p>;
-  const k = data.kpis, d = data.series.map((s) => s.date);
+  CURRENCY = data.billing?.currency || "INR";
+  const k = data.kpis, f = data.finops, d = data.series.map((s) => s.date);
+  const svc = [["Firestore", f.byService.firestore], ["Cloud Functions", f.byService.functions], ["Cloud Storage", f.byService.storage], ["Hosting", f.byService.hosting], ["Network", f.byService.network], ["Other GCP services", f.byService.other]].filter(([, v]) => v > 0).map(([label, value]) => ({ key: label, label, value }));
+  const highAlerts = data.alerts.filter((a) => a.severity === "high");
+  const stamp = (iso) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
   const topCustomers = data.customers.slice(0, 10).map((c) => ({ key: c.organizationId, label: c.name, sub: c.plan, value: c.cost, flag: flagged.has(c.organizationId) }));
   const topModules = data.modules.filter((m) => m.cost > 0 || m.transactions > 0).slice(0, 10).map((m) => ({ key: m.key, label: m.label, sub: int(m.transactions) + " tx", value: m.cost, flag: flaggedModKeys.has(m.key) }));
 
@@ -266,6 +282,34 @@ export default function CostUsagePanel({ isOwner }) {
         {isOwner && <button className="btn-ghost" onClick={() => setRateEdit({ ...data.rates })}>Cost rates</button>}
       </div>
       {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+
+      {highAlerts.length > 0 && !dismissed && (
+        <div role="alert" style={{ position: "sticky", top: 8, zIndex: 20, marginBottom: 14, background: "#fef2f2", border: "1px solid #fecaca", borderLeft: "4px solid " + C.red, borderRadius: 10, padding: "10px 14px", boxShadow: "0 8px 24px rgba(220,38,38,.18)", display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <strong style={{ color: "#991b1b" }}>⚠ {highAlerts.length} high-priority usage alert{highAlerts.length === 1 ? "" : "s"}</strong>
+            <div style={{ fontSize: 12.5, color: "#7f1d1d", marginTop: 3 }}>{highAlerts.slice(0, 3).map((a) => a.title).join(" · ")}{highAlerts.length > 3 ? " …" : ""}</div>
+          </div>
+          <button className="btn-ghost" onClick={dismiss}>Dismiss</button>
+        </div>
+      )}
+
+      <Section title="Google Cloud cost (FinOps)" sub="Actual = what Google Cloud Billing reported. Estimated = near-real-time calculation from Bizzux usage since the latest billing update. Estimates are not an official Google bill.">
+        <div style={grid(190)}>
+          <Kpi label="Actual Cost MTD" value={f.actualMTD === null ? "Not connected" : money(f.actualMTD)} hint="Google Cloud Billing" />
+          <Kpi label="Estimated Current Cost" value={money(f.estimatedCurrent)} hint="actual + usage since last billing update (estimate)" />
+          <Kpi label="Estimated Today" value={money(f.estimatedToday)} hint="usage-based estimate" />
+          <Kpi label="Cost Today (reported)" value={f.actualToday === null ? "Not reported yet" : money(f.actualToday)} hint="Google billing" />
+          <Kpi label="Yesterday" value={f.yesterday ? money(f.yesterday.value) : "—"} hint={f.yesterday ? (f.yesterday.actual ? "actual" : "estimated") : undefined} />
+          <Kpi label="Last Billing Update" value={f.hasBilling ? stamp(f.lastBillingUpdate) : "—"} hint={"billing currency: " + (data.billing?.currency || "INR")} />
+        </div>
+        <div className="card" style={{ marginTop: 10, padding: "9px 12px", fontSize: 12.5, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ width: 9, height: 9, borderRadius: 99, background: data.billing?.error ? C.red : data.billing?.configured ? C.teal : C.amber }} />
+          {data.billing?.error ? <span>Billing sync failed: {data.billing.error}</span>
+            : data.billing?.configured ? <span>Google Cloud Billing export connected{data.billing.lastSyncAt ? " · last synced " + stamp(data.billing.lastSyncAt) : ""}.</span>
+            : <span>Billing export not connected yet — showing estimates only. Set <code>BILLING_BQ_TABLE</code> once Cloud Billing → BigQuery export is on.</span>}
+          {data.billing?.configured && <button className="btn-ghost" onClick={syncNow} disabled={busy}>Sync billing now</button>}
+        </div>
+      </Section>
 
       {!data.hasUsageData && (
         <div className="card" style={{ marginBottom: 16, borderLeft: `4px solid ${C.amber}` }}>
@@ -326,6 +370,12 @@ export default function CostUsagePanel({ isOwner }) {
 
       {/* charts */}
       <div style={{ ...grid(340), marginBottom: 12 }}>
+        <ChartCard title="Actual vs estimated cost" sub="Google-billed cost (blue) vs usage-based estimate (dashed). Billing lags a day or more.">
+          <LineChart dates={d} series={[{ name: "Actual (billing)", color: C.blue, values: data.series.map((s) => s.actual) }, { name: "Estimated", color: C.amber, dashed: true, values: data.series.map((s) => s.estimated) }]} />
+        </ChartCard>
+        <ChartCard title="Cost by GCP service" sub="Range total, by Google Cloud service">
+          <BarsH items={svc} color={C.violet} empty="No cost recorded in this range yet." />
+        </ChartCard>
         <ChartCard title="Cloud cost trend" sub="Total daily Google Cloud cost">
           <LineChart dates={d} series={[{ name: "Cloud cost", color: C.blue, values: data.series.map((s) => s.cost) }]} />
         </ChartCard>
