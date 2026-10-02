@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/purge-closed", "schedule": "30 21 * * *" }
+    { "path": "/api/cron/purge-closed", "schedule": "30 21 * * *" },
+    { "path": "/api/cron/cost-rollup", "schedule": "0 19 * * *" }
   ]
 }

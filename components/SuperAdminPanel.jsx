@@ -8,6 +8,12 @@ import OrganizationsManager from "@/components/OrganizationsManager";
 import PricingManager from "@/components/PricingManager";
 import { APP_CATALOG } from "@/lib/apps";
 import { IconTrash } from "@/components/Icons";
+import dynamic from "next/dynamic";
+
+// Charting code only loads when the Cost & Usage tab is opened.
+const CostUsagePanel = dynamic(() => import("@/components/CostUsagePanel"), {
+  loading: () => <p className="muted">Loading…</p>,
+});
 
 // Ported from apps.bizzux.com's app/admin/page.js (Super Admin panel), now
 // embedded as the "Super Admin" tab of bizzux.com's merged /admin page —
@@ -19,6 +25,7 @@ import { IconTrash } from "@/components/Icons";
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "business", label: "Business Health" },
+  { id: "costusage", label: "Cost & Usage" },
   { id: "organizations", label: "Organizations" },
   { id: "customers", label: "Support / Customers" },
   { id: "pricing", label: "Billing & Pricing" },
@@ -115,6 +122,7 @@ export default function SuperAdminPanel() {
 
       {tab === "dashboard" && <PlatformDashboard isOwner={platformRole === "OWNER"} />}
       {tab === "business" && <BusinessHealthPanel isOwner={platformRole === "OWNER"} />}
+      {tab === "costusage" && <CostUsagePanel isOwner={platformRole === "OWNER"} />}
       {tab === "trial" && <TrialSettings />}
       {tab === "pricing" && <PricingManager />}
       {tab === "offers" && <OffersManager />}
