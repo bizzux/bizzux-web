@@ -29,6 +29,7 @@ const TARGET_APPS = {
   crm: process.env.CRM_APP_URL || "https://crm.bizzux.com",
   chat: process.env.CHAT_APP_URL || "https://chat.bizzux.com",
   mail: process.env.MAIL_APP_URL || "https://mail.bizzux.com",
+  capture: process.env.CAPTURE_APP_URL || "https://capture.bizzux.com",
 };
 
 export async function GET(req) {
