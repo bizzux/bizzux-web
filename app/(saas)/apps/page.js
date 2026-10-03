@@ -60,6 +60,7 @@ const CATEGORIES = [
     title: "Finance",
     sub: "Keep the books straight without the busywork.",
     apps: [
+      { key: "finance", name: "Bizzux Finance", icon: "💰", desc: "See what it costs to run your business — income, expenses, CAPEX, recurring costs, subscriptions, budgets and profit.", live: true, featured: true, url: "https://finance.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=finance" },
       { key: "paisatrack", name: "PaisaTrack", icon: "💸", desc: "Auto-tracks personal spending from GPay, PhonePe, bank apps & SMS — no manual entry.", live: true, featured: true, url: "https://paisatrack.bizzux.com" },
     ],
   },

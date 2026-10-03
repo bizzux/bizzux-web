@@ -33,6 +33,7 @@ const APPS = [
   { key: "mail", name: "Bizzux Mail", icon: "📧", desc: "Your own @mail.bizzux.com inbox", live: true, url: "https://mail.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=mail" },
   { key: "capture", name: "Bizzux Capture", icon: "📸", desc: "Screenshots, screen recording and a whiteboard", live: true, url: "https://capture.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=capture" },
   { key: "attendance", name: "Bizzux Attendance", icon: "🕒", desc: "Simple cloud attendance for your team", live: true, url: "https://attendance.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=attendance" },
+  { key: "finance", name: "Bizzux Finance", icon: "💰", desc: "Income, expenses, CAPEX, budgets and profit — what it costs to run your business", live: true, url: "https://finance.bizzux.com", sso: true, ssoEndpoint: "/api/app-sso?app=finance" },
   // Personal finance tracker — its own separate Firebase project/auth (not
   // part of the shared Bizzux customer data), so it's a plain link rather
   // than an SSO hand-off like the apps above.

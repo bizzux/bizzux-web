@@ -31,6 +31,7 @@ const TARGET_APPS = {
   mail: process.env.MAIL_APP_URL || "https://mail.bizzux.com",
   capture: process.env.CAPTURE_APP_URL || "https://capture.bizzux.com",
   attendance: process.env.ATTENDANCE_APP_URL || "https://attendance.bizzux.com",
+  finance: process.env.FINANCE_APP_URL || "https://finance.bizzux.com",
 };
 
 export async function GET(req) {
