@@ -375,6 +375,25 @@ export default function CostUsagePanel({ isOwner }) {
               <Kpi label="Open alerts" value={int(data.alerts.length)} hint={highAlerts.length ? highAlerts.length + " high" : "none high"} />
             </div>
           </Section>
+          <Section title="Business apps vs Personal apps" sub="Business apps are used by customer organizations; personal apps (Assistant) are individual use and are tracked separately.">
+            <div style={grid(300)}>
+              {data.groups.map((g) => (
+                <div key={g.key} className="card" style={{ borderTop: "3px solid " + (g.key === "personal" ? C.violet : C.blue) }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <strong style={{ fontSize: 14 }}>{g.label}</strong>
+                    <span className="muted" style={{ fontSize: 12 }}>{g.costPct === null ? "—" : pct(g.costPct) + " of cost"}</span>
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, margin: "4px 0 6px" }}>{money(g.cost)}</div>
+                  <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+                    {g.key === "personal" ? "Personal accounts" : "Customers"}: <strong>{int(g.customers)}</strong> · Active users: <strong>{int(g.activeUsers)}</strong><br />
+                    Transactions: <strong>{int(g.transactions)}</strong> · Reads: <strong>{int(g.reads)}</strong> · Writes: <strong>{int(g.writes)}</strong>
+                    {g.key === "business" && <><br />Revenue: <strong>{money(g.revenue)}</strong></>}
+                    {g.apps.length > 0 && <><br />Apps: {g.apps.join(", ")}</>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Section>
           <div style={{ ...grid(340), marginBottom: 12 }}>
             <ChartCard title="Revenue vs infrastructure cost" sub="Daily recognised revenue (MRR ÷ 30) against platform cost">
               <LineChart dates={d} series={[{ name: "Revenue", color: C.teal, values: data.series.map((s) => s.revenue) }, { name: "Platform cost", color: C.red, values: data.series.map((s) => s.cost) }]} />
@@ -525,10 +544,10 @@ export default function CostUsagePanel({ isOwner }) {
       {sub === "applications" && (
         <>
           <Section title="Cost by application" sub="Apps send an `app` on usage events. Cost = the app's Firestore operations plus its own AI/OCR/messaging/email usage.">
-            <Table cols={5} head={<><th style={{ textAlign: "left" }}>Application</th><th style={{ textAlign: "right" }}>Transactions</th><th style={{ textAlign: "right" }}>Reads</th><th style={{ textAlign: "right" }}>Writes</th><th style={{ textAlign: "right" }}>Cost</th></>} empty={data.applications.length === 0 ? "No application has reported usage in this range yet." : null}>
+            <Table cols={6} head={<><th style={{ textAlign: "left" }}>Application</th><th style={{ textAlign: "left" }}>Category</th><th style={{ textAlign: "right" }}>Transactions</th><th style={{ textAlign: "right" }}>Reads</th><th style={{ textAlign: "right" }}>Writes</th><th style={{ textAlign: "right" }}>Cost</th></>} empty={data.applications.length === 0 ? "No application has reported usage in this range yet." : null}>
               {data.applications.map((a) => (
                 <tr key={a.key} style={{ borderTop: "1px solid #e2e8f0" }}>
-                  <td style={{ ...TD, fontWeight: 600 }}>{a.label}</td><td style={TDR}>{int(a.transactions)}</td><td style={TDR}>{int(a.reads)}</td><td style={TDR}>{int(a.writes)}</td><td style={{ ...TDR, fontWeight: 700 }}>{money(a.cost)}</td>
+                  <td style={{ ...TD, fontWeight: 600 }}>{a.label}</td><td style={TD}><span className="status-pill" style={{ background: a.group === "personal" ? "#ede9fe" : "#dbeafe", color: a.group === "personal" ? "#5b21b6" : "#1e40af", fontSize: 10.5 }}>{a.group === "personal" ? "Personal" : "Business"}</span></td><td style={TDR}>{int(a.transactions)}</td><td style={TDR}>{int(a.reads)}</td><td style={TDR}>{int(a.writes)}</td><td style={{ ...TDR, fontWeight: 700 }}>{money(a.cost)}</td>
                 </tr>
               ))}
             </Table>
