@@ -6,7 +6,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizationMembership";
 import { getOrganizationAppSubscriptions, upsertAppAssignment } from "@/lib/appAccess";
 import { APP_IDS } from "@/lib/appCatalog";
-import { createUsernameUser, usernameForUid, setUsernamePassword } from "@/lib/usernameAuth";
+import { createUsernameUser, usernameForUid, setUsernamePassword, generateRecoveryCodes } from "@/lib/usernameAuth";
 import { validatePassword } from "@/lib/passwordPolicy";
 
 export const runtime = "nodejs";
@@ -62,7 +62,12 @@ export async function GET(req) {
       locked: !!(d.lockedUntil && d.lockedUntil.toMillis() > now),
       apps: organizationId ? apps[d.uid] || [] : undefined, lastLoginAt: toIso(d.lastLoginAt),
     }));
-    return NextResponse.json({ users });
+    let enabledApps;
+    if (organizationId) {
+      const subs = await getOrganizationAppSubscriptions(organizationId);
+      enabledApps = subs.filter((x) => x.status === "ACTIVE").map((x) => x.appId);
+    }
+    return NextResponse.json({ users, enabledApps });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
@@ -134,6 +139,49 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, uid, teamMemberId: memberRef.id, username, password });
     }
 
+    if (body.action === "linkUser") {
+      // Platform Admin only: give an EXISTING username user a second company
+      // membership with its own role and apps (one login, several companies).
+      if (!c.isSuper) throw { status: 403, message: "Only a Platform Admin can link a user to another company" };
+      const username = String(body.username || "").trim().toLowerCase();
+      const u = await adminDb().doc("usernames/" + username).get();
+      if (!u.exists) throw { status: 404, message: "Username not found" };
+      const uid = u.data().uid;
+      const organizationId = String(body.organizationId || "");
+      const org = await adminDb().doc("customers/" + organizationId).get();
+      if (!org.exists) throw { status: 404, message: "Company not found" };
+      if (organizationId === u.data().organizationId) throw { status: 400, message: "That is already this user's company" };
+      const existing = await adminDb().doc("organizationMemberships/" + organizationId + "_" + uid).get();
+      if (existing.exists) throw { status: 409, message: "Already a member of that company" };
+      if (org.data().allowedUsers) {
+        const team = await adminDb().collection("customers/" + organizationId + "/team").count().get();
+        if (team.data().count + 1 >= org.data().allowedUsers) throw { status: 400, message: "User limit reached for that company's subscription" };
+      }
+      const profile = PROFILE_VALUES.includes(body.profile) ? body.profile : DEFAULT_PROFILE;
+      const subs = await getOrganizationAppSubscriptions(organizationId);
+      const enabled = new Set(subs.filter((x) => x.status === "ACTIVE").map((x) => x.appId));
+      const apps = (Array.isArray(body.apps) ? body.apps : []).filter((a) => APP_IDS.includes(a));
+      const denied = apps.filter((a) => !enabled.has(a));
+      if (denied.length) throw { status: 400, message: "Not enabled for that company: " + denied.join(", ") };
+      await adminDb().doc("organizationMemberships/" + organizationId + "_" + uid).set({
+        organizationId, userId: uid, role: roleFromProfile(profile, false), profile, status: "active",
+        createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      });
+      await adminDb().collection("customers/" + organizationId + "/team").add({
+        firstName: u.data().displayName || username, lastName: "", email: "", username, role: profile, profile,
+        status: "active", uid, linkedFromOrganizationId: u.data().organizationId,
+        invitedBy: c.email || c.uid, invitedAt: FieldValue.serverTimestamp(), joinedAt: FieldValue.serverTimestamp(),
+      });
+      await Promise.all(apps.map((appId) => upsertAppAssignment({ organizationId, userId: uid, appId, role: "MEMBER", status: "ACTIVE" })));
+      // Flag both possible home docs so resolveAccount() looks at the active-company choice.
+      for (const path of ["customers/" + uid, "memberships/" + uid]) {
+        const d = await adminDb().doc(path).get();
+        if (d.exists) await d.ref.set({ multiOrg: true }, { merge: true });
+      }
+      await logAuditEvent({ action: "user.link_company", actor: c, targetType: "user", targetId: uid, details: { organizationId, username, profile, apps } });
+      return NextResponse.json({ ok: true, uid });
+    }
+
     const uid = String(body.uid || "");
     if (!uid) throw { status: 400, message: "uid required" };
     const target = await loadTarget(c, uid);
@@ -147,6 +195,12 @@ export async function POST(req) {
       await adminDb().doc("memberships/" + uid).set({ mustChangePassword: true }, { merge: true });
       await logAuditEvent({ action: "user.reset_username_password", actor: c, targetType: "user", targetId: uid, details: { orgId } });
       return NextResponse.json({ ok: true, password });
+    }
+
+    if (body.action === "regenerateRecoveryCodes") {
+      const recoveryCodes = await generateRecoveryCodes(uid);
+      await logAuditEvent({ action: "user.regenerate_recovery_codes", actor: c, targetType: "user", targetId: uid, details: { orgId } });
+      return NextResponse.json({ ok: true, recoveryCodes });
     }
 
     if (body.action === "unlock") {
@@ -176,6 +230,9 @@ export async function POST(req) {
       await adminAuth().updateUser(uid, { disabled: suspend });
       if (suspend) await adminAuth().revokeRefreshTokens(uid);
       await target.ref.update({ disabled: suspend });
+      // Keep the Team page's own status in step with the login state.
+      const teamDocs = await adminDb().collection("customers/" + orgId + "/team").where("uid", "==", uid).get();
+      await Promise.all(teamDocs.docs.map((d) => d.ref.update({ disabled: suspend })));
       await adminDb().doc("organizationMemberships/" + orgId + "_" + uid)
         .set({ status: suspend ? "suspended" : "active", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       await logAuditEvent({ action: suspend ? "user.suspend" : "user.activate", actor: c, targetType: "user", targetId: uid, details: { orgId } });

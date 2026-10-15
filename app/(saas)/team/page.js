@@ -41,6 +41,7 @@ export default function TeamPage() {
   const [organizationName, setOrganizationName] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showBulkAdd, setShowBulkAdd] = useState(false);
+  const [showUsernameAdd, setShowUsernameAdd] = useState(false);
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [credentials, setCredentials] = useState(null); // { email, password } shown once after a credentials-based add or a password reset
@@ -98,6 +99,20 @@ export default function TeamPage() {
     } catch (e) {
       setErr(e.message);
     }
+  }
+
+  async function usernameAction(m, action) {
+    if (action !== "unlock" && !window.confirm("Continue? This signs " + m.username + " out and issues new credentials.")) return;
+    setBusyId(m.id);
+    try {
+      const d = await api("/api/admin/username-users", "POST", { action, uid: m.uid });
+      if (d.password) setCredentials({ email: m.username, password: d.password });
+      if (d.recoveryCodes) setCredentials({ email: m.username, password: "(unchanged) — recovery codes: " + d.recoveryCodes.join("  ") });
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    }
+    setBusyId(null);
   }
 
   async function resend(id) {
@@ -177,6 +192,7 @@ export default function TeamPage() {
           </div>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn-outline-dark" onClick={() => setShowBulkAdd(true)}>Bulk add users</button>
+            <button className="btn-outline-dark" onClick={() => setShowUsernameAdd(true)}>+ Username user</button>
             <button className="btn-primary-sm" onClick={() => setShowAdd(true)}>+ New User</button>
           </div>
         </div>
@@ -208,7 +224,7 @@ export default function TeamPage() {
                 {members.map((m) => (
                   <tr key={m.id}>
                     <td>{[m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A"}</td>
-                    <td>{m.email}</td>
+                    <td>{m.email || (m.username ? "@" + m.username : "")}</td>
                     <td>{m.role || "N/A"}</td>
                     <td>{PROFILES.find((p) => p.value === m.profile)?.label || m.profile}</td>
                     <td>
@@ -248,7 +264,13 @@ export default function TeamPage() {
                             { label: "Manage roles & app access", onClick: () => setManagingMember(m) },
                             ...(m.status === "invited" ? [{ label: "Resend invite email", onClick: () => resend(m.id) }] : []),
                             ...(m.status !== "invited" ? [{ label: "Send password-reset email", onClick: () => resetPasswordEmail(m) }] : []),
-                            { label: busyId === m.id ? "Working…" : "Set new password directly", onClick: () => setPassword(m) },
+                            ...(m.username ? [
+                              { label: "Reset username password", onClick: () => usernameAction(m, "resetPassword") },
+                              { label: "Unlock sign-in", onClick: () => usernameAction(m, "unlock") },
+                              { label: "New recovery codes", onClick: () => usernameAction(m, "regenerateRecoveryCodes") },
+                            ] : [
+                              { label: busyId === m.id ? "Working…" : "Set new password directly", onClick: () => setPassword(m) },
+                            ]),
                             {
                               label: m.status === "disabled" ? "Re-enable" : "Disable",
                               onClick: () => toggleDisabled(m),
@@ -271,6 +293,17 @@ export default function TeamPage() {
           onClose={() => setShowAdd(false)}
           onAdded={async (creds) => {
             if (creds) setCredentials(creds);
+            await load();
+          }}
+        />
+      )}
+
+      {showUsernameAdd && (
+        <UsernameUserModal
+          onClose={() => setShowUsernameAdd(false)}
+          onCreated={async (creds) => {
+            setShowUsernameAdd(false);
+            setCredentials({ email: creds.username, password: creds.password });
             await load();
           }}
         />
@@ -1078,6 +1111,68 @@ function AddUserModal({ onClose, onAdded }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Company admins create employees who sign in with a Bizzux username
+// (no email needed). Only company-enabled apps are offered; the server
+// enforces the same rule (and the plan's user limit) regardless.
+function UsernameUserModal({ onClose, onCreated }) {
+  const [f, setF] = useState({ fullName: "", username: "", profile: "Staff/Shopkeeper", employeeId: "", department: "", branch: "", designation: "", mobile: "", apps: [] });
+  const [enabled, setEnabled] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  useEffect(() => {
+    api("/api/admin/username-users", "GET").then((d) => setEnabled(d.enabledApps || [])).catch((e) => setErr(e.message));
+  }, []);
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setErr("");
+    try {
+      onCreated(await api("/api/admin/username-users", "POST", { action: "create", ...f }));
+    } catch (x) {
+      setErr(x.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <form className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <h2 style={{ marginTop: 0 }}>New username user</h2>
+        <p className="muted" style={{ fontSize: 12.5 }}>They sign in with this username and a temporary password you hand over, then set their own. No email address is needed.</p>
+        <label className="label">Full name</label>
+        <input className="input" value={f.fullName} onChange={(e) => set("fullName", e.target.value)} required />
+        <label className="label">Username (e.g. priya.ocean001)</label>
+        <input className="input" value={f.username} onChange={(e) => set("username", e.target.value)} required autoCapitalize="none" />
+        <label className="label">Role</label>
+        <select className="input" value={f.profile} onChange={(e) => set("profile", e.target.value)}>
+          {PROFILES.filter((p) => p.value !== "Global Admin").map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
+        {["employeeId", "department", "branch", "designation", "mobile"].map((k) => (
+          <div key={k}>
+            <label className="label" style={{ textTransform: "capitalize" }}>{k.replace(/([A-Z])/g, " $1")} (optional)</label>
+            <input className="input" value={f[k]} onChange={(e) => set(k, e.target.value)} />
+          </div>
+        ))}
+        <label className="label">Applications</label>
+        {enabled === null ? <p className="muted">Loading…</p> : enabled.length === 0 ? <p className="muted">No applications are enabled for your company.</p> : (
+          <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+            {APPS.filter((a) => enabled.includes(a.id)).map((a) => (
+              <label key={a.id} style={{ fontSize: 13 }}>
+                <input type="checkbox" checked={f.apps.includes(a.id)} onChange={(e) => set("apps", e.target.checked ? [...f.apps, a.id] : f.apps.filter((x) => x !== a.id))} /> {a.name.replace("Bizzux ", "")}
+              </label>
+            ))}
+          </div>
+        )}
+        {err && <p className="error">{err}</p>}
+        <div className="row" style={{ gap: 8, marginTop: 14 }}>
+          <button className="btn-primary-sm" disabled={busy}>{busy ? "Creating…" : "Create user"}</button>
+          <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+        </div>
+      </form>
     </div>
   );
 }

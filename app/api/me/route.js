@@ -24,6 +24,9 @@ export async function GET(req) {
     // switcher can offer to flip between the two. dualContext is false for
     // the overwhelmingly common single-context case.
     let dualContext = false;
+    // Companies this login can switch between (only for logins an admin linked to several).
+    let organizations = null;
+    let activeOrganizationId = null;
     let useMembershipContext = false;
     let ownAccountEmail = null;
     let membershipOrgEmail = null;
@@ -58,6 +61,15 @@ export async function GET(req) {
       // bookmarked /dashboard link can't skip it. See /change-password.
       mustChangePassword = !!(acct.customer?.mustChangePassword || acct.membership?.mustChangePassword);
 
+      if (acct.customer?.multiOrg || acct.membership?.multiOrg || acct.hasOwnAccount || acct.hasMembership) {
+        const oms = await adminDb().collection("organizationMemberships").where("userId", "==", c.uid).get();
+        const linked = oms.docs.map((d) => d.data()).filter((m) => m.status === "active");
+        if (linked.length > 1 && (acct.customer?.multiOrg || acct.membership?.multiOrg || (await adminDb().doc("memberships/" + c.uid).get()).data()?.multiOrg)) {
+          const names = await adminDb().getAll(...linked.map((m) => adminDb().doc("customers/" + m.organizationId)));
+          organizations = linked.map((m, i) => ({ id: m.organizationId, name: names[i].data()?.organizationName || m.organizationId, role: m.profile || m.role }));
+          activeOrganizationId = acct.accountId;
+        }
+      }
       if (acct.isOwner && acct.hasMembership) {
         dualContext = true;
         ownAccountEmail = c.email;
@@ -101,6 +113,7 @@ export async function GET(req) {
       email: c.email, superAdmin: isSuper, platformRole: resolvedPlatformRole, accountType,
       accountId, isAccountAdmin, hasAccount, profile, isOwner,
       organizationId, organizationRole, organizationName, mustChangePassword,
+      organizations, activeOrganizationId,
       dualContext, useMembershipContext, ownAccountEmail, membershipOrgEmail,
       twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null, twoFactorRequired: !!twoFactor.required,
       canManageOrgs: isSuper || isAccountAdmin,

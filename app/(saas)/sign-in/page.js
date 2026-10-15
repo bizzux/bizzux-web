@@ -336,6 +336,9 @@ export default function LoginPage() {
               </button>
             </div>
             {fieldErrors.password && <p className="field-error">{fieldErrors.password}</p>}
+            {mode === "signin" && email.trim() && !email.includes("@") && (
+              <p style={{ fontSize: 12.5, marginTop: 6 }}><Link href="/recover-password" style={{ textDecoration: "underline" }}>Forgot your password? Use a recovery code</Link></p>
+            )}
           </div>
 
           {mode === "signup" && (

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser, resolveAccount, adminDb } from "@/lib/firebaseAdmin";
-import { setUsernamePassword } from "@/lib/usernameAuth";
+import { setUsernamePassword, generateRecoveryCodes, hasRecoveryCodes } from "@/lib/usernameAuth";
 import { validatePassword } from "@/lib/passwordPolicy";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -22,7 +22,10 @@ export async function POST(req) {
     if (acct.membership) await adminDb().doc("memberships/" + c.uid).set({ mustChangePassword: false }, { merge: true });
     else await adminDb().doc("customers/" + c.uid).set({ mustChangePassword: false }, { merge: true });
     await logAuditEvent({ action: "auth.username_password_changed", actor: c, targetType: "user", targetId: c.uid });
-    return NextResponse.json({ ok: true });
+    // First password change issues the recovery codes (shown once); later
+    // changes keep the existing set.
+    const recoveryCodes = (await hasRecoveryCodes(c.uid)) ? null : await generateRecoveryCodes(c.uid);
+    return NextResponse.json({ ok: true, recoveryCodes });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }

@@ -204,6 +204,8 @@ async function handleGET(req) {
         const t = d.data();
         return {
           id: d.id,
+          uid: t.uid || null,
+          username: t.username || null,
           firstName: t.firstName || "",
           lastName: t.lastName || "",
           email: t.email || "",

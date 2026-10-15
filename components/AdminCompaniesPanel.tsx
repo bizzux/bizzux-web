@@ -195,6 +195,7 @@ function CompanyDetails({ id, onBack, onSecret }: { id: string; onBack: () => vo
   const [edit, setEdit] = useState<any>(null);
   const [err, setErr] = useState("");
   const [adding, setAdding] = useState(false);
+  const [linking, setLinking] = useState(false);
   const [editApps, setEditApps] = useState<{ uid: string; apps: string[] } | null>(null);
 
   async function load() {
@@ -251,7 +252,8 @@ function CompanyDetails({ id, onBack, onSecret }: { id: string; onBack: () => vo
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center mb-3"><h3 className="font-semibold">Users &amp; credentials</h3><button className={`${btn} ml-auto`} onClick={() => setAdding(true)}>Add user</button></div>
+        <div className="flex items-center mb-3"><h3 className="font-semibold">Users &amp; credentials</h3><button className={`${btn} ml-auto`} onClick={() => setLinking(true)}>Link existing user</button><button className={btn + " ml-2"} onClick={() => setAdding(true)}>Add user</button></div>
+        {linking && <LinkUser orgId={id} enabled={data.enabledApps} onDone={() => { setLinking(false); load(); }} />}
         {adding && <AddUser orgId={id} enabled={data.enabledApps} onDone={(r) => { setAdding(false); if (r) onSecret({ label: "User created", username: r.username, password: r.password }); load(); }} />}
         <UserTable users={users} onChanged={load} onSecret={onSecret} showApps onEditApps={(u) => setEditApps({ uid: u.uid, apps: u.apps || [] })} />
         {editApps && (
@@ -358,5 +360,21 @@ function UserDirectory({ companies, onSecret }: { companies: Company[]; onSecret
       <p className="text-xs text-slate-500">Filter by application from a company&apos;s detail page.</p>
       <UserTable users={shown} onChanged={load} onSecret={onSecret} />
     </div>
+  );
+}
+
+// One login, several companies: attaches an existing username user to this
+// company with its own role and apps (they then get a company switcher).
+function LinkUser({ orgId, enabled, onDone }: { orgId: string; enabled: string[]; onDone: () => void }) {
+  const [f, setF] = useState<any>({ username: "", profile: "Staff/Shopkeeper", apps: [] });
+  const [err, setErr] = useState("");
+  return (
+    <form className="mb-4 rounded-lg border border-slate-200 p-3 grid sm:grid-cols-3 gap-3" onSubmit={async (e) => { e.preventDefault(); try { await api("/api/admin/username-users", { action: "linkUser", organizationId: orgId, ...f }); onDone(); } catch (x: any) { setErr(x.message); } }}>
+      <Field label="Existing username *"><input className={input} value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} required autoCapitalize="none" /></Field>
+      <Field label="Role in this company"><select className={input} value={f.profile} onChange={(e) => setF({ ...f, profile: e.target.value })}>{PROFILES.map((p: any) => <option key={p.value}>{p.value}</option>)}</select></Field>
+      <div className="sm:col-span-3"><AppChecks value={f.apps} only={enabled} onChange={(v) => setF({ ...f, apps: v })} /></div>
+      {err && <p className="text-sm text-red-600 sm:col-span-3">{err}</p>}
+      <div className="sm:col-span-3 flex gap-2"><button className={btnPrimary}>Link user</button><button type="button" className={btn} onClick={onDone}>Cancel</button></div>
+    </form>
   );
 }

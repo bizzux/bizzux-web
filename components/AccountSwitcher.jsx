@@ -11,6 +11,36 @@ import { auth } from "@/lib/firebase";
 // files/projects SSO) for a partial client-side refresh to be reliable.
 export default function AccountSwitcher({ me }) {
   const [busy, setBusy] = useState(false);
+  // Logins linked to several companies by an admin get a company picker
+  // (the choice is stored server-side and re-validated on every request).
+  if (me?.organizations?.length > 1) {
+    return (
+      <select
+        value={me.activeOrganizationId}
+        disabled={busy}
+        onChange={async (e) => {
+          setBusy(true);
+          try {
+            const token = await auth.currentUser.getIdToken();
+            const r = await fetch("/api/switch-organization", {
+              method: "POST",
+              headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+              body: JSON.stringify({ organizationId: e.target.value }),
+            });
+            if (!r.ok) throw new Error();
+            window.location.reload();
+          } catch {
+            setBusy(false);
+            alert("Couldn't switch company right now. Please try again.");
+          }
+        }}
+        title="Switch company"
+        className="text-[11px] font-medium text-ink bg-slate-100 hover:bg-slate-200 rounded-full pl-3 pr-2 py-1.5 border-0 outline-none cursor-pointer max-w-[180px]"
+      >
+        {me.organizations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+    );
+  }
   if (!me?.dualContext) return null;
 
   async function switchTo(context) {

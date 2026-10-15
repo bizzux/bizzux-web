@@ -186,6 +186,12 @@ export async function POST(req) {
       // "suspended" is what usernameLogin checks; expired maps to the same block.
       await snap.ref.set({ companyStatus: body.status, status: blocked ? (body.status === "expired" ? "expired" : "suspended") : "trial" }, { merge: true });
       await adminDb().doc("organizations/" + id).set({ status: body.status, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      if (blocked) {
+        // End existing sessions too (refresh tokens), not just future logins.
+        const team = await adminDb().collection("customers/" + id + "/team").get();
+        const uids = [id, ...team.docs.map((d) => d.data().uid).filter(Boolean)];
+        await Promise.all(uids.map((u) => adminAuth().revokeRefreshTokens(u).catch(() => {})));
+      }
       await logAuditEvent({ action: "company.set_status", actor: c, targetType: "organization", targetId: id, details: { status: body.status } });
       return NextResponse.json({ ok: true });
     }

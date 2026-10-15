@@ -20,6 +20,7 @@ export default function ChangePasswordPage() {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [codes, setCodes] = useState(null);
 
   useEffect(() => {
     if (user === null) router.push("/sign-in");
@@ -51,6 +52,13 @@ export default function ChangePasswordPage() {
           setBusy(false);
           return;
         }
+        const d = await r.json().catch(() => ({}));
+        if (d.recoveryCodes) {
+          // Shown once; the user signs in again after saving them.
+          setCodes(d.recoveryCodes);
+          setBusy(false);
+          return;
+        }
         await signOut(auth);
         router.push("/sign-in");
         return;
@@ -69,6 +77,32 @@ export default function ChangePasswordPage() {
       }
       setBusy(false);
     }
+  }
+
+  if (codes) {
+    return (
+      <>
+        <Nav />
+        <div className="min-h-[70vh] flex items-center justify-center px-6 py-16 bg-slate-50">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-sm border border-slate-100 p-8">
+            <h1 className="text-2xl font-bold mb-2">Save your recovery codes</h1>
+            <p className="text-slate-600 text-sm mb-4">
+              Your account has no email, so these one-time codes are the only way to reset your own password if you forget it.
+              Write them down and keep them private. They are shown once.
+            </p>
+            <div className="grid grid-cols-2 gap-2 font-mono text-sm bg-slate-50 rounded-lg p-4 mb-4">
+              {codes.map((c) => <span key={c}>{c}</span>)}
+            </div>
+            <button
+              className="w-full h-11 rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white text-sm font-semibold"
+              onClick={async () => { await signOut(auth); router.push("/sign-in"); }}
+            >
+              I've saved them. Sign in again
+            </button>
+          </div>
+        </div>
+      </>
+    );
   }
 
   return (
