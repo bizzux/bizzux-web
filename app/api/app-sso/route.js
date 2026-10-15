@@ -4,7 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 import { logAuditEvent } from "@/lib/audit";
-import { canAccessApp } from "@/lib/appAccess";
+import { appEntitlementDenial } from "@/lib/appAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,11 +80,12 @@ export async function GET(req) {
     // account has a subscription for, so they skip this check entirely.
     // Catalog ids (lib/appCatalog.js) are "bizzux-<key>", one level more
     // specific than this route's own short appKey ("crm", "projects", ...).
-    if (!isOwner) {
-      const allowed = await canAccessApp({ organizationId: accountId, userId: uid, appId: "bizzux-" + appKey });
-      if (!allowed) {
-        throw { status: 403, message: "You don't have access to this app yet — ask your admin to grant it under Team > Apps." };
-      }
+    // Owners are now also checked against the COMPANY's entitlements (an app
+    // a Platform Admin switched off is denied for everyone). Platform-admin
+    // impersonation (asOrg) is a support tool and stays exempt.
+    if (!asOrg) {
+      const denial = await appEntitlementDenial({ organizationId: accountId, userId: uid, appId: "bizzux-" + appKey, isOwner });
+      if (denial) throw denial;
     }
 
     // Best-effort "last opened" stamp for the Super Admin Customers list's

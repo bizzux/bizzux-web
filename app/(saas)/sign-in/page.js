@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   signInWithEmailAndPassword,
+  signInWithCustomToken,
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithRedirect,
@@ -201,7 +202,23 @@ export default function LoginPage() {
         }
         router.push("/dashboard");
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        if (!email.includes("@")) {
+          // Admin-provisioned username login (no email on the account).
+          const r = await fetch("/api/auth/username-login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: email, password }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            setError(d.error || "That didn't work. Double check your username and password and try again.");
+            setBusy(false);
+            return;
+          }
+          await signInWithCustomToken(auth, d.token);
+        } else {
+          await signInWithEmailAndPassword(auth, email, password);
+        }
         await afterAuth();
       }
     } catch (err) {
@@ -296,8 +313,8 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label className="label">Email</label>
-            <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={mode === "signin"} />
+            <label className="label">{mode === "signin" ? "Email or username" : "Email"}</label>
+            <input className="input" type={mode === "signin" ? "text" : "email"} autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={mode === "signin"} />
             {fieldErrors.email && <p className="field-error">{fieldErrors.email}</p>}
           </div>
 

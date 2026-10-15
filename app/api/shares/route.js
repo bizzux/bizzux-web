@@ -29,7 +29,7 @@ function toIso(ts) {
 
 export async function GET(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-notes", "bizzux-files"]);
     const snap = await sharesCollection().where("accountId", "==", acct.accountId).get();
     const shares = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
@@ -51,7 +51,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-notes", "bizzux-files"]);
     const body = await req.json();
 
     if (body.action === "create") {

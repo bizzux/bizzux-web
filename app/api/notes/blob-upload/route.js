@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 // the same limit /api/careers's resume upload stays safely under.
 export async function POST(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-notes"]);
 
     const body = await req.json();
     const jsonResponse = await handleUpload({

@@ -31,7 +31,7 @@ function matches(doc, q) {
 
 export async function GET(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-files"]);
     const params = new URL(req.url).searchParams;
     const q = params.get("q")?.trim() || "";
     // folderId: omitted = every file regardless of folder; "unfiled" = only
@@ -94,7 +94,7 @@ function snippetAround(content, q) {
 
 export async function POST(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-files"]);
     const body = await req.json();
 
     if (body.action === "create") {

@@ -40,7 +40,7 @@ async function wouldCreateCycle(accountId, candidateId, newParentId) {
 
 export async function GET(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-files"]);
     const snap = await foldersCollection(acct.accountId).orderBy("createdAt", "asc").get();
     const folders = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
@@ -54,7 +54,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-files"]);
     const body = await req.json();
     const folders = foldersCollection(acct.accountId);
 

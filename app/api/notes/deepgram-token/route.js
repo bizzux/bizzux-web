@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req) {
   try {
-    await requireAccountWithAppsAccess(req);
+    await requireAccountWithAppsAccess(req, undefined, ["bizzux-notes"]);
     // ?fresh=1 skips the server-side key cache — the client sends it when
     // retrying after a failed handshake, in case the cached key went stale.
     const fresh = new URL(req.url).searchParams.get("fresh") === "1";

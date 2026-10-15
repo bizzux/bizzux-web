@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser, resolveAccount, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { appDenialFor } from "@/lib/firebaseAdmin";
+import { appEntitlementDenial } from "@/lib/appAccess";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 import { logAuditEvent } from "@/lib/audit";
@@ -82,6 +83,9 @@ export async function GET(req) {
         const platformRole = await resolvePlatformRole(c.uid, c.email);
         if (platformRole !== "OWNER" && platformRole !== "ADMIN") throw denial;
         role = "super";
+      } else {
+        const entitlementDenial = await appEntitlementDenial({ organizationId: acct.accountId, userId: c.uid, appId: "bizzux-pos", isOwner: acct.isOwner });
+        if (entitlementDenial) throw entitlementDenial;
       }
     }
 

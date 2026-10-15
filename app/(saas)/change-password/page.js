@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { updatePassword, onAuthStateChanged } from "firebase/auth";
+import { updatePassword, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Nav from "@/components/Nav";
 import { useMe } from "@/lib/useMe";
@@ -36,8 +36,26 @@ export default function ChangePasswordPage() {
     if (password !== confirm) { setError("Passwords don't match."); return; }
     setBusy(true);
     try {
-      await updatePassword(auth.currentUser, password);
       const token = await auth.currentUser.getIdToken();
+      if (!auth.currentUser.email) {
+        // Username login: no Firebase password provider, so the server
+        // changes the hash and revokes the session; sign in again.
+        const r = await fetch("/api/auth/username-change-password", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          setError(d.error || "Couldn't update your password. Please try again.");
+          setBusy(false);
+          return;
+        }
+        await signOut(auth);
+        router.push("/sign-in");
+        return;
+      }
+      await updatePassword(auth.currentUser, password);
       await fetch("/api/change-password", { method: "POST", headers: { Authorization: "Bearer " + token } });
       router.push("/dashboard");
     } catch (err) {

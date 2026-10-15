@@ -22,7 +22,7 @@ const ALLOWED_EXT_TO_MIME = {
 
 export async function POST(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-files"]);
 
     const body = await req.json();
     const jsonResponse = await handleUpload({

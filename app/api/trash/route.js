@@ -57,7 +57,7 @@ async function purgeExpired(accountId) {
 
 export async function GET(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-notes", "bizzux-files"]);
     await purgeExpired(acct.accountId);
 
     const [folderSnap, fileSnap] = await Promise.all([
@@ -89,7 +89,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const acct = await requireAccountWithAppsAccess(req);
+    const acct = await requireAccountWithAppsAccess(req, undefined, ["bizzux-notes", "bizzux-files"]);
     const body = await req.json();
 
     if (body.action === "restore") {
