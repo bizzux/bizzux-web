@@ -5,6 +5,7 @@ import { createOrganization } from "@/lib/organization";
 import { upsertOrganizationMembership } from "@/lib/organizationMembership";
 import { upsertOrganizationAppSubscription, upsertAppAssignment } from "@/lib/appAccess";
 import { APP_IDS } from "@/lib/appCatalog";
+import { cleanBusinessRole } from "@/lib/businessRoles";
 import { getUserOrganizations, resolveCurrentOrganization, setCurrentOrganization } from "@/lib/organizationContext";
 
 export const runtime = "nodejs";
@@ -41,6 +42,10 @@ export async function POST(req) {
     if (body.action === "create") {
       const name = String(body.name || "").trim().slice(0, 160);
       if (!name) throw { status: 400, message: "Organization name is required" };
+      // The person's real job ("what is your role in your company?"). Required: it records who set the workspace
+      // up and in what capacity. It is NOT a permission.
+      const businessRole = cleanBusinessRole(body.businessRole);
+      if (!businessRole) throw { status: 400, message: "Choose your role in the company" };
 
       // A brand-new organization always gets its own id — reusing the
       // caller's uid only works for their FIRST organization (matching the
@@ -90,6 +95,9 @@ export async function POST(req) {
         signupCity: u.signupCity || null,
         organizationName: name,
         companyName: name,
+        // Historical fact, written once at creation: who created this workspace and in what job.
+        // "Creator" is not "owner" — ownership can later be confirmed by a verified company authority.
+        workspaceCreator: { uid: c.uid, email: c.email || "", fullName: u.fullName || "", businessRole, at: new Date().toISOString() },
         currency,
         timezone,
         ...(businessType ? { businessType } : {}),
@@ -108,6 +116,7 @@ export async function POST(req) {
         mustChangePassword: false,
         ...(u.verifyMobileRequired ? { phoneVerified: !!u.phoneVerified } : {}),
       });
+      await adminDb().doc("users/" + c.uid).set({ businessRole, businessRoleUpdatedAt: FieldValue.serverTimestamp() }, { merge: true });
       await createOrganization({ id: c.uid, name, type: orgType, createdBy: c.uid });
       await upsertOrganizationMembership({ organizationId: c.uid, userId: c.uid, role: "OWNER", status: "active" });
       await Promise.all(

@@ -16,6 +16,7 @@ import { IconClock } from "@/components/Icons";
 import { daysLeft, canAccessApps } from "@/lib/trial";
 import { useMe } from "@/lib/useMe";
 import { deriveVerificationFlags } from "@/lib/verification";
+import { BUSINESS_ROLES } from "@/lib/businessRoles";
 import { roleLabel } from "@/lib/roleLabel";
 
 const APPS = [
@@ -412,6 +413,9 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
   const askBusinessType = app.key === "juicechatjunction";
   const [name, setName] = useState("");
   const [businessType, setBusinessType] = useState("shop");
+  const [businessRole, setBusinessRole] = useState("");
+  // "What would you like to do?" — set up a new company workspace, or join one that already exists.
+  const [intent, setIntent] = useState("create"); // create | join
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -419,6 +423,10 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
     e.preventDefault();
     if (!name.trim()) {
       setError("Enter your business name");
+      return;
+    }
+    if (!businessRole) {
+      setError("Choose your role in the company");
       return;
     }
     // Opened synchronously, inside the click, then pointed at the app once
@@ -436,6 +444,7 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
         body: JSON.stringify({
           action: "create",
           name: name.trim(),
+          businessRole,
           timezone,
           currency,
           // POS is the shop billing counter, so opening it implies a shop.
@@ -487,10 +496,17 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
     <div className="modal-overlay" onClick={busy ? undefined : onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <div className="onboarding-hi">{app.icon} {app.name}</div>
-        <h2 style={{ marginBottom: 4 }}>What's your business called?</h2>
-        <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
-          Just this once, then {app.name} opens. It's also how your team will see you when you invite them.
-        </p>
+        <h2 style={{ marginBottom: 4 }}>What would you like to do?</h2>
+        <div style={{ display: "grid", gap: 8, margin: "10px 0 14px" }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14, cursor: "pointer" }}>
+            <input type="radio" name="intent" checked={intent === "create"} onChange={() => setIntent("create")} style={{ marginTop: 4 }} />
+            <span><strong>Create a new company workspace</strong><br /><span className="muted" style={{ fontSize: 12.5 }}>Just this once, then {app.name} opens.</span></span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14, cursor: "pointer" }}>
+            <input type="radio" name="intent" checked={intent === "join"} onChange={() => setIntent("join")} style={{ marginTop: 4 }} />
+            <span><strong>Join an existing company</strong><br /><span className="muted" style={{ fontSize: 12.5 }}>Your company's admin invites you by email.</span></span>
+          </label>
+        </div>
 
         {pendingInvite && (
           <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13 }}>
@@ -499,12 +515,33 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
           </div>
         )}
 
+        {intent === "join" ? (
+          <div>
+            <p style={{ fontSize: 13.5, marginBottom: 12 }}>
+              To protect companies from outsiders, nobody can join by searching for a name. Ask the admin of your company to invite you using
+              the email you signed in with, then open the invite link they send you. You will join their workspace with the access they choose.
+            </p>
+            {!pendingInvite && <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>No invite has been sent to your email yet.</p>}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button type="button" className="btn-outline-dark" onClick={() => setIntent("create")}>Create a workspace instead</button>
+              <button type="button" className="btn-primary" onClick={onClose}>OK</button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={submit} noValidate>
           <div style={{ marginBottom: 14 }}>
-            <label className="label">Business name *</label>
+            <label className="label">Your role in the company *</label>
+            <select className="input" value={businessRole} onChange={(e) => setBusinessRole(e.target.value)} required>
+              <option value="">Choose…</option>
+              {BUSINESS_ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+            </select>
+            <span className="muted" style={{ fontSize: 12 }}>Your actual job. It does not decide what you can do in Bizzux.</span>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label className="label">Company name *</label>
             <input
               className="input" value={name} onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Thilak Traders" autoFocus required
+              placeholder="e.g. Thilak Traders" required
             />
           </div>
           {askBusinessType && (
@@ -526,6 +563,7 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
           </div>
           {error && <p className="error">{error}</p>}
         </form>
+        )}
       </div>
     </div>
   );

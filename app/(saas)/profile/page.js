@@ -10,6 +10,7 @@ import AccountTabs from "@/components/AccountTabs";
 import { useMe } from "@/lib/useMe";
 import { roleLabel as computeRoleLabel } from "@/lib/roleLabel";
 import TwoFactorSettings from "@/components/TwoFactorSettings";
+import { BUSINESS_ROLES } from "@/lib/businessRoles";
 
 // Anyone can reach their own profile; only the fields below decide what's
 // visible on it. "canManageOrgs" mirrors requireOrgManager() server-side
@@ -26,6 +27,28 @@ export default function ProfilePage() {
   const [orgNameDraft, setOrgNameDraft] = useState("");
   const [savingOrgName, setSavingOrgName] = useState(false);
   const [orgNameError, setOrgNameError] = useState("");
+  const [bizRole, setBizRole] = useState(null); // null = loading
+  const [bizRoleMsg, setBizRoleMsg] = useState("");
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const r = await fetch("/api/business-role", { headers: { Authorization: "Bearer " + token } });
+        const d = await r.json();
+        setBizRole(r.ok ? d.businessRole || "" : "");
+      } catch { setBizRole(""); }
+    })();
+  }, [user]);
+  async function saveBizRole(v) {
+    setBizRole(v); setBizRoleMsg("");
+    if (!v) return;
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const r = await fetch("/api/business-role", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ businessRole: v }) });
+      setBizRoleMsg(r.ok ? "Saved" : "Couldn't save");
+    } catch { setBizRoleMsg("Couldn't save"); }
+  }
 
   useEffect(() => {
     if (user === null) { router.push("/sign-in"); return; }
@@ -119,6 +142,14 @@ export default function ProfilePage() {
                 <div>
                   <div className="label">Role</div>
                   <span className="status-pill active" style={{ display: "inline-block" }}>{roleLabel}</span>
+                </div>
+                <div>
+                  <div className="label">Your job role</div>
+                  <select className="input" style={{ minWidth: 220 }} value={bizRole ?? ""} disabled={bizRole === null} onChange={(e) => saveBizRole(e.target.value)} aria-label="Your role in the company">
+                    <option value="">Not set</option>
+                    {BUSINESS_ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                  </select>
+                  {bizRoleMsg && <span className="muted" style={{ fontSize: 12, marginLeft: 6 }}>{bizRoleMsg}</span>}
                 </div>
                 <div>
                   <div className="label">Email status</div>
