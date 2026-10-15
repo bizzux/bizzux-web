@@ -13,6 +13,7 @@ import AdminCustomersPanel from "@/components/AdminCustomersPanel";
 import AdminReviewsPanel from "@/components/AdminReviewsPanel";
 import AdminLicensesPanel from "@/components/AdminLicensesPanel";
 import AdminBlogPanel from "@/components/AdminBlogPanel";
+import AdminCompaniesPanel from "@/components/AdminCompaniesPanel";
 import { internalVersionLabel } from "@/lib/version";
 
 // Super Admin (SaaS) is the default/first tab, so SuperAdminPanel is
@@ -55,7 +56,7 @@ export default function AdminTabs() {
   const { user, me } = useMe();
   const isSuper = me ? me.superAdmin === true : null; // null = checking role
   const isAccountAdmin = me?.isAccountAdmin === true;
-  const [tab, setTab] = useState<"saas" | "career" | "analytics" | "team" | "customers" | "reviews" | "licenses" | "blog">("saas");
+  const [tab, setTab] = useState<"saas" | "career" | "analytics" | "team" | "customers" | "reviews" | "licenses" | "blog" | "companies">("saas");
   const [apps, setApps] = useState<Application[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -147,6 +148,7 @@ export default function AdminTabs() {
                tab === "reviews" ? "Public reviews submitted from the About page" :
                tab === "licenses" ? "Bizzux Screen Recorder license keys" :
                tab === "blog" ? "Posts shown on bizzux.com/resources" :
+               tab === "companies" ? "Provision companies, users and application access" :
                "Subscriptions and revenue across every organization"}
             </p>
           </div>
@@ -201,6 +203,12 @@ export default function AdminTabs() {
             onClick={() => setTab("blog")}
           >
             Blog
+          </button>
+          <button
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "companies" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
+            onClick={() => setTab("companies")}
+          >
+            Companies
           </button>
           </div>
           </div>
@@ -314,6 +322,8 @@ export default function AdminTabs() {
         {tab === "licenses" && <AdminLicensesPanel />}
 
         {tab === "blog" && <AdminBlogPanel />}
+
+        {tab === "companies" && <AdminCompaniesPanel />}
       </div>
       </section>
     </>

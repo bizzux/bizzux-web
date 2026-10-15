@@ -29,6 +29,45 @@ async function loadTarget(c, uid) {
   return doc;
 }
 
+const toIso = (t) => (t && typeof t.toDate === "function" ? t.toDate().toISOString() : null);
+
+// User directory. Platform admins: all companies (or one via ?organizationId=).
+// Company admins: always forced to their own company. Never returns hashes.
+export async function GET(req) {
+  try {
+    const c = await requireOrgManager(req);
+    const url = new URL(req.url);
+    let organizationId = url.searchParams.get("organizationId") || "";
+    if (!c.isSuper) organizationId = c.accountId;
+    else if (organizationId) assertTenant(c, organizationId);
+    let q = adminDb().collection("usernames");
+    if (organizationId) q = q.where("organizationId", "==", organizationId);
+    const snap = await q.limit(500).get();
+    const docs = snap.docs.map((d) => ({ username: d.id, ...d.data() }));
+    const orgIds = [...new Set(docs.map((d) => d.organizationId))];
+    const [orgSnaps, memSnaps, assigns] = await Promise.all([
+      orgIds.length ? adminDb().getAll(...orgIds.map((id) => adminDb().doc("customers/" + id))) : [],
+      docs.length ? adminDb().getAll(...docs.map((d) => adminDb().doc("memberships/" + d.uid))) : [],
+      organizationId ? adminDb().collection("appAssignments").where("organizationId", "==", organizationId).get() : null,
+    ]);
+    const orgName = Object.fromEntries(orgSnaps.map((s) => [s.id, s.data()?.organizationName || s.id]));
+    const profile = Object.fromEntries(memSnaps.map((s) => [s.id, s.exists ? s.data().profile : "Owner"]));
+    const apps = {};
+    assigns?.docs.forEach((a) => { const x = a.data(); if (x.status === "ACTIVE") (apps[x.userId] ||= []).push(x.appId); });
+    const now = Date.now();
+    const users = docs.map((d) => ({
+      uid: d.uid, username: d.username, name: d.displayName || "", organizationId: d.organizationId,
+      company: orgName[d.organizationId], role: profile[d.uid] || "Staff/Shopkeeper",
+      status: d.disabled ? "suspended" : d.mustChangePassword ? "pending activation" : "active",
+      locked: !!(d.lockedUntil && d.lockedUntil.toMillis() > now),
+      apps: organizationId ? apps[d.uid] || [] : undefined, lastLoginAt: toIso(d.lastLoginAt),
+    }));
+    return NextResponse.json({ users });
+  } catch (e) {
+    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+  }
+}
+
 export async function POST(req) {
   try {
     const c = await requireOrgManager(req);
@@ -113,6 +152,22 @@ export async function POST(req) {
     if (body.action === "unlock") {
       await target.ref.update({ failedCount: 0, lockedUntil: null });
       await logAuditEvent({ action: "user.unlock_username", actor: c, targetType: "user", targetId: uid, details: { orgId } });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "setApps") {
+      // Change a user's applications without recreating the account; only
+      // company-enabled apps may be granted, the rest are switched off.
+      const apps = new Set((Array.isArray(body.apps) ? body.apps : []).filter((a) => APP_IDS.includes(a)));
+      const subs = await getOrganizationAppSubscriptions(orgId);
+      const enabled = new Set(subs.filter((s) => s.status === "ACTIVE").map((s) => s.appId));
+      const denied = [...apps].filter((a) => !enabled.has(a));
+      if (denied.length) throw { status: 400, message: "Not enabled for this company: " + denied.join(", ") };
+      await Promise.all(APP_IDS.map((appId) =>
+        apps.has(appId)
+          ? upsertAppAssignment({ organizationId: orgId, userId: uid, appId, role: "MEMBER", status: "ACTIVE" })
+          : adminDb().doc(`appAssignments/${orgId}_${uid}_${appId}`).get().then((s) => s.exists && s.ref.update({ status: "INACTIVE", updatedAt: FieldValue.serverTimestamp() }))));
+      await logAuditEvent({ action: "user.set_apps", actor: c, targetType: "user", targetId: uid, details: { organizationId: orgId, apps: [...apps] } });
       return NextResponse.json({ ok: true });
     }
 
