@@ -26,6 +26,7 @@ export default function SupportWorkspace({ onOpenOrg }) {
   const [assignee, setAssignee] = useState("any");
   const [priority, setPriority] = useState("");
   const [due, setDue] = useState(false);
+  const [awaiting, setAwaiting] = useState(false);
   const [rows, setRows] = useState(null);
   const [cursors, setCursors] = useState([null]);
   const [page, setPage] = useState(0);
@@ -43,6 +44,7 @@ export default function SupportWorkspace({ onOpenOrg }) {
     if (assignee !== "any") p.set("assignee", assignee);
     if (priority) p.set("priority", priority);
     if (due) p.set("due", "1");
+    if (awaiting) p.set("awaiting", "1");
     if (cursor) p.set("cursor", cursor);
     try {
       const d = await api("/api/admin/support-tickets?" + p.toString(), "GET");
@@ -51,7 +53,7 @@ export default function SupportWorkspace({ onOpenOrg }) {
     } catch (e) { if (mine === seq.current) { setErr(e.message); setRows((r) => r || []); } }
   }
   useEffect(() => { loadSummary(); }, []);
-  useEffect(() => { setCursors([null]); load(null, 0); }, [status, assignee, priority, due]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setCursors([null]); load(null, 0); }, [status, assignee, priority, due, awaiting]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (q.trim().length < 2) { setFound([]); return undefined; }
     const t = setTimeout(() => api("/api/admin/org-directory?limit=6&q=" + encodeURIComponent(q.trim()), "GET").then((r) => setFound(r.rows || [])).catch(() => setFound([])), 300);
@@ -59,7 +61,7 @@ export default function SupportWorkspace({ onOpenOrg }) {
   }, [q]);
 
   const refresh = () => { loadSummary(); load(cursors[page], page); };
-  const filterTo = (f) => { setStatus(f.status || "open"); setAssignee(f.assignee || "any"); setPriority(f.priority || ""); setDue(!!f.due); };
+  const filterTo = (f) => { setStatus(f.status || "open"); setAssignee(f.assignee || "any"); setPriority(f.priority || ""); setDue(!!f.due); setAwaiting(!!f.awaiting); };
 
   if (view) return <TicketView id={view} onBack={() => { setView(null); refresh(); }} onOpenOrg={onOpenOrg} onChanged={loadSummary} />;
 
@@ -76,6 +78,7 @@ export default function SupportWorkspace({ onOpenOrg }) {
         <Tile label="Open tickets" value={summary?.open} onClick={() => filterTo({})} />
         <Tile label="Assigned to me" value={summary?.mine} onClick={() => filterTo({ assignee: "me" })} />
         <Tile label="Urgent" value={summary?.urgent} onClick={() => filterTo({ priority: "urgent" })} />
+        <Tile label="Awaiting our reply" value={summary?.awaitingReply} onClick={() => filterTo({ awaiting: true })} />
         <Tile label="Follow-ups due" value={summary?.followUpsDue} onClick={() => filterTo({ due: true })} />
       </div>
 
@@ -112,6 +115,9 @@ export default function SupportWorkspace({ onOpenOrg }) {
           <label className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
             <input type="checkbox" checked={due} onChange={(e) => setDue(e.target.checked)} style={{ marginRight: 5 }} />Follow-ups due
           </label>
+          <label className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
+            <input type="checkbox" checked={awaiting} onChange={(e) => setAwaiting(e.target.checked)} style={{ marginRight: 5 }} />Awaiting our reply
+          </label>
         </div>
         {err && <p className="error">{err}</p>}
         {rows === null && <p className="muted">Loading…</p>}
@@ -126,7 +132,7 @@ export default function SupportWorkspace({ onOpenOrg }) {
                 {rows.map((t) => (
                   <tr key={t.id} style={{ borderBottom: "1px solid var(--line)", verticalAlign: "top", cursor: "pointer" }} onClick={() => setView(t.id)}>
                     <td style={{ padding: "8px 8px 8px 0", whiteSpace: "nowrap" }}>{t.code}</td>
-                    <td><strong>{t.subject}</strong>{t.noteCount ? <span className="muted"> · {t.noteCount} note{t.noteCount === 1 ? "" : "s"}</span> : null}</td>
+                    <td><strong>{t.subject}</strong>{t.source === "app" ? <span className="status-pill" style={{ marginLeft: 6, fontSize: 10 }}>From app</span> : null}{t.awaitingStaff ? <span className="status-pill" style={{ marginLeft: 4, fontSize: 10, background: "#fef3c7" }}>Needs reply</span> : null}{t.attachments?.length ? <span className="muted"> · {t.attachments.length} 📎</span> : null}{t.noteCount ? <span className="muted"> · {t.noteCount} note{t.noteCount === 1 ? "" : "s"}</span> : null}</td>
                     <td><button type="button" className="link-btn" onClick={(e) => { e.stopPropagation(); onOpenOrg(t.organizationId); }}>{t.organizationName || t.organizationId}</button></td>
                     <td>{PRIORITY_LABEL[t.priority]}</td>
                     <td>{STATUS_LABEL[t.status]}</td>

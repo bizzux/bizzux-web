@@ -26,7 +26,7 @@ export async function GET(req) {
     return NextResponse.json(
       await listTickets({
         actor: c, status: p("status"), assignee: p("assignee"), priority: p("priority"), organizationId: p("org"),
-        due: p("due") === "1", limit: p("limit"), cursor: p("cursor"),
+        due: p("due") === "1", awaiting: p("awaiting") === "1", limit: p("limit"), cursor: p("cursor"),
       }),
       NO_STORE,
     );
@@ -41,7 +41,7 @@ export async function POST(req) {
     const body = await req.json();
     if (body.action === "create") return NextResponse.json({ ok: true, ticket: await createTicket({ actor: c, body }) });
     if (body.action === "update") return NextResponse.json(await updateTicket({ actor: c, id: body.id, patch: body.patch || {} }));
-    if (body.action === "note") return NextResponse.json(await addNote({ actor: c, id: body.id, body: body.body }));
+    if (body.action === "note") return NextResponse.json(await addNote({ actor: c, id: body.id, body: body.body, visibility: body.visibility }));
     throw { status: 400, message: "Unknown action" };
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
