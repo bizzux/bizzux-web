@@ -25,22 +25,42 @@ const CostUsagePanel = dynamic(() => import("@/components/CostUsagePanel"), {
 // protects the whole /admin route (that guards the Career Applications
 // tab): someone could hold one without the other, so this shows its own
 // sign-in prompt instead of bouncing the whole page away.
-const TABS = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "business", label: "Business Health" },
-  { id: "costusage", label: "FinOps" },
-  { id: "organizations", label: "Organizations" },
-  { id: "support", label: "Customer Support" },
-  { id: "pricing", label: "Billing & Pricing" },
-  { id: "offers", label: "Offers" },
-  { id: "resellers", label: "Partners" },
-  { id: "trial", label: "Platform Configuration" },
-  { id: "platformadmins", label: "Access & Roles" },
-  { id: "auditlogs", label: "Audit Logs" },
-  { id: "security", label: "Security Settings" },
-  { id: "storage", label: "Storage" },
-  // Platform Owner only; filtered out of the tab bar for Platform Admins.
-  { id: "deleteuser", label: "Delete & Recover", ownerOnly: true },
+// Navigation: eight sections, each with the screens that already exist. Item
+// ids are the original tab ids so every deep link and component is unchanged.
+// A section or item with nothing built yet is simply not listed (no empty
+// placeholders). Hiding here is convenience only; every API enforces access.
+const SECTIONS = [
+  { id: "overview", label: "Overview", items: [{ id: "dashboard", label: "Dashboard" }] },
+  {
+    id: "customers", label: "Customer Management",
+    items: [{ id: "organizations", label: "Organizations" }, { id: "resellers", label: "Partners" }],
+  },
+  { id: "support", label: "Customer Support", items: [{ id: "support", label: "Support Tickets" }] },
+  {
+    id: "revenue", label: "Revenue & Billing",
+    items: [{ id: "pricing", label: "Pricing Plans" }, { id: "offers", label: "Offers & Discounts" }],
+  },
+  { id: "insights", label: "Business Insights", items: [{ id: "business", label: "SaaS Business Health" }] },
+  {
+    id: "operations", label: "Platform Operations",
+    items: [{ id: "costusage", label: "Cloud FinOps" }, { id: "storage", label: "Storage Usage" }],
+  },
+  {
+    id: "security", label: "Security & Governance",
+    items: [
+      { id: "platformadmins", label: "Access & Roles" },
+      { id: "auditlogs", label: "Audit Logs" },
+      { id: "security", label: "Security Settings" },
+    ],
+  },
+  {
+    id: "settings", label: "Platform Settings",
+    items: [
+      { id: "trial", label: "Platform Configuration" },
+      // Platform Owner only; hidden from Platform Admins.
+      { id: "deleteuser", label: "Data Lifecycle & Recovery", ownerOnly: true },
+    ],
+  },
 ];
 
 async function api(path, method, body) {
@@ -156,17 +176,40 @@ export default function SuperAdminPanel() {
         <span className="status-pill active">{platformRole === "OWNER" ? "Platform Owner" : "Platform Admin"}</span>
       </div>
 
-      <div className="admin-tabs" role="tablist">
-        {TABS.filter((t) => !t.ownerOnly || platformRole === "OWNER").map((t) => (
-          <button
-            key={t.id} role="tab" aria-selected={tab === t.id}
-            className={"admin-tab" + (tab === t.id ? " active" : "")}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {(() => {
+        const visible = SECTIONS
+          .map((s) => ({ ...s, items: s.items.filter((i) => !i.ownerOnly || platformRole === "OWNER") }))
+          .filter((s) => s.items.length);
+        const current = visible.find((s) => s.items.some((i) => i.id === tab)) || visible[0];
+        return (
+          <>
+            <nav className="admin-tabs" role="tablist" aria-label="Admin sections">
+              {visible.map((s) => (
+                <button
+                  key={s.id} role="tab" aria-selected={current.id === s.id}
+                  className={"admin-tab" + (current.id === s.id ? " active" : "")}
+                  onClick={() => setTab(s.items[0].id)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </nav>
+            {current.items.length > 1 && (
+              <div className="admin-tabs" role="tablist" aria-label={current.label} style={{ marginTop: -4, fontSize: 13 }}>
+                {current.items.map((i) => (
+                  <button
+                    key={i.id} role="tab" aria-selected={tab === i.id}
+                    className={"admin-tab" + (tab === i.id ? " active" : "")}
+                    onClick={() => setTab(i.id)}
+                  >
+                    {i.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {tab === "dashboard" && <PlatformDashboard isOwner={platformRole === "OWNER"} onOpenOrg={openOrg} />}
       {tab === "business" && <BusinessHealthPanel isOwner={platformRole === "OWNER"} />}
