@@ -1965,28 +1965,11 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
 
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
                 <div className="label" style={{ marginBottom: 6 }}>Open apps as this organization</div>
-                <p className="muted" style={{ fontSize: 12, marginBottom: 8, maxWidth: 420 }}>
-                  Opens the app exactly as this organization's owner sees it, for support/troubleshooting. Every open is recorded in Audit Logs.
+                <p className="muted" style={{ fontSize: 12, marginBottom: 0, maxWidth: 460 }}>
+                  Opening a customer's app now needs approved, time-limited support access (Platform Owner approval, fully audited). Open this organization under
+                  Organizations &gt; Support to request it.
                 </p>
-                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  {[
-                    { label: "Business", endpoint: "/api/shop-sso" },
-                    { label: "POS", endpoint: "/api/pos-sso" },
-                    { label: "Notes", endpoint: "/api/app-sso?app=notes" },
-                    { label: "Files", endpoint: "/api/app-sso?app=files" },
-                    { label: "Projects", endpoint: "/api/app-sso?app=projects" },
-                    { label: "Chat", endpoint: "/api/app-sso?app=chat" },
-                  ].map((a) => (
-                    <button
-                      key={a.label} className="btn-small" disabled={openingApp === a.label}
-                      onClick={() => openAsOrg(a.label, a.endpoint)}
-                    >
-                      {openingApp === a.label ? "Opening…" : a.label}
-                    </button>
-                  ))}
-                </div>
               </div>
-
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
                 <div className="label" style={{ marginBottom: 6 }}>Bizzux Projects guest seats</div>
                 <p className="muted" style={{ fontSize: 12, marginBottom: 8, maxWidth: 420 }}>

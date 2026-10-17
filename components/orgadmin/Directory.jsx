@@ -14,7 +14,12 @@ const KIND = { "self-service": "Self-service", "admin-provisioned": "Admin-provi
 const PLAN = { TRIAL: "Trial", PAID: "Paid", FREE: "Free licence", TEST: "Test", INTERNAL: "Internal", NONE: "—" };
 const PAGE = 25;
 
-export default function Directory({ onOpen, onCreate, canCreate, canReindex }) {
+export default function Directory({ onOpen, onCreate, canCreate, canReindex, isOwner }) {
+  const [queue, setQueue] = useState([]);
+  useEffect(() => {
+    if (!isOwner) return;
+    api("/api/admin/support-access?pending=1", "GET").then((r) => setQueue(r.grants || [])).catch(() => {});
+  }, [isOwner]);
   const [q, setQ] = useState("");
   const [applied, setApplied] = useState("");
   const [accountStatus, setAccountStatus] = useState("");
@@ -90,6 +95,17 @@ export default function Directory({ onOpen, onCreate, canCreate, canReindex }) {
         </div>
       </div>
       {reindexMsg && <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>{reindexMsg}</p>}
+      {queue.length > 0 && (
+        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 13 }}>
+          <strong>{queue.length} support access request{queue.length === 1 ? "" : "s"} awaiting your approval</strong>
+          {queue.map((g) => (
+            <div key={g.id}>
+              <button type="button" className="link-btn" onClick={() => onOpen(g.organizationId, "support")}>{g.organizationName || g.organizationId}</button>
+              <span className="muted"> — {g.requestedByEmail}: {g.reason}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="row" style={{ gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
         <input className="input" style={{ width: 280 }} placeholder="Search name, owner, email, mobile, username, ID" value={q} onChange={(e) => setQ(e.target.value)} />

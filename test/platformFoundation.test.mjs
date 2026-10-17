@@ -56,6 +56,7 @@ test("permission matrix by role; owner-only permissions are never delegable", ()
 
 test("request guard: platform roles, customer admins and anonymous callers", async () => {
   const owner = await signIn("owner-f@bizzux.test");
+  await db.doc("platformAdmins/" + owner.uid).set({ email: "owner-f@bizzux.test", role: "OWNER", status: "active", permissions: null }); // explicit: the one-time bootstrap may already be used by another test file
   const support = await signIn("support-" + rnd() + "@bizzux.test");
   const billing = await signIn("billing-" + rnd() + "@bizzux.test");
   const customerAdmin = await signIn("custadmin-" + rnd() + "@example.test");

@@ -6,6 +6,7 @@ import { appEntitlementDenial } from "@/lib/appAccess";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 import { logAuditEvent } from "@/lib/audit";
+import { consumeGrantForOpen } from "@/lib/supportAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,14 +46,13 @@ export async function GET(req) {
     if (asOrg) {
       // Platform-Admin-only support tool — see app-sso's asOrg comment.
       const platformRole = await resolvePlatformRole(c.uid, c.email);
-      if (!c.isSuper && !platformRole) throw { status: 403, message: "Platform admin access required" };
+      const staffRole = platformRole || (c.isSuper ? "OWNER" : null);
+      if (!staffRole) throw { status: 403, message: "Platform admin access required" };
       const orgSnap = await adminDb().doc("customers/" + asOrg).get();
       if (!orgSnap.exists) throw { status: 404, message: "Organization not found" };
-      await logAuditEvent({
-        action: "organization.impersonate_app_open", actor: c, targetType: "organization", targetId: asOrg,
-        details: { app: "pos" },
-      });
-      const payload = { email: c.email, role: "super", orgId: asOrg, iat: Date.now() };
+      // Requires an approved, unexpired support-access grant (lib/supportAccess.js).
+      const grant = await consumeGrantForOpen({ actor: { ...c, platformRole: staffRole }, organizationId: asOrg, appKey: "pos", grantId: new URL(req.url).searchParams.get("grant") });
+      const payload = { email: c.email, role: "super", orgId: asOrg, iat: Date.now(), exp: grant.expiresAtMs, sg: grant.id };
       const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
       const sig = createHmac("sha256", secret).update(payloadB64).digest("hex");
       const token = payloadB64 + "." + sig;

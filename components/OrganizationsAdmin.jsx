@@ -23,8 +23,8 @@ export default function OrganizationsAdmin({ legacy, platformRole }) {
     if (m) setView({ name: "details", id: decodeURIComponent(m[1]) });
   }, []);
 
-  const open = (id) => {
-    setView({ name: "details", id });
+  const open = (id, tab) => {
+    setView({ name: "details", id, tab });
     try { window.history.replaceState(null, "", "#org=" + encodeURIComponent(id)); } catch { /* ignore */ }
   };
   const toList = () => {
@@ -37,7 +37,7 @@ export default function OrganizationsAdmin({ legacy, platformRole }) {
     return <Wizard onCancel={toList} onOpen={open} onCreated={() => setRefresh((n) => n + 1)} />;
   }
   if (view.name === "details") {
-    return <Details key={view.id} id={view.id} onBack={toList} onChanged={() => setRefresh((n) => n + 1)} legacy={legacy} />;
+    return <Details key={view.id} id={view.id} initialTab={view.tab} onBack={toList} onChanged={() => setRefresh((n) => n + 1)} legacy={legacy} />;
   }
   return (
     <Directory
@@ -46,6 +46,7 @@ export default function OrganizationsAdmin({ legacy, platformRole }) {
       onCreate={() => setView({ name: "wizard" })}
       canCreate={canManage}
       canReindex={canManage}
+      isOwner={platformRole === "OWNER"}
     />
   );
 }

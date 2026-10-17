@@ -26,8 +26,8 @@ const Fact = ({ label, children }) => (
   </div>
 );
 
-export default function Details({ id, onBack, onChanged, legacy }) {
-  const [tab, setTab] = useState("overview");
+export default function Details({ id, onBack, onChanged, legacy, initialTab }) {
+  const [tab, setTab] = useState(initialTab || "overview");
   const [d, setD] = useState(null);
   const [cust, setCust] = useState(undefined); // legacy customer row; null = none/no access
   const [err, setErr] = useState("");
@@ -36,7 +36,7 @@ export default function Details({ id, onBack, onChanged, legacy }) {
     try { setD(await api("/api/admin/org-directory?id=" + id, "GET")); setErr(""); } catch (e) { setErr(e.message); }
     try { setCust((await api("/api/admin/customers?row=" + id, "GET")).customer); } catch { setCust(null); }
   }
-  useEffect(() => { setD(null); setCust(undefined); setTab("overview"); load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setD(null); setCust(undefined); setTab(initialTab || "overview"); load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reload = async () => { await load(); onChanged && onChanged(); };
 
@@ -385,34 +385,144 @@ function Usage({ d, legacy, cust }) {
   );
 }
 
+const APP_LABEL = {
+  business: "Business", pos: "POS", notes: "Notes", files: "Files", projects: "Projects", chat: "Chat",
+  crm: "CRM", mail: "Mail", capture: "Capture", attendance: "Attendance", finance: "Finance",
+};
+const appEndpoint = (k) => (k === "business" ? "/api/shop-sso" : k === "pos" ? "/api/pos-sso" : "/api/app-sso?app=" + k);
+const minsLeft = (iso) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 60000));
+
+// Approved, scoped, time-limited support access. Replaces the old unrestricted
+// "open as organization" buttons: nothing opens without a grant the Platform
+// Owner approved (Owner requests are auto-approved but still scoped, timed and
+// audited).
 function SupportTab({ d, legacy, id }) {
-  const [opening, setOpening] = useState(null);
+  const [data, setData] = useState(null);
   const [err, setErr] = useState("");
-  async function openAsOrg(label, endpoint) {
-    setOpening(label); setErr("");
-    try {
-      const sep = endpoint.includes("?") ? "&" : "?";
-      const r = await api(`${endpoint}${sep}asOrg=${id}`, "GET");
-      window.open(r.url, "_blank", "noopener,noreferrer");
-    } catch (e) { setErr(e.message); } finally { setOpening(null); }
+  const [busy, setBusy] = useState("");
+  const [, tick] = useState(0);
+  const [apps, setApps] = useState([]);
+  const [minutes, setMinutes] = useState(30);
+  const [reason, setReason] = useState("");
+  const [shorter, setShorter] = useState({});
+
+  async function load() {
+    try { setData(await api("/api/admin/support-access?org=" + id, "GET")); setErr(""); } catch (e) { setErr(e.message); setData({ grants: [], denied: true }); }
   }
+  useEffect(() => { load(); const t = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(t); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const act = async (action, extra, label) => {
+    setBusy(label || action); setErr("");
+    try { await api("/api/admin/support-access", "POST", { action, ...extra }); await load(); } catch (e) { setErr(e.message); }
+    setBusy("");
+  };
+  async function openApp(g, key) {
+    setBusy("open-" + key); setErr("");
+    try {
+      const ep = appEndpoint(key);
+      const r = await api(`${ep}${ep.includes("?") ? "&" : "?"}asOrg=${id}&grant=${g.id}`, "GET");
+      window.open(r.url, "_blank", "noopener,noreferrer");
+      await load();
+    } catch (e) { setErr(e.message); }
+    setBusy("");
+  }
+
+  if (!data) return <p className="muted">{err || "Loading…"}</p>;
+  if (data.denied) return <p className="muted" style={{ fontSize: 13 }}>{err || "Your role can't request support access."}</p>;
+
+  const isOwner = data.isOwner;
+  const live = data.grants.filter((g) => ["pending", "active"].includes(g.state));
+  const past = data.grants.filter((g) => !["pending", "active"].includes(g.state)).slice(0, 8);
+
   return (
     <div>
-      <div className="label" style={{ marginBottom: 6 }}>Open apps as this organization</div>
-      <p className="muted" style={{ fontSize: 12, marginBottom: 8, maxWidth: 520 }}>
-        Opens the app exactly as the organization's owner sees it, for troubleshooting. Every open is recorded in the Audit Logs.
-        This is being replaced by approved, time-limited support access (Platform Owner approval) in a later release.
+      <div className="label" style={{ marginBottom: 6 }}>Support access to this organization</div>
+      <p className="muted" style={{ fontSize: 12, maxWidth: 620, marginBottom: 10 }}>
+        Opening a customer's app needs an approved request: you choose the apps and how long, give a reason, and the Platform Owner approves it.
+        Access ends automatically and every request, approval and open is in the audit trail. The app opens as the organization's owner, so anything you do there is real
+        and it cannot be made read-only; the app's own session timeout governs the browser session once it is open.
       </p>
       {err && <p className="error">{err}</p>}
-      <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
-        {[["Business", "/api/shop-sso"], ["POS", "/api/pos-sso"], ["Notes", "/api/app-sso?app=notes"], ["Files", "/api/app-sso?app=files"], ["Projects", "/api/app-sso?app=projects"], ["Chat", "/api/app-sso?app=chat"]].map(([label, ep]) => (
-          <button key={label} className="btn-small" disabled={opening === label} onClick={() => openAsOrg(label, ep)}>{opening === label ? "Opening…" : label}</button>
-        ))}
+
+      {live.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No open requests or active access.</p>}
+      {live.map((g) => {
+        return (
+          <div key={g.id} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+            <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+              <strong>{g.requestedByEmail}</strong>
+              <span className="status-pill">{g.state === "active" ? `Active · ${minsLeft(g.expiresAt)} min left` : "Waiting for Owner approval"}</span>
+            </div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              {g.apps.map((a) => APP_LABEL[a] || a).join(", ")} · {g.minutes} min · “{g.reason}”{g.autoApproved ? " · Owner request (auto-approved)" : ""}
+            </div>
+            <div className="row" style={{ gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+              {g.state === "active" && g.requestedByUid === data.me && g.apps.map((a) => (
+                <button key={a} className="btn-small" disabled={busy === "open-" + a} onClick={() => openApp(g, a)}>{busy === "open-" + a ? "Opening…" : "Open " + (APP_LABEL[a] || a)}</button>
+              ))}
+              {isOwner && g.state === "pending" && (
+                <>
+                  <select className="input" style={{ width: 120 }} value={shorter[g.id] || g.minutes} onChange={(e) => setShorter({ ...shorter, [g.id]: e.target.value })}>
+                    {data.durations.filter((m) => m <= g.minutes).map((m) => <option key={m} value={m}>{m} min</option>)}
+                  </select>
+                  <button className="btn-primary" disabled={!!busy} onClick={() => act("approve", { grantId: g.id, minutes: shorter[g.id] || g.minutes }, "approve")}>Approve</button>
+                  <button className="link-btn danger" disabled={!!busy} onClick={() => { const r = prompt("Reason for denying (optional):"); if (r !== null) act("deny", { grantId: g.id, reason: r }, "deny"); }}>Deny</button>
+                </>
+              )}
+              {(isOwner || g.requestedByUid === data.me) && (
+                <button className="link-btn" disabled={!!busy} onClick={() => { if (confirm("End this support access now?")) act("revoke", { grantId: g.id }, "revoke"); }}>
+                  {g.state === "pending" ? "Withdraw" : "End access now"}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {live.every((g) => g.requestedByUid !== data.me) && (
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+          <div className="label" style={{ marginBottom: 6 }}>Request access</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginBottom: 8 }}>
+            {data.apps.map((a) => (
+              <label key={a} style={{ fontSize: 13 }}>
+                <input type="checkbox" checked={apps.includes(a)} style={{ marginRight: 5 }} onChange={() => setApps(apps.includes(a) ? apps.filter((x) => x !== a) : [...apps, a])} />
+                {APP_LABEL[a] || a}
+              </label>
+            ))}
+          </div>
+          <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <Field label="Duration">
+              <select className="input" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+                {data.durations.map((m) => <option key={m} value={m}>{m} minutes</option>)}
+              </select>
+            </Field>
+            <Field label="Reason * (recorded in the audit log)">
+              <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Customer reported missing invoices (ticket 123)" />
+            </Field>
+          </div>
+          <button className="btn-primary" disabled={!!busy || !apps.length || reason.trim().length < 3}
+            onClick={async () => { await act("request", { organizationId: id, apps, minutes, reason: reason.trim() }, "request"); setApps([]); setReason(""); }}>
+            {isOwner ? "Start access (auto-approved)" : "Request access"}
+          </button>
+        </div>
+      )}
+
+      {past.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div className="label" style={{ marginBottom: 4 }}>Recent</div>
+          {past.map((g) => (
+            <div key={g.id} className="muted" style={{ fontSize: 12, padding: "3px 0" }}>
+              {g.requestedByEmail} · {g.apps.map((a) => APP_LABEL[a] || a).join(", ")} · {g.state}{g.useCount ? ` · opened ${g.useCount}×` : ""}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 18, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+        <div className="label" style={{ marginBottom: 6 }}>Tickets &amp; follow-ups</div>
+        <p className="muted" style={{ fontSize: 12 }}>
+          The Customer Support workspace (tickets, troubleshooting notes, follow-ups) is coming and will be linked to this organization ID: <code>{id}</code>.
+        </p>
       </div>
-      <div className="label" style={{ marginBottom: 6 }}>Tickets &amp; follow-ups</div>
-      <p className="muted" style={{ fontSize: 12 }}>
-        The Customer Support workspace (tickets, troubleshooting notes, follow-ups) is coming and will be linked to this organization ID: <code>{id}</code>.
-      </p>
     </div>
   );
 }

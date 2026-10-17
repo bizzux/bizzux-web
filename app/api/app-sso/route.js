@@ -4,6 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { createHmac } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 import { logAuditEvent } from "@/lib/audit";
+import { consumeGrantForOpen } from "@/lib/supportAccess";
 import { appEntitlementDenial } from "@/lib/appAccess";
 
 export const runtime = "nodejs";
@@ -43,6 +44,7 @@ export async function GET(req) {
 
     const asOrg = url.searchParams.get("asOrg");
     let uid, email, accountId, isOwner;
+    let supportGrant = null;
 
     if (asOrg) {
       // Platform-Admin-only support tool: open a specific CUSTOMER's app
@@ -51,19 +53,20 @@ export async function GET(req) {
       // platformAdmins/SUPER_ADMIN_EMAIL check, same as the Super Admin
       // portal itself, and every use is audit-logged since it's viewing
       // (and can act on) a customer's real data.
+      // Now requires an APPROVED, unexpired support-access grant for this exact
+      // organization and app (lib/supportAccess.js); the unrestricted
+      // impersonation this used to allow is gone.
       const c = await requireUser(req);
       const platformRole = await resolvePlatformRole(c.uid, c.email);
-      if (!c.isSuper && !platformRole) throw { status: 403, message: "Platform admin access required" };
+      const staffRole = platformRole || (c.isSuper ? "OWNER" : null);
+      if (!staffRole) throw { status: 403, message: "Platform admin access required" };
       const orgSnap = await adminDb().doc("customers/" + asOrg).get();
       if (!orgSnap.exists) throw { status: 404, message: "Organization not found" };
+      supportGrant = await consumeGrantForOpen({ actor: { ...c, platformRole: staffRole }, organizationId: asOrg, appKey, grantId: url.searchParams.get("grant") });
       uid = asOrg;
       email = orgSnap.data().email || "";
       accountId = asOrg;
       isOwner = true; // impersonation always opens the app AS the org's own owner
-      await logAuditEvent({
-        action: "organization.impersonate_app_open", actor: c, targetType: "organization", targetId: asOrg,
-        details: { app: appKey },
-      });
     } else {
       // Enforces auth + the same trial/plan gate as the app itself (defense
       // in depth), and gives us the resolved accountId/email.
@@ -100,7 +103,7 @@ export async function GET(req) {
     const secret = process.env.APP_SSO_SECRET;
     if (!secret) throw { status: 500, message: "SSO is not configured" };
 
-    const payload = { uid, email, iat: Date.now() };
+    const payload = { uid, email, iat: Date.now(), ...(supportGrant ? { exp: supportGrant.expiresAtMs, sg: supportGrant.id } : {}) };
     const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
     const sig = createHmac("sha256", secret).update(payloadB64).digest("hex");
     const token = payloadB64 + "." + sig;

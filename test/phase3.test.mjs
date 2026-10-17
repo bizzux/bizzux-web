@@ -36,6 +36,7 @@ const auditFor = async (id, action) => (await db.collection("auditLogs").where("
 let owner, admin, billing, support, custAdmin, cid;
 before(async () => {
   owner = await signIn("owner-p3@bizzux.test");
+  await db.doc("platformAdmins/" + owner.uid).set({ email: owner.email, role: "OWNER", status: "active", permissions: null });
   admin = await signIn("p3admin-" + rnd() + "@bizzux.test");
   billing = await signIn("p3billing-" + rnd() + "@bizzux.test");
   support = await signIn("p3support-" + rnd() + "@bizzux.test");
