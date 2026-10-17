@@ -260,3 +260,26 @@ test("platform admin can delete a TEST org (with users) by typing its name; real
   await assert.rejects(lib.deleteOrganizationPermanently({ actor: admin, organizationId: real.organizationId, confirmName: "x" }, { purgeUser }), (e) => e.status === 403);
   assert.equal((await db.doc("organizations/" + real.organizationId).get()).exists, true);
 });
+
+test("INTERNAL plan: group company, free, no expiry, manageable, Owner-only delete, not test", async () => {
+  const trial = await import("../lib/trial.js");
+  const name = "Bizzux Sister " + rnd();
+  const r = await prov(base({ organizationName: name, planType: "INTERNAL", expiryDate: undefined }));
+  const org = (await db.doc("organizations/" + r.organizationId).get()).data();
+  assert.equal(org.type, "INTERNAL"); assert.equal(org.planType, "INTERNAL"); assert.equal(org.isTestAccount, false);
+  const cust = (await db.doc("customers/" + r.organizationId).get()).data();
+  assert.equal(cust.isInternal, true); assert.equal(cust.isTestAccount, false);
+  assert.equal(trial.canAccessApps(cust), true); assert.equal(trial.isPayingCustomer(cust), false);
+  // duplicate names are still refused (real company)
+  await assert.rejects(prov(base({ organizationName: name, planType: "INTERNAL", admin: { fullName: "Z", loginMethod: "USERNAME_TEMP", username: "z" + rnd() } })), (e) => e.status === 409);
+  // listing: editable, labelled Internal
+  const row = (await lib.listOrganizations({})).find((x) => x.id === r.organizationId);
+  assert.equal(row.planLabel, "Internal"); assert.equal(row.editable, true); assert.equal(row.isTest, false);
+  await lib.updateOrganizationEntitlements({ actor: owner, organizationId: r.organizationId, body: { apps: ["bizzux-notes"] } });
+  await assert.rejects(lib.updateOrganizationEntitlements({ actor: owner, organizationId: r.organizationId, body: { planType: "PAID", expiryDate: "2099-01-01" } }), (e) => e.status === 400);
+  // a Platform Admin can't delete it; the pre-existing own org stays untouchable
+  await assert.rejects(lib.deleteOrganizationPermanently({ actor: admin, organizationId: r.organizationId, confirmName: name }), (e) => e.status === 403);
+  await createOrganization({ id: "bizzux-own", name: "Bizzux", type: "INTERNAL", createdBy: "x" });
+  await assert.rejects(lib.changeOrganizationStatus({ actor: owner, organizationId: "bizzux-own", action: "suspend" }), (e) => e.status === 400);
+  assert.equal((await lib.changeOrganizationStatus({ actor: owner, organizationId: r.organizationId, action: "suspend" })).status, "suspended");
+});

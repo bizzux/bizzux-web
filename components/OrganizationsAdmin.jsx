@@ -231,9 +231,10 @@ export default function OrganizationsAdmin() {
                   <option value="TRIAL">Trial</option>
                   <option value="PAID">Paid</option>
                   <option value="TEST">Test (no trial limits, not billed)</option>
+                  <option value="INTERNAL">Internal (Bizzux group company: free, no expiry)</option>
                 </select>
               </Field>
-              {form.planType !== "TEST" && (
+              {!["TEST", "INTERNAL"].includes(form.planType) && (
                 <Field label="Subscription expiry *">
                   <input className="input" type="date" value={form.expiryDate} onChange={(e) => set("expiryDate", e.target.value)} required />
                 </Field>
@@ -394,11 +395,13 @@ function ManagePanel({ o, act }) {
       <div className="row" style={{ marginBottom: 8 }}>
         <Field label="Plan">
           <select className="input" value={planType} onChange={(e) => setPlanType(e.target.value)}>
-            <option value="TRIAL">Trial</option><option value="PAID">Paid</option><option value="TEST">Test</option>
+            {o.planType === "INTERNAL"
+              ? <option value="INTERNAL">Internal</option>
+              : <><option value="TRIAL">Trial</option><option value="PAID">Paid</option><option value="TEST">Test</option></>}
           </select>
         </Field>
         <Field label="Licensed Seats"><input className="input" type="number" min="1" value={seats} onChange={(e) => setSeats(e.target.value)} /></Field>
-        {planType !== "TEST" && <Field label="Expiry"><input className="input" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>}
+        {!["TEST", "INTERNAL"].includes(planType) && <Field label="Expiry"><input className="input" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginBottom: 8 }}>
         {APPS.map((a) => (
