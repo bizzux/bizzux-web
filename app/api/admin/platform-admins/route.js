@@ -60,14 +60,18 @@ export async function POST(req) {
         throw { status: 400, message: "That account is already the Platform Owner." };
       }
 
+      // Owner can assign any NON-owner platform role; the default is unchanged.
+      // Roles other than ADMIN only gain access through routes that use
+      // requirePlatformPermission (lib/platformRoles.js).
+      const role = ["ADMIN", "SUPPORT_AGENT", "BILLING_ADMIN"].includes(body.role) ? body.role : "ADMIN";
       await ref.set({
-        email, role: "ADMIN", status: "active", permissions: null,
+        email, role, status: "active", permissions: null,
         createdBy: c.email, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       });
 
       await logAuditEvent({
         action: "platform_admin.create", actor: c,
-        targetType: "platformAdmin", targetId: user.uid, details: { email },
+        targetType: "platformAdmin", targetId: user.uid, details: { email, role },
       });
 
       return NextResponse.json({ ok: true, uid: user.uid });
