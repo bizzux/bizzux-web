@@ -102,7 +102,7 @@ export async function POST(req) {
     }
     if (["suspend", "archive", "reactivate"].includes(body.action)) {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
-      return NextResponse.json(await changeOrganizationStatus({ actor: c, organizationId: body.id, action: body.action }));
+      return NextResponse.json(await changeOrganizationStatus({ actor: c, organizationId: body.id, action: body.action, reason: body.reason }));
     }
     if (body.action === "updateEntitlements") {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
@@ -135,7 +135,7 @@ export async function POST(req) {
     }
     if (body.action === "deletePermanently") {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
-      return NextResponse.json(await deleteOrganizationPermanently({ actor: c, organizationId: body.id, confirmName: body.confirmName }));
+      return NextResponse.json(await deleteOrganizationPermanently({ actor: c, organizationId: body.id, confirmName: body.confirmName, reason: body.reason }));
     }
 
     // ---- Legacy: a customer Admin removes a placeholder THEY created ------

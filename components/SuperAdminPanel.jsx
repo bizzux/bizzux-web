@@ -95,6 +95,25 @@ export default function SuperAdminPanel() {
   if (isSuper === null) {
     return <p className="muted">Checking access…</p>;
   }
+  // Support Agents and Billing Administrators get the Organizations workspace
+  // only; every other tab (and its API) stays Owner/Admin-only.
+  if (!isSuper && platformRole && platformRole !== "OWNER" && platformRole !== "ADMIN") {
+    return (
+      <div>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Signed in as <strong>{user.email}</strong></p>
+          <span className="status-pill active">{platformRole === "SUPPORT_AGENT" ? "Customer Support Agent" : platformRole === "BILLING_ADMIN" ? "Billing Administrator" : platformRole}</span>
+        </div>
+        <OrganizationsAdmin
+          platformRole={platformRole}
+          legacy={{
+            ExtendTrialModal, MarkPaidModal, FreeLicenseModal, SetPasswordModal, AddTeamMemberForm,
+            DeleteUserPanel, ActivityRow, APP_USAGE_LABELS, timeAgo, freeReasonLabel,
+          }}
+        />
+      </div>
+    );
+  }
   if (!isSuper) {
     return <p>{user.email} doesn&apos;t have Super Admin access.</p>;
   }
@@ -1713,7 +1732,9 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
   async function endFree() {
     if (!confirm("End this free license? They'll get 7 days of trial to choose a paid plan.")) return;
     try {
-      await api("/api/admin/customers", "POST", { action: "endFree", id: customer.id });
+      const reason = prompt("Reason for ending the free license (recorded in the audit log):");
+      if (!reason || reason.trim().length < 3) throw new Error("A reason is required");
+      await api("/api/admin/customers", "POST", { action: "endFree", id: customer.id, reason: reason.trim() });
       onChanged && onChanged();
       onClose();
     } catch (e) {
@@ -1770,7 +1791,12 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
     const suspending = customer.status !== "suspended";
     if (!confirm(suspending ? `Suspend ${customer.email}? They'll immediately lose access to every Bizzux app.` : `Reactivate ${customer.email}?`)) return;
     try {
-      await api("/api/admin/customers", "POST", { action: suspending ? "suspend" : "reactivate", id: customer.id });
+      let reason;
+      if (suspending) {
+        reason = prompt("Reason for suspending (recorded in the audit log):");
+        if (!reason || reason.trim().length < 3) throw new Error("A reason is required");
+      }
+      await api("/api/admin/customers", "POST", { action: suspending ? "suspend" : "reactivate", id: customer.id, reason: reason ? reason.trim() : undefined });
       onChanged && onChanged();
       onClose();
     } catch (e) {
@@ -1805,7 +1831,9 @@ function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
   async function saveGuestSeats() {
     setSavingGuestSeats(true);
     try {
-      await api("/api/admin/customers", "POST", { action: "setGuestSeats", id: customer.id, guestSeats: Number(guestSeatsInput) });
+      const reason = prompt("Reason for changing guest seats (recorded in the audit log):");
+      if (!reason || reason.trim().length < 3) throw new Error("A reason is required");
+      await api("/api/admin/customers", "POST", { action: "setGuestSeats", id: customer.id, guestSeats: Number(guestSeatsInput), reason: reason.trim() });
       onChanged && onChanged();
     } catch (e) {
       setErr(e.message);
@@ -2358,6 +2386,7 @@ const TRIAL_UNITS = [
 function ExtendTrialModal({ customer, onClose, onExtended }) {
   const [amount, setAmount] = useState(1);
   const [unit, setUnit] = useState("weeks");
+  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -2368,9 +2397,13 @@ function ExtendTrialModal({ customer, onClose, onExtended }) {
       setError("Enter a positive amount");
       return;
     }
+    if (reason.trim().length < 3) {
+      setError("Enter a reason (it is recorded in the audit log)");
+      return;
+    }
     setBusy(true);
     try {
-      await api("/api/admin/customers", "POST", { action: "extendTrial", id: customer.id, amount: Number(amount), unit });
+      await api("/api/admin/customers", "POST", { action: "extendTrial", id: customer.id, amount: Number(amount), unit, reason: reason.trim() });
       onExtended();
     } catch (e2) {
       setError(e2.message);
@@ -2402,9 +2435,13 @@ function ExtendTrialModal({ customer, onClose, onExtended }) {
               ))}
             </select>
           </div>
-          <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
             Extends from today if the trial already ended, or adds on top of the current end date if it hasn't.
           </p>
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Reason * (recorded in the audit log)</label>
+            <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Customer evaluating with their team" />
+          </div>
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
             <button className="btn-primary" disabled={busy}>{busy ? "Extending…" : "Extend"}</button>
@@ -2581,6 +2618,7 @@ function MarkPaidModal({ customer, onClose, onMarked }) {
   const [users, setUsers] = useState(1);
   const [unitPrice, setUnitPrice] = useState("");
   const [notes, setNotes] = useState("");
+  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -2591,11 +2629,15 @@ function MarkPaidModal({ customer, onClose, onMarked }) {
       setError("Choose a plan");
       return;
     }
+    if (reason.trim().length < 3) {
+      setError("Enter a reason (it is recorded in the audit log)");
+      return;
+    }
     setBusy(true);
     try {
       await api("/api/admin/customers", "POST", {
         action: "markPaid", id: customer.id, planId: optionId, billingCycle: cycle, quantity: Number(users) || 1,
-        unitPrice: unitPrice === "" ? undefined : Number(unitPrice), notes,
+        unitPrice: unitPrice === "" ? undefined : Number(unitPrice), notes, reason: reason.trim(),
       });
       onMarked();
     } catch (e2) {
@@ -2624,6 +2666,10 @@ function MarkPaidModal({ customer, onClose, onMarked }) {
               className="input" value={notes} onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Cash collected by field agent, receipt #1234"
             />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label className="label">Reason * (recorded in the audit log)</label>
+            <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Bank transfer received 17 Oct" />
           </div>
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>

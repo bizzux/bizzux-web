@@ -211,7 +211,7 @@ test("directory stays in sync from the provisioning paths and the sync is non-de
   assert.equal(e.ownerName, "Sync Admin");
   assert.equal((await dir.queryDirectory({ q: name.split(" ").slice(-1)[0] })).rows.some((x) => x.orgId === r.organizationId), true);
 
-  await prov.changeOrganizationStatus({ actor, organizationId: r.organizationId, action: "suspend" });
+  await prov.changeOrganizationStatus({ actor, organizationId: r.organizationId, action: "suspend", reason: "test reason" });
   e = (await db.doc("organizationDirectory/" + r.organizationId).get()).data();
   assert.equal(e.accountStatus, "suspended");
 

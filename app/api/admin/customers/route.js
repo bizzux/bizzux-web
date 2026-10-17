@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { safeSyncDirectory } from "@/lib/orgDirectory";
+import { requirePlatformPermission } from "@/lib/platformRoles";
 import { requirePlatformAdmin, adminAuth, adminDb, sendAuthEmail, generateTempPassword } from "@/lib/firebaseAdmin";
 import { logAuditEvent } from "@/lib/audit";
 import { findCountryByPhone } from "@/lib/countryCodes";
@@ -10,6 +11,22 @@ import { computeQuote } from "@/lib/pricingMath";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Each action needs one platform permission (lib/platformRoles.js). Money and
+// access-affecting actions also need a recorded reason, enforced here on the
+// server (not just in the UI).
+const ACTION_PERMISSION = {
+  extendTrial: "subscription.manage", markPaid: "subscription.manage", setGuestSeats: "subscription.manage",
+  grantFree: "subscription.manage", endFree: "subscription.manage",
+  resetPassword: "organizations.manage", setPassword: "organizations.manage", revokeSessions: "organizations.manage",
+  suspend: "organizations.suspend", reactivate: "organizations.suspend",
+};
+const REASON_REQUIRED = new Set(["extendTrial", "markPaid", "setGuestSeats", "endFree", "suspend"]);
+function reasonFrom(body, required) {
+  const r = String(body.reason || "").trim();
+  if (required && r.length < 3) throw { status: 400, message: "A reason is required (it is recorded in the audit log)" };
+  return r ? r.slice(0, 300) : null;
+}
 
 const TRIAL_EXTEND_UNITS = ["days", "weeks", "months", "years"];
 
@@ -143,9 +160,10 @@ function toCustomerRow(id, data, lastLoginAt) {
 
 export async function GET(req) {
   try {
-    await requirePlatformAdmin(req);
-
     const params = new URL(req.url).searchParams;
+    // One customer (row/admins) needs only view permission; the full list stays Owner/Admin.
+    if (params.get("row") || params.get("id")) await requirePlatformPermission(req, "organizations.view");
+    else await requirePlatformAdmin(req);
     const rowId = params.get("row");
     if (rowId) {
       const snap1 = await adminDb().doc("customers/" + rowId).get();
@@ -195,8 +213,11 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    const c = await requirePlatformAdmin(req);
     const body = await req.json();
+    const perm = ACTION_PERMISSION[body.action];
+    if (!perm) throw { status: 400, message: "Unknown action" };
+    const c = await requirePlatformPermission(req, perm);
+    const reason = reasonFrom(body, REASON_REQUIRED.has(body.action));
 
     if (body.action === "extendTrial") {
       const id = String(body.id || "");
@@ -227,7 +248,7 @@ export async function POST(req) {
 
       await logAuditEvent({
         action: "customer.extend_trial", actor: c, targetType: "organization", targetId: id,
-        details: { amount, unit, newTrialEndDate: newEnd.toISOString() },
+        details: { amount, unit, reason, previousTrialEndDate: currentEnd ? currentEnd.toISOString() : null, newTrialEndDate: newEnd.toISOString() },
       });
 
       await safeSyncDirectory(id);
@@ -329,7 +350,7 @@ export async function POST(req) {
           },
           { merge: true }
         );
-        await logAuditEvent({ action: "customer.free_license_end", actor: c, targetType: "organization", targetId: id, details: { graceDays: days } });
+        await logAuditEvent({ action: "customer.free_license_end", actor: c, targetType: "organization", targetId: id, details: { graceDays: days, reason, before: { compReason: snap.data().compReason || null, compUntil: snap.data().compUntil ? snap.data().compUntil.toDate().toISOString() : null } } });
         await safeSyncDirectory(id);
         return NextResponse.json({ ok: true });
       }
@@ -399,7 +420,7 @@ export async function POST(req) {
 
       await logAuditEvent({
         action: "customer.mark_paid", actor: c, targetType: "organization", targetId: id,
-        details: { planId: snapshot.planCode, planName: snapshot.displayName, users: snapshot.quantity, billingCycle: snapshot.billingCycle, unitPrice: snapshot.unitPrice, totalPrice: snapshot.totalPrice, notes },
+        details: { planId: snapshot.planCode, planName: snapshot.displayName, users: snapshot.quantity, billingCycle: snapshot.billingCycle, unitPrice: snapshot.unitPrice, totalPrice: snapshot.totalPrice, notes, reason, before: { status: snap.data().status || null, planId: snap.data().planId || null, planName: snap.data().planName || null } },
       });
 
       await safeSyncDirectory(id);
@@ -423,7 +444,7 @@ export async function POST(req) {
       await ref.set({ guestSeats }, { merge: true });
       await logAuditEvent({
         action: "customer.set_guest_seats", actor: c, targetType: "organization", targetId: id,
-        details: { guestSeats },
+        details: { guestSeats, previousGuestSeats: Number(snap.data().guestSeats) || 0, reason },
       });
       return NextResponse.json({ ok: true });
     }
@@ -453,7 +474,8 @@ export async function POST(req) {
 
       await logAuditEvent({
         action: body.action === "suspend" ? "organization.suspend" : "organization.reactivate",
-        actor: c, targetType: "organization", targetId: id, details: { email: snap.data().email },
+        actor: c, targetType: "organization", targetId: id,
+        details: { email: snap.data().email, reason, fromStatus: snap.data().status || null },
       });
 
       await safeSyncDirectory(id);

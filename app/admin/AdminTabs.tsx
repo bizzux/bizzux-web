@@ -121,6 +121,26 @@ export default function AdminTabs() {
     );
   }
 
+  // Customer Support Agents and Billing Administrators (platformAdmins roles
+  // beyond Owner/Admin) get only the Organizations workspace; SuperAdminPanel
+  // renders that limited view. Every other admin tab and API stays Owner/Admin.
+  const staffRole = !!me && me.superAdmin !== true && !!me.platformRole && me.platformRole !== "OWNER" && me.platformRole !== "ADMIN";
+  if (staffRole) {
+    return (
+      <>
+        <Nav />
+        <section className="pt-4 pb-6 bg-slate-50 min-h-[45vh]">
+          <div className="max-w-6xl mx-auto px-6">
+            <h1 className="text-xl font-bold mb-3">Organizations</h1>
+            <div className="bzx-app" style={{ minHeight: 0, background: "transparent" }}>
+              <SuperAdminPanel />
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  }
+
   if (!isSuper) {
     return (
       <div>

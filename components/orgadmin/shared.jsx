@@ -385,6 +385,36 @@ export function PersonFields({ p, onChange }) {
   );
 }
 
+// Asks for a reason (recorded in the audit log). Usage:
+//   const [askReason, reasonModal] = useReason();  ...  const why = await askReason("Suspend X", "Users are signed out");
+//   render {reasonModal}; resolves null if cancelled.
+export function useReason() {
+  const [st, setSt] = useState(null);
+  const ask = (title, detail) => new Promise((resolve) => setSt({ title, detail, resolve }));
+  const done = (v) => { st.resolve(v); setSt(null); };
+  const modal = st ? <ReasonModal title={st.title} detail={st.detail} onSubmit={(v) => done(v)} onCancel={() => done(null)} /> : null;
+  return [ask, modal];
+}
+
+function ReasonModal({ title, detail, onSubmit, onCancel }) {
+  const [v, setV] = useState("");
+  const ok = v.trim().length >= 3;
+  return (
+    <div className="modal-overlay" style={{ zIndex: 1200 }} onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480, width: "100%" }}>
+        <h3 style={{ marginTop: 0 }}>{title}</h3>
+        {detail && <p className="muted" style={{ fontSize: 13 }}>{detail}</p>}
+        <label className="label">Reason * (recorded in the audit log)</label>
+        <input className="input" autoFocus value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && ok) onSubmit(v.trim()); }} />
+        <div className="row" style={{ justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+          <button type="button" className="btn-outline-dark" onClick={onCancel}>Cancel</button>
+          <button type="button" className="btn-primary" disabled={!ok} onClick={() => onSubmit(v.trim())}>Confirm</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Section({ title, children }) {
   return (
     <div style={{ marginBottom: 16 }}>

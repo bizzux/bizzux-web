@@ -120,7 +120,7 @@ test("organization only: no customer/login created, plan not inherited from call
 
 test("platform admin vs owner permissions", async () => {
   const r = await prov(base({ setupMode: "ORG_ONLY", admin: undefined }));
-  await lib.changeOrganizationStatus({ actor: admin, organizationId: r.organizationId, action: "archive" });
+  await lib.changeOrganizationStatus({ actor: admin, organizationId: r.organizationId, action: "archive", reason: "test reason" });
   await assert.rejects(lib.deleteOrganizationPermanently({ actor: admin, organizationId: r.organizationId, confirmName: "x" }), (e) => e.status === 403);
   await db.doc("platformAdmins/" + admin.uid).set({ permissions: [] }, { merge: true });
   await assert.rejects(prov(base(), admin), (e) => e.status === 403);
@@ -142,9 +142,9 @@ test("listing normalizes real/self-service/placeholder orgs; self-service stays 
   assert.equal(self.name, "Self Serve Co"); assert.equal(self.kind, "self-service"); assert.equal(self.activeUsers, 1); assert.equal(self.estimatedUsers, "11-20");
   assert.equal(rows.find((x) => x.id === "placeholder-1").name, "Old Placeholder");
   assert.ok(rows.every((x) => x.name && x.name !== "(unnamed)"));
-  await assert.rejects(lib.updateOrganizationEntitlements({ actor: owner, organizationId: "selfsvc-1", body: { apps: ["bizzux-notes"] } }), (e) => e.status === 400);
+  await assert.rejects(lib.updateOrganizationEntitlements({ actor: owner, organizationId: "selfsvc-1", body: { reason: "test reason", apps: ["bizzux-notes"] } }), (e) => e.status === 400);
   await assert.rejects(lib.deleteOrganizationPermanently({ actor: owner, organizationId: "selfsvc-1", confirmName: "Self Serve Co" }), (e) => e.status === 400);
-  const s = await lib.changeOrganizationStatus({ actor: owner, organizationId: "selfsvc-1", action: "suspend" });
+  const s = await lib.changeOrganizationStatus({ actor: owner, organizationId: "selfsvc-1", action: "suspend", reason: "test reason" });
   assert.equal(s.status, "suspended");
   assert.equal((await db.doc("customers/selfsvc-1").get()).data().status, "suspended");
   await lib.changeOrganizationStatus({ actor: owner, organizationId: "selfsvc-1", action: "reactivate" });
@@ -153,7 +153,7 @@ test("listing normalizes real/self-service/placeholder orgs; self-service stays 
 
 test("entitlement change deactivates removed apps for users and is audited", async () => {
   const r = await prov(base({ setupMode: "ORG_ADMIN" }));
-  await lib.updateOrganizationEntitlements({ actor: owner, organizationId: r.organizationId, body: { apps: ["bizzux-notes"], licensedSeats: 9 } });
+  await lib.updateOrganizationEntitlements({ actor: owner, organizationId: r.organizationId, body: { reason: "test reason", apps: ["bizzux-notes"], licensedSeats: 9 } });
   const crm = (await db.doc("appAssignments/" + r.organizationId + "_" + r.organizationId + "_bizzux-crm").get()).data();
   assert.equal(crm.status, "INACTIVE");
   assert.equal((await db.doc("customers/" + r.organizationId).get()).data().allowedUsers, 9);
@@ -228,9 +228,9 @@ test("TEST plan: no trial clock, not billed, duplicate names allowed, plan switc
   const subs = await db.collection("organizationAppSubscriptions").where("organizationId", "==", a.organizationId).get();
   assert.ok(subs.docs.every((d) => d.data().subscriptionType === "INTERNAL"));
   // switching to Trial requires an expiry, then applies the trial clock
-  await assert.rejects(lib.updateOrganizationEntitlements({ actor: owner, organizationId: a.organizationId, body: { planType: "TRIAL" } }), (e) => e.status === 400);
+  await assert.rejects(lib.updateOrganizationEntitlements({ actor: owner, organizationId: a.organizationId, body: { reason: "test reason", planType: "TRIAL" } }), (e) => e.status === 400);
   const exp = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10);
-  await lib.updateOrganizationEntitlements({ actor: owner, organizationId: a.organizationId, body: { planType: "TRIAL", expiryDate: exp } });
+  await lib.updateOrganizationEntitlements({ actor: owner, organizationId: a.organizationId, body: { reason: "test reason", planType: "TRIAL", expiryDate: exp } });
   const after = (await db.doc("customers/" + a.organizationId).get()).data();
   assert.equal(after.status, "trial"); assert.equal(after.isTestAccount, false); assert.equal(after.billing, undefined);
   // non-test duplicates are still refused
@@ -275,13 +275,13 @@ test("INTERNAL plan: group company, free, no expiry, manageable, Owner-only dele
   // listing: editable, labelled Internal
   const row = (await lib.listOrganizations({})).find((x) => x.id === r.organizationId);
   assert.equal(row.planLabel, "Internal"); assert.equal(row.editable, true); assert.equal(row.isTest, false);
-  await lib.updateOrganizationEntitlements({ actor: owner, organizationId: r.organizationId, body: { apps: ["bizzux-notes"] } });
-  await assert.rejects(lib.updateOrganizationEntitlements({ actor: owner, organizationId: r.organizationId, body: { planType: "PAID", expiryDate: "2099-01-01" } }), (e) => e.status === 400);
+  await lib.updateOrganizationEntitlements({ actor: owner, organizationId: r.organizationId, body: { reason: "test reason", apps: ["bizzux-notes"] } });
+  await assert.rejects(lib.updateOrganizationEntitlements({ actor: owner, organizationId: r.organizationId, body: { reason: "test reason", planType: "PAID", expiryDate: "2099-01-01" } }), (e) => e.status === 400);
   // a Platform Admin can't delete it; the pre-existing own org stays untouchable
   await assert.rejects(lib.deleteOrganizationPermanently({ actor: admin, organizationId: r.organizationId, confirmName: name }), (e) => e.status === 403);
   await createOrganization({ id: "bizzux-own", name: "Bizzux", type: "INTERNAL", createdBy: "x" });
-  await assert.rejects(lib.changeOrganizationStatus({ actor: owner, organizationId: "bizzux-own", action: "suspend" }), (e) => e.status === 400);
-  assert.equal((await lib.changeOrganizationStatus({ actor: owner, organizationId: r.organizationId, action: "suspend" })).status, "suspended");
+  await assert.rejects(lib.changeOrganizationStatus({ actor: owner, organizationId: "bizzux-own", action: "suspend", reason: "test reason" }), (e) => e.status === 400);
+  assert.equal((await lib.changeOrganizationStatus({ actor: owner, organizationId: r.organizationId, action: "suspend", reason: "test reason" })).status, "suspended");
 });
 
 test("reset org admin password: generated, hashed, forced change, unlocks; list shows username", async () => {

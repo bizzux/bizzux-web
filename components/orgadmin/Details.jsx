@@ -8,7 +8,7 @@
 // server endpoints, so nothing is lost when that tab is later retired.
 import { useEffect, useState } from "react";
 import { APPS } from "@/lib/appCatalog";
-import { api, orgCall, UsersTab, DetailsTab, plusDays, Field } from "./shared";
+import { api, orgCall, UsersTab, DetailsTab, plusDays, Field, useReason } from "./shared";
 
 const ACCOUNT = { active: "Active", suspended: "Suspended", expired: "Expired", archived: "Archived", pending_admin: "No administrator", closed: "Closed" };
 const PAYMENT = { paid: "Paid", complimentary: "Free / complimentary", unpaid: "Not paid", not_recorded: "Payment not recorded", past_due: "Past due", cancelled: "Cancelled", none: "None" };
@@ -71,8 +71,8 @@ export default function Details({ id, onBack, onChanged, legacy }) {
       {err && <p className="error">{err}</p>}
 
       {tab === "overview" && <Overview d={d} cust={cust} legacy={legacy} managed={managed} o={o} reload={reload} />}
-      {tab === "users" && <UsersAccess d={d} o={o} cust={cust} legacy={legacy} reload={reload} isOwner={isOwner} />}
-      {tab === "subscription" && <Subscription d={d} o={o} cust={cust} legacy={legacy} managed={managed} isOwner={isOwner} reload={reload} />}
+      {tab === "users" && <UsersAccess d={d} o={o} cust={cust} legacy={legacy} reload={reload} isOwner={isOwner} canManage={can("organizations.manage")} />}
+      {tab === "subscription" && <Subscription d={d} o={o} cust={cust} legacy={legacy} managed={managed} isOwner={isOwner} canSub={can("subscription.manage")} reload={reload} />}
       {tab === "apps" && <Applications d={d} o={o} legacy={legacy} managed={managed} reload={reload} />}
       {tab === "usage" && <Usage d={d} legacy={legacy} cust={cust} />}
       {tab === "support" && <SupportTab d={d} legacy={legacy} id={id} />}
@@ -121,7 +121,7 @@ function Overview({ d, cust, legacy, managed, o, reload }) {
   );
 }
 
-function UsersAccess({ d, o, cust, legacy, reload, isOwner }) {
+function UsersAccess({ d, o, cust, legacy, reload, isOwner, canManage }) {
   const [admins, setAdmins] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(null);
@@ -165,7 +165,7 @@ function UsersAccess({ d, o, cust, legacy, reload, isOwner }) {
                   <span style={{ fontSize: 13.5 }}>{a.email}</span><span className="status-pill active">{a.role}</span>
                 </div>
                 <div className="muted" style={{ fontSize: 12 }}>Last login: {timeAgo(a.lastLoginAt)} · 2FA: {a.twoFactorEnabled ? "on" : "off"}</div>
-                {a.uid && (
+                {a.uid && canManage && (
                   <div className="row" style={{ gap: 14, marginTop: 4, flexWrap: "wrap" }}>
                     <button className="link-btn" disabled={busy === a.uid} onClick={() => signOut(a.uid)}>Sign out of all devices</button>
                     <label className="muted" style={{ fontSize: 12 }}>
@@ -177,7 +177,7 @@ function UsersAccess({ d, o, cust, legacy, reload, isOwner }) {
               </div>
             ))}
           </div>
-          {cust && (
+          {cust && canManage && (
             <div style={{ marginTop: 16 }}>
               <div className="label" style={{ marginBottom: 6 }}>Owner sign-in &amp; security</div>
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -188,9 +188,11 @@ function UsersAccess({ d, o, cust, legacy, reload, isOwner }) {
               <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>For username logins use the user's Reset password above; these act on the owner's own account.</p>
             </div>
           )}
-          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-            <AddTeamMemberForm accountId={o.id} onDone={() => { loadAdmins(); reload(); }} />
-          </div>
+          {canManage && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+              <AddTeamMemberForm accountId={o.id} onDone={() => { loadAdmins(); reload(); }} />
+            </div>
+          )}
           {showSetPw && cust && <SetPasswordModal customer={cust} onClose={() => setShowSetPw(false)} />}
         </>
       )}
@@ -198,8 +200,9 @@ function UsersAccess({ d, o, cust, legacy, reload, isOwner }) {
   );
 }
 
-function Subscription({ d, o, cust, legacy, managed, isOwner, reload }) {
+function Subscription({ d, o, cust, legacy, managed, isOwner, canSub, reload }) {
   const { ExtendTrialModal, MarkPaidModal, FreeLicenseModal, freeReasonLabel } = legacy;
+  const [askReason, reasonModal] = useReason();
   const [modal, setModal] = useState(null);
   const [planType, setPlanType] = useState(d.row.planType || "TRIAL");
   const [seats, setSeats] = useState(d.row.licensedSeats || 1);
@@ -212,16 +215,20 @@ function Subscription({ d, o, cust, legacy, managed, isOwner, reload }) {
   useEffect(() => { setGuest(cust?.guestSeats || 0); }, [cust?.guestSeats]);
 
   async function endFree() {
-    if (!confirm("End this free license? They'll get 7 days of trial to choose a paid plan.")) return;
-    try { await api("/api/admin/customers", "POST", { action: "endFree", id: o.id }); await reload(); } catch (e) { setErr(e.message); }
+    const why = await askReason("End free license", "They'll get 7 days of trial to choose a paid plan.");
+    if (!why) return;
+    try { await api("/api/admin/customers", "POST", { action: "endFree", id: o.id, reason: why }); await reload(); } catch (e) { setErr(e.message); }
   }
   async function savePlan() {
-    if (!confirm(`Change the plan to ${planType}, ${seats} seats${["TEST", "INTERNAL"].includes(planType) ? "" : ", expiring " + expiry}? This is recorded in the audit log.`)) return;
+    const why = await askReason("Change plan", `Plan ${planType}, ${seats} seats${["TEST", "INTERNAL"].includes(planType) ? "" : ", expiring " + expiry}.`);
+    if (!why) return;
     setErr(""); setMsg("");
-    try { await orgCall(o.id, "updateEntitlements", { planType, licensedSeats: seats, expiryDate: expiry }); setMsg("Saved."); await reload(); } catch (e) { setErr(e.message); }
+    try { await orgCall(o.id, "updateEntitlements", { planType, licensedSeats: seats, expiryDate: expiry, reason: why }); setMsg("Saved."); await reload(); } catch (e) { setErr(e.message); }
   }
   async function saveGuest() {
-    try { await api("/api/admin/customers", "POST", { action: "setGuestSeats", id: o.id, guestSeats: Number(guest) }); setMsg("Guest seats saved."); await reload(); } catch (e) { setErr(e.message); }
+    const why = await askReason("Change guest seats", `Set to ${Number(guest)}.`);
+    if (!why) return;
+    try { await api("/api/admin/customers", "POST", { action: "setGuestSeats", id: o.id, guestSeats: Number(guest), reason: why }); setMsg("Guest seats saved."); await reload(); } catch (e) { setErr(e.message); }
   }
 
   return (
@@ -245,14 +252,15 @@ function Subscription({ d, o, cust, legacy, managed, isOwner, reload }) {
           {cust.compNote && <div className="muted" style={{ marginTop: 4 }}>{cust.compNote}</div>}
         </div>
       )}
-      {cust ? (
+      {reasonModal}
+      {cust && canSub ? (
         <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
           {!isFree && <button className="btn-small" onClick={() => setModal("extend")}>Extend trial</button>}
           <button className="btn-small" onClick={() => setModal("paid")}>Mark as paid</button>
           {isOwner && <button className="btn-small" onClick={() => setModal("free")}>{isFree ? "Change free license" : "Give free license"}</button>}
           {isOwner && isFree && <button className="btn-small" onClick={endFree}>End free license</button>}
         </div>
-      ) : <p className="muted" style={{ fontSize: 12 }}>No billing record yet (this organization has no customer account), so trial and payment actions don't apply.</p>}
+      ) : <p className="muted" style={{ fontSize: 12 }}>{cust ? "You can view this subscription but not change it (Billing or Platform Admin permission required)." : "No billing record yet (this organization has no customer account), so trial and payment actions don't apply."}</p>}
 
       {managed && (
         <div style={{ paddingTop: 12, borderTop: "1px solid var(--line)", marginBottom: 14 }}>
@@ -271,7 +279,7 @@ function Subscription({ d, o, cust, legacy, managed, isOwner, reload }) {
         </div>
       )}
 
-      {cust && (
+      {cust && canSub && (
         <div style={{ paddingTop: 12, borderTop: "1px solid var(--line)" }}>
           <div className="label" style={{ marginBottom: 6 }}>Bizzux Projects guest seats</div>
           <p className="muted" style={{ fontSize: 12, marginBottom: 8, maxWidth: 460 }}>How many outside collaborators this organization may have across all its projects (0 by default).</p>
@@ -290,6 +298,7 @@ function Subscription({ d, o, cust, legacy, managed, isOwner, reload }) {
 }
 
 function Applications({ d, o, legacy, managed, reload }) {
+  const [askReason, reasonModal] = useReason();
   const [apps, setApps] = useState(null);
   const [sel, setSel] = useState([]);
   const [err, setErr] = useState("");
@@ -302,13 +311,15 @@ function Applications({ d, o, legacy, managed, reload }) {
   async function save() {
     const was = apps.filter((a) => a.enabled).map((a) => a.id);
     const removed = was.filter((a) => !sel.includes(a));
-    if (!confirm(`Save application access?${removed.length ? "\n\nRemoving " + removed.length + " app(s) immediately blocks them for every user." : ""}\nThis is recorded in the audit log.`)) return;
+    const why = await askReason("Change application access", removed.length ? `Removing ${removed.length} app(s) immediately blocks them for every user in this organization.` : "Adding applications for this organization.");
+    if (!why) return;
     setErr(""); setMsg("");
-    try { await orgCall(o.id, "updateEntitlements", { apps: sel }); setMsg("Saved."); await reload(); } catch (e) { setErr(e.message); }
+    try { await orgCall(o.id, "updateEntitlements", { apps: sel, reason: why }); setMsg("Saved."); await reload(); } catch (e) { setErr(e.message); }
   }
   const usage = d.usage || {};
   return (
     <div>
+      {reasonModal}
       {err && <p className="error">{err}</p>}
       {!apps && !err && <p className="muted">Loading…</p>}
       {apps && (
@@ -407,6 +418,7 @@ function SupportTab({ d, legacy, id }) {
 }
 
 function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
+  const [askReason, reasonModal] = useReason();
   const [entries, setEntries] = useState(null);
   const [err, setErr] = useState("");
   const [showDelete, setShowDelete] = useState(false);
@@ -416,10 +428,11 @@ function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
   }
   useEffect(() => { loadAudit(); }, [o.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const acct = d.status.account;
-  async function act(action, extra, text) {
-    if (text && !confirm(text)) return;
+  async function act(action, extra, title, detail) {
+    let reason;
+    if (title) { reason = await askReason(title, detail); if (!reason) return; }
     setErr("");
-    try { await orgCall(o.id, action, extra); await reload(); await loadAudit(); } catch (e) { setErr(e.message); }
+    try { await orgCall(o.id, action, { ...extra, reason }); await reload(); await loadAudit(); } catch (e) { setErr(e.message); }
   }
   async function removeForever() {
     const extra = d.row.isTest ? " This is a TEST organization: its users and all their data are deleted too." : "";
@@ -430,6 +443,7 @@ function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
   }
   return (
     <div>
+      {reasonModal}
       {err && <p className="error">{err}</p>}
       <div style={{ padding: 14, border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 12, marginBottom: 16 }}>
         <div className="label" style={{ marginBottom: 4, color: "var(--red)" }}>Lifecycle</div>
@@ -437,11 +451,11 @@ function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           {!d.row.internal && (
             ["suspended", "archived"].includes(acct)
-              ? can("organizations.suspend") && <button className="btn-small" onClick={() => act("reactivate", {}, `Reactivate ${o.name}?`)}>Reactivate</button>
-              : can("organizations.suspend") && <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={() => act("suspend", {}, `Suspend ${o.name}? Its users are signed out and blocked until reactivated.`)}>Suspend</button>
+              ? can("organizations.suspend") && <button className="btn-small" onClick={() => { if (confirm(`Reactivate ${o.name}?`)) act("reactivate", {}); }}>Reactivate</button>
+              : can("organizations.suspend") && <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={() => act("suspend", {}, `Suspend ${o.name}`, "Its users are signed out and blocked until reactivated.")}>Suspend</button>
           )}
           {!d.row.internal && acct !== "archived" && d.row.kind !== "placeholder" && can("organizations.archive") &&
-            <button className="btn-small" onClick={() => act("archive", {}, `Archive ${o.name}? It is suspended and hidden from the directory; data is kept.`)}>Archive</button>}
+            <button className="btn-small" onClick={() => act("archive", {}, `Archive ${o.name}`, "It is suspended and hidden from the directory; data is kept.")}>Archive</button>}
           {isOwner && cust && <button className="btn-small" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => setShowDelete(true)}>Delete user…</button>}
           {(d.row.isTest ? can("organizations.delete_test") : isOwner) && (d.row.isTest || ["archived", "pending", "pending_admin"].includes(d.row.status)) &&
             <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={removeForever}>Delete permanently</button>}

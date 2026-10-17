@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSuperAdmin } from "@/lib/firebaseAdmin";
+import { requirePlatformPermission } from "@/lib/platformRoles";
 import { signShopToken } from "@/lib/shopHmac";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ const SHOP_URL = process.env.SHOP_URL || "https://business.bizzux.com";
 // app's ID tokens directly).
 export async function GET(req) {
   try {
-    await requireSuperAdmin(req);
+    await requirePlatformPermission(req, "organizations.view");
     const orgId = new URL(req.url).searchParams.get("id");
     if (!orgId) throw { status: 400, message: "Customer id required" };
 
