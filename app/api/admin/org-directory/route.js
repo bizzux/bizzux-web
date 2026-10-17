@@ -6,6 +6,7 @@ import { loadOrg, normalizeOrganizationRow, isAdminManaged, assertOrgPermission 
 import { listOrgUsers } from "@/lib/orgManagement";
 import { resolveOrgOwners } from "@/lib/orgOwners";
 import { deriveStatus } from "@/lib/orgStatus";
+import { getOwnershipOverview } from "@/lib/orgContactsAdmin";
 import { APPS } from "@/lib/appCatalog";
 
 export const runtime = "nodejs";
@@ -63,9 +64,10 @@ export async function GET(req) {
 
     // Overview
     const { org, customer } = await loadOrg(id);
-    const [owners, count] = await Promise.all([
+    const [owners, count, ownerView] = await Promise.all([
       resolveOrgOwners([id], { includeAdmins: true }),
       adminDb().collection("organizationMemberships").where("organizationId", "==", id).where("status", "==", "active").count().get(),
+      getOwnershipOverview(id),
     ]);
     const row = normalizeOrganizationRow(id, org, customer, count.data().count);
     const usage = customer?.appUsage
@@ -82,6 +84,14 @@ export async function GET(req) {
         jobTitle: customer.jobTitle || null, useCase: customer.useCase || null,
         employeeCount: customer.employeeCount || null, businessType: customer.businessType || null,
       } : null,
+      // Separate ownership / administration / metrics (see lib/orgContacts.js).
+      ownership: ownerView.ownership,
+      metrics: ownerView.metrics,
+      members: ownerView.members,
+      profile: {
+        employeeCount: org.employeeCount ?? null, businessType: org.businessType || null,
+        city: org.city || customer?.city || "", state: org.state || customer?.state || "",
+      },
       permissions: c.permissions,
       role: c.platformRole,
       createdAt: toIso(org.createdAt),

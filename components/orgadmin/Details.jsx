@@ -10,22 +10,14 @@ import { useEffect, useState } from "react";
 import { APPS } from "@/lib/appCatalog";
 import { api, orgCall, UsersTab, DetailsTab, plusDays, Field, useReason } from "./shared";
 import OrgTickets from "../support/OrgTickets";
+import Overview, { ACCOUNT, PAYMENT, PLAN, Fact } from "./Overview";
+import { ONBOARDING_STATUS_LABEL } from "@/lib/orgContacts";
 
-const ACCOUNT = { active: "Active", suspended: "Suspended", expired: "Expired", archived: "Archived", pending_admin: "No administrator", closed: "Closed" };
-const PAYMENT = { paid: "Paid", complimentary: "Free / complimentary", unpaid: "Not paid", not_recorded: "Payment not recorded", past_due: "Past due", cancelled: "Cancelled", none: "None" };
-const ONBOARD = { onboarded: "Onboarded", not_onboarded: "Not onboarded", awaiting_first_login: "Awaiting first login", trial_not_started: "Trial not started", pending_verification: "Verifying", not_applicable: "—" };
-const PLAN = { TRIAL: "Trial", PAID: "Paid", FREE: "Free licence", TEST: "Test", INTERNAL: "Internal" };
 const TABS = [
   ["overview", "Overview"], ["users", "Users & Access"], ["subscription", "Subscription"], ["apps", "Applications"],
   ["usage", "Usage & Activity"], ["support", "Support"], ["audit", "Audit & Lifecycle"],
 ];
 
-const Fact = ({ label, children }) => (
-  <div style={{ minWidth: 150 }}>
-    <div className="label">{label}</div>
-    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{children || "—"}</div>
-  </div>
-);
 
 export default function Details({ id, onBack, onChanged, legacy, initialTab }) {
   const [tab, setTab] = useState(initialTab || "overview");
@@ -56,13 +48,13 @@ export default function Details({ id, onBack, onChanged, legacy, initialTab }) {
         <span className="muted" style={{ fontSize: 12 }}>ID: <code>{id}</code></span>
       </div>
       <h2 style={{ margin: "6px 0 4px" }}>{row.name}</h2>
+      <p className="muted" style={{ margin: "0 0 8px", fontSize: 13 }}>{[row.industry, row.country].filter(Boolean).join(" · ")}</p>
       <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-        <span className="status-pill">{ACCOUNT[status.account] || status.account}</span>
-        <span className="status-pill">{PLAN[status.plan.type] || status.plan.type || "No plan"}</span>
-        <span className="status-pill">{PAYMENT[status.payment]}</span>
+        <span className="status-pill">Organization: {ACCOUNT[status.account] || status.account}</span>
+        <span className="status-pill">Onboarding: {ONBOARDING_STATUS_LABEL[d.ownership.onboardingStatus]}</span>
+        <span className="status-pill">Subscription: {PLAN[status.plan.type] || status.plan.type || "No plan"} · {PAYMENT[status.payment]}</span>
         {status.trial.state !== "none" && <span className="status-pill">Trial {status.trial.state.replace("_", " ")}{status.trial.daysLeft != null ? ` (${status.trial.daysLeft}d)` : ""}</span>}
-        <span className="status-pill">{ONBOARD[status.onboarding]}</span>
-        {row.isTest && <span className="status-pill">Test</span>}
+        {row.isTest && status.plan.type !== "TEST" && <span className="status-pill">Test</span>}
       </div>
       <div className="admin-tabs" role="tablist" style={{ marginBottom: 14 }}>
         {TABS.map(([k, label]) => (
@@ -78,46 +70,6 @@ export default function Details({ id, onBack, onChanged, legacy, initialTab }) {
       {tab === "usage" && <Usage d={d} legacy={legacy} cust={cust} />}
       {tab === "support" && <SupportTab d={d} legacy={legacy} id={id} />}
       {tab === "audit" && <AuditLifecycle d={d} o={o} cust={cust} legacy={legacy} isOwner={isOwner} can={can} reload={reload} onBack={onBack} />}
-    </div>
-  );
-}
-
-function Overview({ d, cust, legacy, managed, o, reload }) {
-  const { row, status } = d;
-  const [editing, setEditing] = useState(false);
-  return (
-    <div>
-      <div className="row" style={{ gap: 22, flexWrap: "wrap", marginBottom: 16 }}>
-        <Fact label="Owner / administrator">{d.owner ? `${d.owner.name || d.owner.email}${d.owner.name && d.owner.email ? " · " + d.owner.email : ""}` : (row.adminName ? `${row.adminName}` : <span className="muted">No owner on record</span>)}</Fact>
-        {row.adminUsername && <Fact label="Admin username">{row.adminUsername}</Fact>}
-        <Fact label="Source">{{ "self-service": "Self-service", "admin-provisioned": "Admin-provisioned", placeholder: "Placeholder" }[row.kind]}</Fact>
-        <Fact label="Industry">{row.industry}</Fact>
-        <Fact label="Location">{[row.state, row.country].filter(Boolean).join(", ")}</Fact>
-        <Fact label="Time zone · currency">{[row.timezone, row.currency].filter(Boolean).join(" · ")}</Fact>
-        <Fact label="Created">{d.createdAt ? new Date(d.createdAt).toLocaleDateString() : ""}</Fact>
-      </div>
-      <div className="row" style={{ gap: 22, flexWrap: "wrap", marginBottom: 16 }}>
-        <Fact label="Active users / seats">{row.activeUsers}{row.licensedSeats ? ` / ${row.licensedSeats}` : ""}</Fact>
-        <Fact label="Plan">{PLAN[status.plan.type] || status.plan.type}{status.plan.name ? ` · ${status.plan.name}` : ""}</Fact>
-        <Fact label="Payment">{PAYMENT[status.payment]}</Fact>
-        <Fact label="Trial ends">{status.trial.state === "not_started" ? "Not started (phone not verified)" : status.trial.endsAt ? new Date(status.trial.endsAt).toLocaleDateString() : "N/A"}</Fact>
-        <Fact label="Onboarding">{ONBOARD[status.onboarding]}</Fact>
-        {cust && <Fact label="Last login">{legacy.timeAgo(cust.lastLoginAt)}</Fact>}
-        {cust && <Fact label="Mobile">{cust.phone}</Fact>}
-        {cust && <Fact label="Signed up from">{[cust.city, cust.region, cust.country].filter(Boolean).join(", ")}</Fact>}
-        {cust && <Fact label="Customer type">{cust.customerType}</Fact>}
-      </div>
-      {d.onboarding && (
-        <div className="row" style={{ gap: 22, flexWrap: "wrap", marginBottom: 16 }}>
-          <Fact label="Job title">{d.onboarding.jobTitle}</Fact>
-          <Fact label="Using it for">{d.onboarding.useCase}</Fact>
-          <Fact label="Employees">{d.onboarding.employeeCount}</Fact>
-          <Fact label="Business type">{d.onboarding.businessType}</Fact>
-        </div>
-      )}
-      {managed
-        ? (editing ? <DetailsTab o={o} reload={reload} /> : <button type="button" className="btn-small" onClick={() => setEditing(true)}>Edit organization details</button>)
-        : <p className="muted" style={{ fontSize: 12 }}>Self-service organizations keep their own profile; you can see it here and manage status, subscription and sign-in help from the other tabs.</p>}
     </div>
   );
 }
@@ -386,6 +338,18 @@ function Usage({ d, legacy, cust }) {
   );
 }
 
+// Friendly names for the ownership / administration events (others show as stored).
+const AUDIT_LABEL = {
+  "organization.provision": "Organization created",
+  "organization.admin_assigned": "Administrator assigned",
+  "organization.primary_admin_reassigned": "Primary administrator replaced",
+  "organization.business_owner_updated": "Business Owner contact updated",
+  "organization.business_owner_verified": "Business Owner verified",
+  "organization.authorization_changed": "Authorization status changed",
+  "organization.ownership_transferred": "Ownership transferred",
+  "organization.entitlements_set": "Subscription / applications changed",
+  "organization.suspend": "Suspended", "organization.reactivate": "Reactivated", "organization.archive": "Archived",
+};
 const APP_LABEL = {
   business: "Business", pos: "POS", notes: "Notes", files: "Files", projects: "Projects", chat: "Chat",
   crm: "CRM", mail: "Mail", capture: "Capture", attendance: "Attendance", finance: "Finance",
@@ -576,7 +540,7 @@ function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
       {entries && entries.length === 0 && <p className="muted" style={{ fontSize: 12 }}>No audit entries yet.</p>}
       {entries && entries.map((e) => (
         <div key={e.id} style={{ padding: "6px 0", borderBottom: "1px solid var(--line)", fontSize: 13 }}>
-          <strong>{e.action}</strong> <span className="muted">· {e.actorEmail || e.actorUid || "system"} · {e.createdAt ? new Date(e.createdAt).toLocaleString() : ""}</span>
+          <strong>{AUDIT_LABEL[e.action] || e.action}</strong> <span className="muted">· {e.actorEmail || e.actorUid || "system"} · {e.createdAt ? new Date(e.createdAt).toLocaleString() : ""}</span>
           {e.details && Object.keys(e.details).length > 0 && <div className="muted" style={{ fontSize: 12, overflowWrap: "anywhere" }}>{JSON.stringify(e.details).slice(0, 240)}</div>}
         </div>
       ))}

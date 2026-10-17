@@ -30,6 +30,7 @@ const base = (o = {}) => ({
   planType: "PAID", expiryDate: new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10), licensedSeats: 5,
   apps: ["bizzux-notes", "bizzux-crm"],
   admin: { fullName: "Asha Admin", loginMethod: "USERNAME_TEMP", username: "asha" + rnd() },
+  requester: { name: "Rita Requester", email: "rita@acme.test", type: "manager" },
   ...o,
 });
 const orgCount = async () => (await db.collection("organizations").count().get()).data().count;

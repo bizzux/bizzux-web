@@ -10,6 +10,9 @@ import {
   updateOrganizationEntitlements, resendOrgInvite, resetOrgAdminPassword, deleteOrganizationPermanently, listOrganizations,
 } from "@/lib/orgProvisioning";
 import {
+  updateBusinessOwner, setAuthorizationStatus, verifyBusinessOwner, transferBusinessOwner, reassignPrimaryAdmin,
+} from "@/lib/orgContactsAdmin";
+import {
   updateOrganizationDetails, listOrgUsers, updateOrgUser, resetOrgUserPassword,
   setOrgUserDisabled, deleteOrgUser, addOrgUser,
 } from "@/lib/orgManagement";
@@ -112,6 +115,20 @@ export async function POST(req) {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
       await assertOrgPermission(c, "organizations.manage");
       return NextResponse.json(await resendOrgInvite({ actor: c, organizationId: body.id, origin }));
+    }
+    // ---- Ownership & administration (each checks its own server permission) --
+    // The actor is always the authenticated session `c`; nothing in the body can
+    // name a different actor. Verification and ownership transfer are Owner-only.
+    const ownershipActions = {
+      updateBusinessOwner: () => updateBusinessOwner({ actor: c, organizationId: body.id, owner: body.owner, reason: body.reason }),
+      setAuthorization: () => setAuthorizationStatus({ actor: c, organizationId: body.id, status: body.status, reason: body.reason }),
+      verifyBusinessOwner: () => verifyBusinessOwner({ actor: c, organizationId: body.id, reason: body.reason }),
+      transferOwnership: () => transferBusinessOwner({ actor: c, organizationId: body.id, newOwner: body.newOwner, reason: body.reason }),
+      reassignPrimaryAdmin: () => reassignPrimaryAdmin({ actor: c, organizationId: body.id, newAdminUid: body.newAdminUid, reason: body.reason }),
+    };
+    if (ownershipActions[body.action]) {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      return NextResponse.json(await ownershipActions[body.action](), { headers: { "Cache-Control": "no-store" } });
     }
     // ---- Manage panel: details and users ----------------------------------
     const manageActions = {

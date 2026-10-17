@@ -34,8 +34,13 @@ export const plusDays = (n) => new Date(Date.now() + n * 864e5).toISOString().sl
 export const blankPerson = () => ({ fullName: "", email: "", phone: "", loginMethod: "USERNAME_TEMP", username: "", requirePasswordChange: true, passwordMode: "AUTO", password: "" });
 export const blankUser = () => ({ ...blankPerson(), profile: "Staff/Shopkeeper", apps: [] });
 export const blankForm = () => ({
-  setupMode: "ORG_ADMIN", organizationName: "", industry: "", countryCode: "", state: "", timezone: "", currency: "",
+  setupMode: "ORG_ADMIN", organizationName: "", industry: "", countryCode: "", state: "", city: "", timezone: "", currency: "",
   planType: "TRIAL", expiryDate: plusDays(30), licensedSeats: 5, apps: [], contactEmail: "", contactPhone: "",
+  employeeCount: "", businessType: "",
+  // Contacts & Administration. requester.type "" = not chosen yet; ownerKnown null = not answered yet.
+  requester: { type: "", name: "", jobTitle: "", email: "", phone: "" },
+  requesterIsAdmin: false,
+  ownerKnown: null, businessOwner: { name: "", email: "", phone: "", jobTitle: "" },
   admin: blankPerson(), users: [],
 });
 
@@ -212,6 +217,7 @@ export function DetailsTab({ o, reload }) {
   const [f, setF] = useState({
     organizationName: o.name || "", industry: o.industry || "", countryCode: o.countryCode || "", state: o.state || "",
     city: o.city || "", timezone: o.timezone || "", currency: o.currency || "", contactEmail: o.contactEmail || "", contactPhone: o.contactPhone || "",
+    employeeCount: o.employeeCount ?? "", businessType: o.businessType || "",
   });
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -244,6 +250,8 @@ export function DetailsTab({ o, reload }) {
       </div>
       <div className="row">
         <Field label="City"><input className="input" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} /></Field>
+        <Field label="Employee count"><input className="input" type="number" min="0" value={f.employeeCount} onChange={(e) => setF({ ...f, employeeCount: e.target.value })} /></Field>
+        <Field label="Business type"><input className="input" value={f.businessType} onChange={(e) => setF({ ...f, businessType: e.target.value })} /></Field>
         <Field label="Time Zone">
           <select className="input" value={f.timezone} onChange={(e) => setF({ ...f, timezone: e.target.value })}>
             {tzList.map((tz) => <option key={tz} value={tz}>{formatTimezoneLabel(tz)}</option>)}
@@ -331,15 +339,17 @@ export function ResultPanel({ result, onClose }) {
   );
 }
 
-export function PersonFields({ p, onChange }) {
+// hideIdentity: the name and phone come from the requester ("Requester is also
+// the Primary Organization Admin"), so only the sign-in details are asked here.
+export function PersonFields({ p, onChange, hideIdentity = false }) {
   return (
     <>
       <div className="row">
-        <Field label="Full name *"><input className="input" value={p.fullName} onChange={(e) => onChange("fullName", e.target.value)} required /></Field>
+        {!hideIdentity && <Field label="Full name *"><input className="input" value={p.fullName} onChange={(e) => onChange("fullName", e.target.value)} required /></Field>}
         <Field label={p.loginMethod === "EMAIL_INVITE" ? "Email *" : "Email (contact)"}>
           <input className="input" type="email" value={p.email} onChange={(e) => onChange("email", e.target.value)} required={p.loginMethod === "EMAIL_INVITE"} />
         </Field>
-        <Field label="Phone"><input className="input" value={p.phone} onChange={(e) => onChange("phone", e.target.value)} /></Field>
+        {!hideIdentity && <Field label="Phone"><input className="input" value={p.phone} onChange={(e) => onChange("phone", e.target.value)} /></Field>}
       </div>
       <div className="row">
         <Field label="Login provisioning method *">
