@@ -4,6 +4,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue } from "firebase-admin/firestore";
 import { logAuditEvent } from "@/lib/audit";
+import { assignOrgAdmin } from "@/lib/orgAssignAdmin";
 import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizationMembership";
 import {
   INDUSTRIES, assertOrgPermission, provisionOrganization, changeOrganizationStatus,
@@ -148,6 +149,12 @@ export async function POST(req) {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
       return NextResponse.json(
         await resetOrgAdminPassword({ actor: c, organizationId: body.id, password: body.password, requirePasswordChange: body.requirePasswordChange }),
+        { headers: { "Cache-Control": "no-store" } });
+    }
+    if (body.action === "assignAdmin") {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      return NextResponse.json(
+        await assignOrgAdmin({ actor: c, organizationId: body.id, admin: body.admin || {}, reason: body.reason, origin }),
         { headers: { "Cache-Control": "no-store" } });
     }
     if (body.action === "deletePermanently") {

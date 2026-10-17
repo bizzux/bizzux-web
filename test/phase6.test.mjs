@@ -344,3 +344,103 @@ test("retention: abandoned uploads are removed after 24h; linked and recent ones
   process.env.SUPPORT_ATTACHMENT_RETENTION_DAYS = "nonsense"; assert.equal(retention.retentionDays(), 90);
   delete process.env.SUPPORT_ATTACHMENT_RETENTION_DAYS;
 });
+
+// ---------------------------------------------------------------------------
+// Attach an administrator to an "Organization only" organization
+// ---------------------------------------------------------------------------
+test("assign admin to an org-only organization: same org id, Global Admin member, atomic, rolled back on failure", async () => {
+  const prov = await import("../lib/orgProvisioning.js");
+  const assign = await import("../lib/orgAssignAdmin.js");
+  const ua = await import("../lib/usernameAuth.js");
+  const { appEntitlementDenial } = await import("../lib/appAccess.js");
+  const mg = await import("../lib/orgManagement.js");
+  const owner = { uid: "own-" + rnd(), email: "o@bizzux.test", platformRole: "OWNER" };
+  const exp = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  const mkOrg = async (over = {}) => (await prov.provisionOrganization({ actor: owner, origin: "http://localhost", body: {
+    setupMode: "ORG_ONLY", requester: { name: "Rita Requester", email: "rita@acme.test", type: "manager" }, requestId: "req-aa-" + rnd(), organizationName: "Late Admin Co " + rnd(), industry: "Retail", countryCode: "IN", timezone: "Asia/Kolkata", currency: "INR",
+    planType: "PAID", expiryDate: exp, licensedSeats: 3, apps: ["bizzux-notes", "bizzux-crm"], ...over } }, { sendInvite: async () => {} })).organizationId;
+  const person = (over = {}) => ({ fullName: "Late Admin", loginMethod: "USERNAME_TEMP", username: "late" + rnd(), email: "late@example.test", ...over });
+
+  const id = await mkOrg();
+  assert.equal((await db.doc("customers/" + id).get()).exists, false, "org-only has no customer record yet");
+  const r = await assign.assignOrgAdmin({ actor: owner, organizationId: id, admin: person({ username: "late.admin" + rnd() }), reason: "Customer confirmed their admin" });
+  assert.ok(r.credential.temporaryPassword);
+  const org = (await db.doc("organizations/" + id).get()).data();
+  assert.equal(org.adminUid, r.uid); assert.equal(org.status, "active"); assert.equal(org.primaryAdmin.userId, r.uid);
+  assert.equal(org.onboardingStatus, "awaiting_first_login"); assert.equal(org.businessOwner ?? null, null, "Business Owner contact is not touched");
+  const cust = (await db.doc("customers/" + id).get()).data();
+  assert.equal(cust.planType, "PAID"); assert.equal(cust.allowedUsers, 3); assert.equal(cust.createdByAdmin, true); assert.equal(cust.status, "trial");
+
+  // the id never changed; the admin is a Global Admin MEMBER who can sign in and use enabled apps
+  const acct = await fa.resolveAccount(r.uid);
+  assert.equal(acct.accountId, id); assert.equal(acct.profile, "Global Admin"); assert.equal(acct.isOwner, false); assert.equal(acct.organizationRole, "ORGANIZATION_ADMIN");
+  assert.equal(await appEntitlementDenial({ organizationId: id, userId: r.uid, appId: "bizzux-notes", isOwner: false }), null);
+  assert.ok(await appEntitlementDenial({ organizationId: id, userId: r.uid, appId: "bizzux-files", isOwner: false }), "apps the org doesn't have stay blocked");
+  const login = await ua.usernameLogin({ username: r.credential.username, password: r.credential.temporaryPassword, ip: "aa1" });
+  assert.equal(login.mustChangePassword, true);
+  const users = (await mg.listOrgUsers({ actor: owner, organizationId: id })).users;
+  assert.ok(users.some((u) => u.uid === r.uid && u.isAdmin && u.username === r.credential.username));
+  assert.equal((await db.doc("organizationDirectory/" + id).get()).data().accountStatus, "active");
+  assert.ok((await db.collection("auditLogs").where("targetId", "==", id).get()).docs.some((d) => d.data().action === "organization.admin_assigned" && d.data().details.reason === "Customer confirmed their admin"));
+
+  // resetting that admin's password flags the member record (not the owner-only customer flag)
+  const rs = await mg.resetOrgUserPassword({ actor: owner, organizationId: id, uid: r.uid });
+  assert.equal((await db.doc("memberships/" + r.uid).get()).data().mustChangePassword, true);
+  assert.equal((await ua.usernameLogin({ username: r.credential.username, password: rs.temporaryPassword, ip: "aa1" })).mustChangePassword, true);
+
+  // second assignment, org that already has an admin, archived, restricted, self-service, and permissions
+  await assert.rejects(assign.assignOrgAdmin({ actor: owner, organizationId: id, admin: person(), reason: "again" }), (e) => e.status === 409);
+  const withAdmin = (await prov.provisionOrganization({ actor: owner, origin: "http://x", body: { setupMode: "ORG_ADMIN", requester: { name: "Rita Requester", email: "rita@acme.test", type: "manager" }, requestId: "req-aa-" + rnd(), organizationName: "Has Admin " + rnd(), industry: "Retail", countryCode: "IN", timezone: "Asia/Kolkata", currency: "INR", planType: "PAID", expiryDate: exp, licensedSeats: 3, apps: ["bizzux-notes"], admin: { fullName: "A", loginMethod: "USERNAME_TEMP", username: "has" + rnd() } } }, { sendInvite: async () => {} })).organizationId;
+  await assert.rejects(assign.assignOrgAdmin({ actor: owner, organizationId: withAdmin, admin: person(), reason: "x y z" }), (e) => e.status === 409);
+  const arch = await mkOrg();
+  await db.doc("organizations/" + arch).update({ status: "archived" });
+  await assert.rejects(assign.assignOrgAdmin({ actor: owner, organizationId: arch, admin: person(), reason: "x y z" }), (e) => e.status === 400);
+  const restricted = await mkOrg();
+  await db.doc("organizations/" + restricted).update({ restrictedAccess: true, authorizationStatus: "pending" });
+  await assert.rejects(assign.assignOrgAdmin({ actor: owner, organizationId: restricted, admin: person(), reason: "x y z" }), (e) => e.status === 403);
+  assert.equal((await db.doc("customers/" + restricted).get()).exists, false, "nothing was created");
+  const noReason = await mkOrg();
+  await assert.rejects(assign.assignOrgAdmin({ actor: owner, organizationId: noReason, admin: person(), reason: " " }), (e) => e.status === 400);
+  await assert.rejects(assign.assignOrgAdmin({ actor: owner, organizationId: noReason, admin: person({ fullName: "" }), reason: "x y z" }), (e) => e.status === 400);
+  await assert.rejects(assign.assignOrgAdmin({ actor: { uid: support.uid, email: support.email, platformRole: "SUPPORT_AGENT" }, organizationId: noReason, admin: person(), reason: "x y z" }), (e) => e.status === 403);
+  await assert.rejects(assign.assignOrgAdmin({ actor: owner, organizationId: orgA, admin: person(), reason: "x y z" }), (e) => e.status === 400, "self-service organizations are not assigned here");
+
+  // atomic: two simultaneous requests -> exactly one wins, one Auth user exists
+  const race = await mkOrg();
+  const results = await Promise.allSettled([
+    assign.assignOrgAdmin({ actor: owner, organizationId: race, admin: person({ username: "race1" + rnd() }), reason: "double click" }),
+    assign.assignOrgAdmin({ actor: owner, organizationId: race, admin: person({ username: "race2" + rnd() }), reason: "double click" }),
+  ]);
+  assert.equal(results.filter((x) => x.status === "fulfilled").length, 1);
+  assert.equal(results.find((x) => x.status === "rejected").reason.status, 409);
+  assert.equal((await db.collection("usernames").where("organizationId", "==", race).get()).size, 1);
+
+  // failure rolls everything back and the org can be retried
+  const rb = await mkOrg();
+  const taken = "taken" + rnd();
+  await assign.assignOrgAdmin({ actor: owner, organizationId: await mkOrg(), admin: person({ username: taken }), reason: "seed taken name" });
+  await assert.rejects(assign.assignOrgAdmin({ actor: owner, organizationId: rb, admin: person({ username: taken }), reason: "will fail" }), (e) => e.status === 409);
+  assert.equal((await db.doc("customers/" + rb).get()).exists, false); assert.ok(!(await db.doc("organizations/" + rb).get()).data().adminUid);
+  assert.equal((await db.doc("orgAdminAssignLocks/" + rb).get()).exists, false, "lock released");
+  assert.equal((await assign.assignOrgAdmin({ actor: owner, organizationId: rb, admin: person({ username: "retry" + rnd() }), reason: "retry works" })).ok, true);
+});
+
+test("assign admin by email invitation: no password, invite sent, pending activation", async () => {
+  const prov = await import("../lib/orgProvisioning.js");
+  const assign = await import("../lib/orgAssignAdmin.js");
+  const owner = { uid: "own-" + rnd(), email: "o@bizzux.test", platformRole: "OWNER" };
+  const exp = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  const id = (await prov.provisionOrganization({ actor: owner, origin: "http://x", body: { setupMode: "ORG_ONLY", requester: { name: "Rita Requester", email: "rita@acme.test", type: "manager" }, requestId: "req-ai-" + rnd(), organizationName: "Invite Later " + rnd(), industry: "Retail", countryCode: "IN", timezone: "Asia/Kolkata", currency: "INR", planType: "TRIAL", expiryDate: exp, licensedSeats: 2, apps: ["bizzux-notes"] } }, { sendInvite: async () => {} })).organizationId;
+  const email = "invitee-" + rnd() + "@example.test";
+  const sent = [];
+  const r = await assign.assignOrgAdmin({ actor: owner, organizationId: id, admin: { fullName: "Invitee", loginMethod: "EMAIL_INVITE", email }, reason: "invite later", origin: "http://x" }, { sendInvite: async (m) => { sent.push(m); } });
+  assert.equal(r.credential, null); assert.deepEqual(r.invite, { email, sent: true }); assert.equal(sent[0].email, email);
+  assert.ok(!(await fa.adminAuth().getUserByEmail(email)).passwordHash);
+  const org = (await db.doc("organizations/" + id).get()).data();
+  assert.equal(org.onboardingStatus, "pending_activation"); assert.equal(org.adminLoginMethod, "EMAIL_INVITE");
+  assert.equal((await db.doc("customers/" + id).get()).data().mustChangePassword, false);
+  // an email that already has a Bizzux sign-in is refused and nothing is left behind
+  const id2 = (await prov.provisionOrganization({ actor: owner, origin: "http://x", body: { setupMode: "ORG_ONLY", requester: { name: "Rita Requester", email: "rita@acme.test", type: "manager" }, requestId: "req-ai-" + rnd(), organizationName: "Invite Dup " + rnd(), industry: "Retail", countryCode: "IN", timezone: "Asia/Kolkata", currency: "INR", planType: "TRIAL", expiryDate: exp, licensedSeats: 2, apps: ["bizzux-notes"] } }, { sendInvite: async () => {} })).organizationId;
+  await assert.rejects(assign.assignOrgAdmin({ actor: owner, organizationId: id2, admin: { fullName: "Dup", loginMethod: "EMAIL_INVITE", email }, reason: "dup", origin: "http://x" }, { sendInvite: async () => {} }), (e) => e.status === 409);
+  assert.equal((await db.doc("customers/" + id2).get()).exists, false);
+});

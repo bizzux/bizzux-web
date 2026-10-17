@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { APPS } from "@/lib/appCatalog";
 import { api, orgCall, UsersTab, DetailsTab, plusDays, Field, useReason } from "./shared";
 import OrgTickets from "../support/OrgTickets";
+import AssignAdmin from "./AssignAdmin";
 import Overview, { ACCOUNT, PAYMENT, PLAN, Fact } from "./Overview";
 import { ONBOARDING_STATUS_LABEL } from "@/lib/orgContacts";
 
@@ -39,7 +40,7 @@ export default function Details({ id, onBack, onChanged, legacy, initialTab }) {
   const can = (p) => d.permissions.includes(p);
   const isOwner = d.role === "OWNER";
   const managed = d.managed && can("organizations.manage");
-  const o = { id, name: row.name, readOnly: !managed, ...row };
+  const o = { id, name: row.name, readOnly: !managed, ...row, managedNoAdmin: managed && !row.adminName && status.account === "pending_admin" };
 
   return (
     <div className="card">
@@ -105,6 +106,7 @@ function UsersAccess({ d, o, cust, legacy, reload, isOwner, canManage }) {
 
   return (
     <div>
+      {o.managedNoAdmin && <AssignAdmin orgId={o.id} orgName={o.name} onDone={reload} />}
       <UsersTab o={o} reload={reload} />
       {d.hasCustomerRecord && (
         <>
