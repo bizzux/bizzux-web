@@ -36,6 +36,7 @@ function Screenshot({ ticketId, a }) {
     })();
     return () => { off = true; if (made) URL.revokeObjectURL(made); };
   }, [ticketId, a.index]);
+  if (a.purged) return <span className="muted" style={{ fontSize: 12 }}>{a.name} (removed after the retention period)</span>;
   if (failed) return <span className="muted" style={{ fontSize: 12 }}>{a.name} (couldn't load)</span>;
   if (!url) return <span className="muted" style={{ fontSize: 12 }}>Loading {a.name}…</span>;
   return (

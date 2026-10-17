@@ -3,6 +3,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
+import * as nodeCrypto from "node:crypto";
 
 const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
 process.env.GCLOUD_PROJECT = "demo-bizzux";
@@ -39,6 +40,7 @@ const store = new Map();
 const fakeBlob = {
   put: async (path, body, opts) => { store.set(path, { size: body.length, contentType: opts.contentType }); },
   head: async (path) => { const s = store.get(path); if (!s) throw new Error("not found"); return s; },
+  del: async (path) => { if (!store.delete(path)) throw new Error("not found"); },
 };
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(300, 1)]);
 const JPG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(300, 2)]);
@@ -178,4 +180,167 @@ test("screenshots: real image types only, up to 3, size-limited, only the upload
   const stored = (await db.doc("supportTickets/" + ok.id).get()).data().attachments;
   assert.ok(stored.every((a) => a.path.startsWith(`support/${orgA}/${empA.uid}/`)));
   assert.ok(!JSON.stringify((await cGet(empA, "?id=" + ok.id)).body).includes("support/" + orgA));
+});
+
+// ---------------------------------------------------------------------------
+// Email notifications
+// ---------------------------------------------------------------------------
+const resetRate = async (u) => { for (const k of ["case", "reply"]) await db.doc("supportRate/" + u.uid + "_" + k).delete(); };
+const mailLib = await import("../lib/supportEmail.js");
+const retention = await import("../lib/supportRetention.js");
+const sentMail = [];
+mailLib.setMailer(async (m) => { sentMail.push(m); return { sent: true }; });
+const mailsFor = (needle) => sentMail.filter((m) => m.subject.includes(needle));
+
+test("emails: staff hear about new cases and customer replies; customers hear about public replies and resolution", async () => {
+  await resetRate(empA);
+  process.env.SUPPORT_NOTIFY_EMAILS = "support-inbox@bizzux.test";
+  const tag = "Mail" + rnd();
+  const c = (await cPost(empA, { ...good, subject: `${tag} <b>bold</b> sync`, description: "Description <script>alert(1)</script> here", attachments: [] })).body.case;
+  const created = mailsFor(c.code);
+  assert.equal(created.length, 1); assert.deepEqual(created[0].to, ["support-inbox@bizzux.test"]);
+  assert.ok(created[0].subject.includes("New case")); assert.ok(created[0].html.includes("Attendance Customer A"));
+  assert.ok(created[0].html.includes("&lt;b&gt;bold&lt;/b&gt;") && !created[0].html.includes("<script>"), "customer text is HTML-escaped");
+  assert.ok(created[0].html.includes("/admin#org=" + orgA + "&amp;tab=support") || created[0].html.includes("/admin#org=" + orgA + "&tab=support"));
+
+  // customer reply -> staff, but only once per throttle window
+  await cPost(empA, { action: "reply", id: c.id, body: "First follow up" });
+  await cPost(empA, { action: "reply", id: c.id, body: "Second follow up right after" });
+  assert.equal(mailsFor(c.code).filter((m) => m.subject.includes("Customer replied")).length, 1, "throttled");
+  await db.doc("supportTickets/" + c.id).update({ lastStaffEmailAtMs: Date.now() - mailLib.STAFF_FOLLOWUP_THROTTLE_MS - 1000 });
+  await cPost(empA, { action: "reply", id: c.id, body: "Third follow up later" });
+  assert.equal(mailsFor(c.code).filter((m) => m.subject.includes("Customer replied")).length, 2);
+
+  // internal notes never email anyone; public reply -> the customer only
+  const before = sentMail.length;
+  await sPost(support, { action: "note", id: c.id, body: "INTERNAL secret note" });
+  assert.equal(sentMail.length, before, "internal note sends nothing");
+  await sPost(support, { action: "note", id: c.id, body: "We found the problem, update coming.", visibility: "public" });
+  const toCustomer = sentMail.at(-1);
+  assert.deepEqual(toCustomer.to, empA.email.toLowerCase()); assert.ok(toCustomer.subject.includes("Bizzux support replied"));
+  assert.ok(toCustomer.html.includes("We found the problem") && !toCustomer.html.includes("INTERNAL"));
+  assert.ok(toCustomer.html.includes("attendance.bizzux.com"));
+
+  // resolving emails the customer once; other status changes don't
+  const n = sentMail.length;
+  await sPost(support, { action: "update", id: c.id, patch: { status: "in_progress" } });
+  assert.equal(sentMail.length, n);
+  await sPost(support, { action: "update", id: c.id, patch: { status: "resolved" } });
+  assert.ok(sentMail.at(-1).subject.includes("Marked resolved") && sentMail.at(-1).to === empA.email.toLowerCase());
+
+  // staff-created tickets have no customer to email
+  const staffTicket = (await sPost(support, { action: "create", organizationId: orgA, subject: "Logged from a phone call" })).body.ticket;
+  const m = sentMail.length;
+  await sPost(support, { action: "note", id: staffTicket.id, body: "Called them back", visibility: "public" });
+  await sPost(support, { action: "update", id: staffTicket.id, patch: { status: "resolved" } });
+  assert.equal(sentMail.length, m);
+});
+
+test("emails: default recipients, assignee routing, disable switch, and a mail failure never breaks the case", async () => {
+  await resetRate(empA);
+  delete process.env.SUPPORT_NOTIFY_EMAILS;
+  let c = (await cPost(empA, { ...good, subject: "Recipients " + rnd() })).body.case;
+  let to = mailsFor(c.code)[0].to;
+  assert.ok(to.includes(support.email) && !to.includes(billing.email), "everyone who can work tickets, not billing");
+  // assigned -> only the assignee hears about follow-ups
+  await sPost(support, { action: "update", id: c.id, patch: { assigneeUid: support.uid } });
+  await cPost(empA, { action: "reply", id: c.id, body: "Any news?" });
+  assert.deepEqual(mailsFor(c.code).filter((x) => x.subject.includes("Customer replied")).at(-1).to, [support.email]);
+
+  // switched off
+  process.env.SUPPORT_EMAILS_DISABLED = "1";
+  const n = sentMail.length;
+  c = (await cPost(empA, { ...good, subject: "Disabled " + rnd() })).body.case;
+  assert.equal(sentMail.length, n);
+  delete process.env.SUPPORT_EMAILS_DISABLED;
+
+  await resetRate(empA);
+  // transport throws -> case still created, reply still saved
+  const prev = mailLib.setMailer(async () => { throw new Error("Resend is down"); });
+  const ok = await cPost(empA, { ...good, subject: "Mail down " + rnd() });
+  assert.equal(ok.status, 200);
+  assert.equal((await cPost(empA, { action: "reply", id: ok.body.case.id, body: "still works" })).status, 200);
+  assert.equal((await sPost(support, { action: "note", id: ok.body.case.id, body: "public while mail is down", visibility: "public" })).status, 200);
+  mailLib.setMailer(prev);
+});
+
+// ---------------------------------------------------------------------------
+// Retention
+// ---------------------------------------------------------------------------
+test("retention: screenshots are removed after the period for closed tickets; reopening stops the clock", async () => {
+  await resetRate(empA);
+  const acctA = { accountId: orgA, profile: "Staff/Shopkeeper" };
+  const up = (buf) => cases.storeCaseAttachment({ acct: acctA, uid: empA.uid, file: buf, blob: fakeBlob });
+  const a1 = await up(PNG), a2 = await up(JPG);
+  const mkCase = async (atts) => cases.createCase({ user: { uid: empA.uid, email: empA.email }, acct: acctA, body: { ...good, subject: "Retention " + rnd(), attachments: atts }, blob: fakeBlob });
+  const withShots = await mkCase([a1, a2]);
+  const reg = (p) => db.doc("supportUploads/" + nodeCrypto.createHash("sha1").update(p).digest("hex").slice(0, 32)).get();
+  assert.equal((await reg(a1.path)).data().linked, true, "linked to the case");
+
+  // closing starts the clock only for tickets that have screenshots
+  await sPost(support, { action: "update", id: withShots.id, patch: { status: "resolved" } });
+  const t = (await db.doc("supportTickets/" + withShots.id).get()).data();
+  assert.ok(Math.abs(t.purgeAttachmentsAtMs - (t.closedAtMs + 90 * 864e5)) < 1000);
+  const plain = await mkCase([]);
+  await sPost(support, { action: "update", id: plain.id, patch: { status: "closed" } });
+  assert.equal((await db.doc("supportTickets/" + plain.id).get()).data().purgeAttachmentsAtMs, undefined);
+
+  // reopening (staff or customer) stops it; closing again restarts it
+  await sPost(support, { action: "update", id: withShots.id, patch: { status: "open" } });
+  assert.equal((await db.doc("supportTickets/" + withShots.id).get()).data().purgeAttachmentsAtMs, undefined);
+  await sPost(support, { action: "update", id: withShots.id, patch: { status: "resolved" } });
+  await cPost(empA, { action: "reply", id: withShots.id, body: "Not fixed" });
+  assert.equal((await db.doc("supportTickets/" + withShots.id).get()).data().purgeAttachmentsAtMs, undefined, "customer reopen clears it");
+  await sPost(support, { action: "update", id: withShots.id, patch: { status: "closed" } });
+
+  // not due yet -> nothing happens; dry run reports but deletes nothing
+  const early = await retention.runSupportRetention({ blob: fakeBlob, now: Date.now() + 30 * 864e5 });
+  assert.equal(early.ticketsPurged, 0); assert.ok(store.has(a1.path));
+  const dry = await retention.runSupportRetention({ blob: fakeBlob, now: Date.now() + 91 * 864e5, dryRun: true });
+  assert.equal(dry.dryRun, true); assert.ok(dry.ticketsDue >= 1 && dry.ticketsPurged === 0 && store.has(a1.path) && store.has(a2.path));
+  assert.equal(dry.writes, 0);
+
+  // due -> files deleted, ticket keeps its text with a purged marker, audited
+  const run = await retention.runSupportRetention({ blob: fakeBlob, now: Date.now() + 91 * 864e5 });
+  assert.ok(run.ticketsPurged >= 1 && run.filesDeleted >= 2); assert.deepEqual(run.errors, []);
+  assert.ok(!store.has(a1.path) && !store.has(a2.path));
+  const after = (await db.doc("supportTickets/" + withShots.id).get()).data();
+  assert.equal(after.subject.startsWith("Retention"), true); assert.equal(after.purgeAttachmentsAtMs, undefined);
+  assert.ok(after.attachments.length === 2 && after.attachments.every((a) => a.purged && !a.path && a.name));
+  assert.equal((await reg(a1.path)).exists, false, "registry cleaned");
+  const staffView = (await sGet(support, "?id=" + withShots.id)).body;
+  assert.ok(staffView.ticket.attachments.every((a) => a.purged));
+  assert.ok(staffView.notes.some((n) => n.body.includes("Screenshots removed after the 90-day retention")));
+  assert.equal((await call(staffAttRoute.GET, support, "a?ticket=" + withShots.id + "&i=0")).status, 404);
+  assert.equal((await call(attRoute.GET, empA, "a?case=" + withShots.id + "&i=0")).status, 404);
+  assert.ok((await cGet(empA, "?id=" + withShots.id)).body.case.attachments.every((a) => a.purged));
+  assert.ok((await db.collection("auditLogs").where("targetId", "==", orgA).get()).docs.some((d) => d.data().action === "support_ticket.attachments_purged" && d.data().details.ticketId === withShots.id));
+  // idempotent
+  const again = await retention.runSupportRetention({ blob: fakeBlob, now: Date.now() + 91 * 864e5 });
+  assert.equal(again.filesDeleted, 0);
+});
+
+test("retention: abandoned uploads are removed after 24h; linked and recent ones are kept; period is configurable", async () => {
+  await resetRate(empA);
+  const acctA = { accountId: orgA, profile: "Staff/Shopkeeper" };
+  const up = (buf) => cases.storeCaseAttachment({ acct: acctA, uid: empA.uid, file: buf, blob: fakeBlob });
+  const abandoned = await up(PNG), recent = await up(JPG), kept = await up(WEBP);
+  const idOf = (p) => nodeCrypto.createHash("sha1").update(p).digest("hex").slice(0, 32);
+  await db.doc("supportUploads/" + idOf(abandoned.path)).update({ createdAtMs: Date.now() - 25 * 3600 * 1000 });
+  await db.doc("supportUploads/" + idOf(kept.path)).update({ createdAtMs: Date.now() - 48 * 3600 * 1000 });
+  await cases.createCase({ user: { uid: empA.uid, email: empA.email }, acct: acctA, body: { ...good, subject: "Keeps its shot " + rnd(), attachments: [kept] }, blob: fakeBlob });
+
+  const dry = await retention.runSupportRetention({ blob: fakeBlob, dryRun: true });
+  assert.ok(dry.orphansFound >= 1 && store.has(abandoned.path));
+  const run = await retention.runSupportRetention({ blob: fakeBlob });
+  assert.ok(run.orphansDeleted >= 1);
+  assert.ok(!store.has(abandoned.path), "abandoned upload removed");
+  assert.ok(store.has(recent.path), "recent upload kept");
+  assert.ok(store.has(kept.path), "attached upload kept even though older than 24h");
+
+  assert.equal(retention.retentionDays(), 90);
+  process.env.SUPPORT_ATTACHMENT_RETENTION_DAYS = "30"; assert.equal(retention.retentionDays(), 30);
+  process.env.SUPPORT_ATTACHMENT_RETENTION_DAYS = "2"; assert.equal(retention.retentionDays(), 7, "never shorter than a week");
+  process.env.SUPPORT_ATTACHMENT_RETENTION_DAYS = "nonsense"; assert.equal(retention.retentionDays(), 90);
+  delete process.env.SUPPORT_ATTACHMENT_RETENTION_DAYS;
 });

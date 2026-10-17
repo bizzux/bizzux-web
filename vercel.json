@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/directory-sync",
       "schedule": "30 20 * * *"
+    },
+    {
+      "path": "/api/cron/support-retention",
+      "schedule": "45 20 * * *"
     }
   ]
 }

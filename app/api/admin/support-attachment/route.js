@@ -19,7 +19,7 @@ export async function GET(req) {
     if (!snap.exists) throw { status: 404, message: "Ticket not found" };
     const t = snap.data();
     const a = (t.attachments || [])[parseInt(u.searchParams.get("i"), 10)];
-    if (!a) throw { status: 404, message: "Attachment not found" };
+    if (!a || a.purged) throw { status: 404, message: "This screenshot was removed after the retention period" };
     const r = await supportBlob.get(a.path);
     if (!r || r.statusCode !== 200) throw { status: 404, message: "Attachment not found in storage" };
     await logAuditEvent({

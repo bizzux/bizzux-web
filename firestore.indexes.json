@@ -447,6 +447,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "supportUploads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "linked",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAtMs",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

@@ -55,8 +55,9 @@ test("permission matrix by role; owner-only permissions are never delegable", ()
 });
 
 test("request guard: platform roles, customer admins and anonymous callers", async () => {
-  const owner = await signIn("owner-f@bizzux.test");
-  await db.doc("platformAdmins/" + owner.uid).set({ email: "owner-f@bizzux.test", role: "OWNER", status: "active", permissions: null }); // explicit: the one-time bootstrap may already be used by another test file
+  const ownerEmail = "owner-f-" + rnd() + "@bizzux.test";
+  const owner = await signIn(ownerEmail);
+  await db.doc("platformAdmins/" + owner.uid).set({ email: ownerEmail, role: "OWNER", status: "active", permissions: null }); // explicit: the one-time bootstrap may already be used by another test file
   const support = await signIn("support-" + rnd() + "@bizzux.test");
   const billing = await signIn("billing-" + rnd() + "@bizzux.test");
   const customerAdmin = await signIn("custadmin-" + rnd() + "@example.test");
@@ -205,6 +206,7 @@ test("directory stays in sync from the provisioning paths and the sync is non-de
       setupMode: "ORG_ADMIN", requestId: "req-sync-" + rnd(), organizationName: name, industry: "Retail", countryCode: "IN", timezone: "Asia/Kolkata", currency: "INR",
       planType: "PAID", expiryDate: new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10), licensedSeats: 5, apps: ["bizzux-notes"],
       admin: { fullName: "Sync Admin", loginMethod: "USERNAME_TEMP", username: "sy" + rnd() },
+      requester: { name: "Sync Requester", email: "sync@acme.test", type: "manager" },
     },
   }, { sendInvite: async () => {} });
   let e = (await db.doc("organizationDirectory/" + r.organizationId).get()).data();
