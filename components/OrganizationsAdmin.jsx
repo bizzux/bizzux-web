@@ -54,6 +54,8 @@ export default function OrganizationsAdmin() {
   const [result, setResult] = useState(null);
   const [listErr, setListErr] = useState("");
   const [managing, setManaging] = useState(null);
+  // Time zones that belong to the chosen country (null = show the full list).
+  const [tzOptions, setTzOptions] = useState(null);
 
   const timezones = useMemo(() => getTimezones(), []);
   const currencyCodes = useMemo(() => getCurrencyCodes(), []);
@@ -80,6 +82,27 @@ export default function OrganizationsAdmin() {
     return { ...f, apps, users: f.users.map((u) => ({ ...u, apps: u.apps.filter((a) => apps.includes(a)) })) };
   });
 
+  // Picking a country pre-fills currency and time zone. Countries with several
+  // zones (US, Canada, Australia...) narrow the list instead; state doesn't
+  // change the zone for any country we cover except those, so it isn't used.
+  async function onCountry(code) {
+    set("countryCode", code);
+    setTzOptions(null);
+    if (!code) return;
+    try {
+      const { Country } = await import("country-state-city");
+      const c = Country.getCountryByCode(code);
+      if (!c) return;
+      const zones = (c.timezones || []).map((z) => z.zoneName);
+      setForm((f) => (f.countryCode !== code ? f : {
+        ...f,
+        currency: currencyCodes.includes(c.currency) ? c.currency : f.currency,
+        timezone: zones.length === 1 ? zones[0] : "",
+      }));
+      if (zones.length > 1) setTzOptions(zones);
+    } catch { /* leave the fields for manual choice */ }
+  }
+
   const mode = MODES.find((m) => m.id === form.setupMode);
   const needsAdmin = form.setupMode !== "ORG_ONLY";
   const states = STATES_BY_COUNTRY[form.countryCode];
@@ -94,6 +117,7 @@ export default function OrganizationsAdmin() {
       const d = await api("/api/admin/organizations", "POST", body);
       setResult({ ...d, name: form.organizationName });
       setForm(blankForm());
+      setTzOptions(null);
       requestId.current = newId(); // a NEW organization gets a new id; retries of THIS one reuse it
       await load();
     } catch (e2) {
@@ -158,7 +182,7 @@ export default function OrganizationsAdmin() {
                 </select>
               </Field>
               <Field label="Country *">
-                <select className="input" value={form.countryCode} onChange={(e) => set("countryCode", e.target.value)} required>
+                <select className="input" value={form.countryCode} onChange={(e) => onCountry(e.target.value)} required>
                   <option value="" disabled>Select a country</option>
                   {COUNTRIES.map(([c, n]) => <option key={c} value={c}>{n}</option>)}
                 </select>
@@ -178,8 +202,9 @@ export default function OrganizationsAdmin() {
               <Field label="Time Zone *">
                 <select className="input" value={form.timezone} onChange={(e) => set("timezone", e.target.value)} required>
                   <option value="" disabled>Select</option>
-                  {timezones.map((tz) => <option key={tz} value={tz}>{formatTimezoneLabel(tz)}</option>)}
+                  {(tzOptions || timezones).map((tz) => <option key={tz} value={tz}>{formatTimezoneLabel(tz)}</option>)}
                 </select>
+                {tzOptions && <span className="muted" style={{ fontSize: 12 }}>This country has several time zones — pick one.</span>}
               </Field>
               <Field label="Currency *">
                 <select className="input" value={form.currency} onChange={(e) => set("currency", e.target.value)} required>
