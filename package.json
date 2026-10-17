@@ -7,7 +7,8 @@
     "prebuild": "node scripts/bump-build.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:orgs": "firebase emulators:exec --only auth,firestore --project demo-bizzux \"tsx --test test/orgProvisioning.test.mjs\""
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
@@ -33,6 +34,7 @@
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.40",
     "tailwindcss": "^3.4.7",
+    "tsx": "^4.23.15",
     "typescript": "^5.5.4"
   }
 }

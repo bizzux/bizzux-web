@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
-import OrganizationsManager from "@/components/OrganizationsManager";
+import OrganizationsAdmin from "@/components/OrganizationsAdmin";
 import PricingManager from "@/components/PricingManager";
 import { APP_CATALOG } from "@/lib/apps";
 import { IconTrash } from "@/components/Icons";
@@ -128,7 +128,7 @@ export default function SuperAdminPanel() {
       {tab === "offers" && <OffersManager />}
       {tab === "resellers" && <ResellersManager />}
       {tab === "customers" && <CustomersList isOwner={platformRole === "OWNER"} />}
-      {tab === "organizations" && <OrganizationsManager />}
+      {tab === "organizations" && <OrganizationsAdmin />}
       {tab === "platformadmins" && <PlatformAdminsManager isOwner={platformRole === "OWNER"} />}
       {tab === "auditlogs" && <AuditLogsPanel />}
       {tab === "security" && <SecuritySettingsPanel />}

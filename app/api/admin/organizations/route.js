@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { requireOrgManager, adminAuth, adminDb, generateTempPassword } from "@/lib/firebaseAdmin";
 import { COUNTRIES } from "@/lib/countries";
 import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizationMembership";
-import { createOrganization } from "@/lib/organization";
-import { upsertOrganizationAppSubscription, upsertAppAssignment } from "@/lib/appAccess";
-import { APP_IDS } from "@/lib/appCatalog";
+import {
+  INDUSTRIES, assertOrgPermission, provisionOrganization, changeOrganizationStatus,
+  updateOrganizationEntitlements, resendOrgInvite, deleteOrganizationPermanently, listOrganizations,
+} from "@/lib/orgProvisioning";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,9 +23,11 @@ export const dynamic = "force-dynamic";
 // account, once someone signs up and claims it, is a separate step not
 // built yet.
 //
-// Gated by requireOrgManager: the Super Admin, plus anyone holding the
-// Global Admin or Admin profile on their own account (see
-// lib/firebaseAdmin.js for why that's intentional, not a loophole).
+// Platform actions (provision / suspend / archive / reactivate /
+// updateEntitlements / resendInvite / deletePermanently) are Platform Admin
+// only and permission-checked in lib/orgProvisioning.js. Customer Admins
+// (via /profile) keep only the legacy placeholder create/list/delete, scoped
+// to records they created, and createTeamMember scoped to their own account.
 
 const USER_RANGES = ["1-10", "11-20", "21-50", "51-100", "101-200", "201-500", "500+"];
 const COUNTRY_CODES = new Set(COUNTRIES.map(([code]) => code));
@@ -58,12 +61,19 @@ async function resolveOwnPlan(c) {
 
 export async function GET(req) {
   try {
-    await requireOrgManager(req);
-    const snap = await adminDb().collection("organizations").orderBy("createdAt", "desc").get();
-    const organizations = snap.docs.map((d) => {
-      const data = d.data();
-      return { id: d.id, ...data, createdAt: toIso(data.createdAt) };
-    });
+    const c = await requireOrgManager(req);
+    if (c.isSuper) {
+      const url = new URL(req.url);
+      const organizations = await listOrganizations({ includeArchived: url.searchParams.get("archived") === "1" });
+      return NextResponse.json({ organizations, industries: INDUSTRIES });
+    }
+    // Customer admins (from /profile) see ONLY the placeholder records they
+    // created themselves — never other tenants' organizations.
+    const snap = await adminDb().collection("organizations").where("createdBy", "==", c.email).get();
+    const organizations = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((o) => !o.type)
+      .map((o) => ({ ...o, createdAt: toIso(o.createdAt) }));
     return NextResponse.json({ organizations });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
@@ -74,118 +84,49 @@ export async function POST(req) {
   try {
     const c = await requireOrgManager(req);
     const body = await req.json();
+    const origin = new URL(req.url).origin;
 
-    if (body.action === "delete") {
-      if (!body.id) throw { status: 400, message: "Organization id required" };
-      await adminDb().doc("organizations/" + body.id).delete();
-      return NextResponse.json({ ok: true });
+    // ---- Platform Admin actions ------------------------------------------
+    // Fine-grained, server-enforced permissions (lib/orgProvisioning.js).
+    // The create path takes the plan from the request, never from the
+    // caller's own subscription.
+    if (body.action === "provision") {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      await assertOrgPermission(c, "organizations.create");
+      const r = await provisionOrganization({ actor: c, body, origin });
+      return NextResponse.json({ ok: true, ...r }, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (["suspend", "archive", "reactivate"].includes(body.action)) {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      return NextResponse.json(await changeOrganizationStatus({ actor: c, organizationId: body.id, action: body.action }));
+    }
+    if (body.action === "updateEntitlements") {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      return NextResponse.json(await updateOrganizationEntitlements({ actor: c, organizationId: body.id, body }));
+    }
+    if (body.action === "resendInvite") {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      await assertOrgPermission(c, "organizations.manage");
+      return NextResponse.json(await resendOrgInvite({ actor: c, organizationId: body.id, origin }));
+    }
+    if (body.action === "deletePermanently") {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      return NextResponse.json(await deleteOrganizationPermanently({ actor: c, organizationId: body.id, confirmName: body.confirmName }));
     }
 
-    // Direct onboarding for businesses whose owner has no email address
-    // staff can reliably reach (small shops, etc.) — creates a REAL
-    // customers/{uid} account immediately, with a login username (any
-    // valid-looking email string — it never has to receive mail) and
-    // password set by the admin or generated here, instead of leaving a
-    // "pending" organizations/ placeholder for someone to self-serve sign
-    // up into later. No verification gate is stamped on these accounts:
-    // the Platform Admin creating the login IS the verification.
-    if (body.action === "createAccount") {
-      const organizationName = String(body.organizationName || "").trim().slice(0, 160);
-      if (!organizationName) throw { status: 400, message: "Business/shop name is required" };
-
-      const email = String(body.email || "").trim().toLowerCase().slice(0, 200);
-      if (!EMAIL_RE.test(email)) {
-        throw { status: 400, message: "Enter a login username in email format (e.g. shopname@bizzux.login) — it doesn't need to be a real inbox" };
+    // ---- Legacy: a customer Admin removes a placeholder THEY created ------
+    // (used by /profile). Never touches real organizations or other tenants'.
+    if (body.action === "delete") {
+      if (!body.id) throw { status: 400, message: "Organization id required" };
+      const ref = adminDb().doc("organizations/" + body.id);
+      const snap = await ref.get();
+      const d = snap.data();
+      if (!snap.exists || d.type || d.createdBy !== c.email || c.isSuper) {
+        throw { status: 403, message: "You can only remove placeholder organizations you created" };
       }
-
-      const countryCode = String(body.countryCode || "").trim().toUpperCase();
-      const country = COUNTRIES.find(([code]) => code === countryCode);
-      if (!country) throw { status: 400, message: "Choose a valid country" };
-
-      const state = String(body.state || "").trim().slice(0, 100);
-
-      const timezone = String(body.timezone || "").trim().slice(0, 60);
-      if (!timezone) throw { status: 400, message: "Time zone is required" };
-
-      const currency = String(body.currency || "").trim().toUpperCase().slice(0, 10);
-      if (!currency) throw { status: 400, message: "Currency is required" };
-
-      const userRange = String(body.userRange || "");
-      if (!USER_RANGES.includes(userRange)) throw { status: 400, message: "Choose a valid number of users" };
-
-      const password = String(body.password || "").trim() || generateTempPassword();
-      if (password.length < 8) throw { status: 400, message: "Password must be at least 8 characters" };
-      // Defaults to true — a temp/admin-set password should get replaced
-      // by one only the shop owner knows, unless the admin explicitly
-      // opts out for this login.
-      const mustChangePassword = body.mustChangePassword !== false;
-
-      const ownPlan = await resolveOwnPlan(c);
-      if (!ownPlan) {
-        throw { status: 400, message: "Your account doesn't have an active plan or trial on file, so a Profile can't be set for this business." };
-      }
-      const { planId, planName } = ownPlan;
-
-      let authUser;
-      try {
-        authUser = await adminAuth().createUser({ email, password, emailVerified: true, displayName: organizationName });
-      } catch (e) {
-        if (e.code === "auth/email-already-exists") {
-          throw { status: 409, message: "That login username is already in use by another account." };
-        }
-        throw e;
-      }
-
-      const settingsSnap = await adminDb().doc("portalSettings/config").get();
-      const trialDays = Number((settingsSnap.exists ? settingsSnap.data().trialDays : null) ?? 30) || 30;
-      const now = Timestamp.now();
-      const trialEndDate = Timestamp.fromMillis(now.toMillis() + trialDays * 24 * 60 * 60 * 1000);
-
-      await adminDb().doc("customers/" + authUser.uid).set({
-        email,
-        organizationName,
-        companyName: organizationName,
-        countryCode,
-        country: country[1],
-        state,
-        timezone,
-        currency,
-        userRange,
-        createdAt: FieldValue.serverTimestamp(),
-        trialStartDate: now,
-        trialEndDate,
-        status: "trial",
-        planId,
-        planName,
-        onboarded: false,
-        // No verification gates — this login was created and vouched for
-        // directly by a Platform Admin, not through self-serve signup.
-        verifyEmailRequired: false,
-        verifyMobileRequired: false,
-        createdByAdmin: true,
-        createdByAdminEmail: c.email,
-        mustChangePassword,
-      });
-
-      // Platform-Admin-created business logins are always real customer
-      // organizations, never Bizzux's own internal one.
-      await createOrganization({ id: authUser.uid, name: organizationName, type: "CUSTOMER", createdBy: c.uid });
-      await upsertOrganizationMembership({ organizationId: authUser.uid, userId: authUser.uid, role: "OWNER", status: "active" });
-      await Promise.all(
-        APP_IDS.map((appId) =>
-          upsertOrganizationAppSubscription({ organizationId: authUser.uid, appId, status: "ACTIVE", subscriptionType: "TRIAL" })
-        )
-      );
-      await Promise.all(
-        APP_IDS.map((appId) => upsertAppAssignment({ organizationId: authUser.uid, userId: authUser.uid, appId, role: "OWNER", status: "ACTIVE" }))
-      );
-
-      await logAuditEvent({
-        action: "organization.create_account", actor: c, targetType: "organization", targetId: authUser.uid,
-        details: { organizationName, email },
-      });
-
-      return NextResponse.json({ ok: true, uid: authUser.uid, email, password });
+      await ref.delete();
+      await logAuditEvent({ action: "organization.placeholder_delete", actor: c, targetType: "organization", targetId: body.id, details: { name: d.organizationName } });
+      return NextResponse.json({ ok: true });
     }
 
     // Adds a team member (Organization Admin, Manager, Staff/Shopkeeper,
@@ -203,6 +144,9 @@ export async function POST(req) {
     if (body.action === "createTeamMember") {
       const accountId = String(body.accountId || "").trim();
       if (!accountId) throw { status: 400, message: "Choose which organization this login belongs to" };
+      // Tenant isolation: a customer Admin may only add people to THEIR OWN
+      // account; only platform staff may target any organization.
+      if (!c.isSuper && accountId !== c.accountId) throw { status: 403, message: "You can only manage your own organization" };
       const accountSnap = await adminDb().doc("customers/" + accountId).get();
       if (!accountSnap.exists) throw { status: 404, message: "Organization not found" };
 
@@ -292,6 +236,7 @@ export async function POST(req) {
       createdAt: FieldValue.serverTimestamp(),
     });
 
+    await logAuditEvent({ action: "organization.placeholder_create", actor: c, targetType: "organization", targetId: ref.id, details: { organizationName } });
     return NextResponse.json({ ok: true, id: ref.id });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
