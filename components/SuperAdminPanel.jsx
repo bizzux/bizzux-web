@@ -5,6 +5,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import OrganizationsAdmin from "@/components/OrganizationsAdmin";
+import SupportWorkspace from "@/components/support/SupportWorkspace";
 import PricingManager from "@/components/PricingManager";
 import { APP_CATALOG } from "@/lib/apps";
 import { IconTrash } from "@/components/Icons";
@@ -27,7 +28,7 @@ const TABS = [
   { id: "business", label: "Business Health" },
   { id: "costusage", label: "FinOps" },
   { id: "organizations", label: "Organizations" },
-  { id: "customers", label: "Support / Customers" },
+  { id: "support", label: "Customer Support" },
   { id: "pricing", label: "Billing & Pricing" },
   { id: "offers", label: "Offers" },
   { id: "resellers", label: "Partners" },
@@ -60,6 +61,11 @@ export default function SuperAdminPanel() {
   const [isSuper, setIsSuper] = useState(null); // null = checking
   const [platformRole, setPlatformRole] = useState(null); // "OWNER" | "ADMIN" | null
   const [tab, setTab] = useState("dashboard");
+  // Jump to an organization (optionally to one of its tabs) in the Organizations workspace.
+  const openOrg = (id, orgTab) => {
+    try { window.location.hash = "org=" + encodeURIComponent(id) + (orgTab ? "&tab=" + orgTab : ""); } catch { /* ignore */ }
+    setTab("organizations");
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
@@ -104,13 +110,34 @@ export default function SuperAdminPanel() {
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>Signed in as <strong>{user.email}</strong></p>
           <span className="status-pill active">{platformRole === "SUPPORT_AGENT" ? "Customer Support Agent" : platformRole === "BILLING_ADMIN" ? "Billing Administrator" : platformRole}</span>
         </div>
-        <OrganizationsAdmin
-          platformRole={platformRole}
-          legacy={{
-            ExtendTrialModal, MarkPaidModal, FreeLicenseModal, SetPasswordModal, AddTeamMemberForm,
-            DeleteUserPanel, ActivityRow, APP_USAGE_LABELS, timeAgo, freeReasonLabel,
-          }}
-        />
+        {(() => {
+          // Support Agents also get the ticket workspace; Billing Administrators only Organizations.
+          const allowed = platformRole === "SUPPORT_AGENT" ? ["organizations", "support"] : ["organizations"];
+          const current = allowed.includes(tab) ? tab : "organizations";
+          return (
+            <>
+              {allowed.length > 1 && (
+                <div className="admin-tabs" role="tablist">
+                  {allowed.map((id) => (
+                    <button key={id} role="tab" aria-selected={current === id} className={"admin-tab" + (current === id ? " active" : "")} onClick={() => setTab(id)}>
+                      {id === "organizations" ? "Organizations" : "Customer Support"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {current === "support" && <SupportWorkspace onOpenOrg={openOrg} />}
+              {current === "organizations" && (
+                <OrganizationsAdmin
+                  platformRole={platformRole}
+                  legacy={{
+                    ExtendTrialModal, MarkPaidModal, FreeLicenseModal, SetPasswordModal, AddTeamMemberForm,
+                    DeleteUserPanel, ActivityRow, APP_USAGE_LABELS, timeAgo, freeReasonLabel,
+                  }}
+                />
+              )}
+            </>
+          );
+        })()}
       </div>
     );
   }
@@ -139,14 +166,14 @@ export default function SuperAdminPanel() {
         ))}
       </div>
 
-      {tab === "dashboard" && <PlatformDashboard isOwner={platformRole === "OWNER"} />}
+      {tab === "dashboard" && <PlatformDashboard isOwner={platformRole === "OWNER"} onOpenOrg={openOrg} />}
       {tab === "business" && <BusinessHealthPanel isOwner={platformRole === "OWNER"} />}
       {tab === "costusage" && <CostUsagePanel isOwner={platformRole === "OWNER"} />}
       {tab === "trial" && <TrialSettings />}
       {tab === "pricing" && <PricingManager />}
       {tab === "offers" && <OffersManager />}
       {tab === "resellers" && <ResellersManager />}
-      {tab === "customers" && <CustomersList isOwner={platformRole === "OWNER"} />}
+      {tab === "support" && <SupportWorkspace onOpenOrg={openOrg} />}
       {tab === "organizations" && (
         <OrganizationsAdmin
           platformRole={platformRole}
@@ -818,7 +845,7 @@ function daysUntil(iso) {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / DAY_MS);
 }
 
-function PlatformDashboard({ isOwner }) {
+function PlatformDashboard({ isOwner, onOpenOrg }) {
   const [users, setUsers] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [err, setErr] = useState("");
@@ -826,7 +853,6 @@ function PlatformDashboard({ isOwner }) {
   const [view, setView] = useState("new");
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   async function load() {
     setErr("");
@@ -919,7 +945,7 @@ function PlatformDashboard({ isOwner }) {
 
   function openUser(u) {
     const c = u.kind === "owner" ? customers.find((x) => x.id === u.uid) : null;
-    if (c) setSelectedCustomer(c);
+    if (c) onOpenOrg(c.id);
     else setSelectedUser(u);
   }
 
@@ -1040,12 +1066,6 @@ function PlatformDashboard({ isOwner }) {
         )}
       </div>
 
-      {selectedCustomer && (
-        <CustomerDetailPanel
-          customer={selectedCustomer} isOwner={isOwner}
-          onClose={() => setSelectedCustomer(null)} onChanged={load}
-        />
-      )}
       {selectedUser && (
         <UserDetailModal
           user={selectedUser} isOwner={isOwner}
@@ -1054,7 +1074,7 @@ function PlatformDashboard({ isOwner }) {
             const c = customers.find((x) => x.id === id);
             if (c) {
               setSelectedUser(null);
-              setSelectedCustomer(c);
+              onOpenOrg(c.id);
             }
           }}
           onDeleted={() => {
@@ -1703,486 +1723,6 @@ const APP_USAGE_LABELS = {
   files: "Files",
   projects: "Projects",
 };
-
-const DETAIL_TABS = [["account", "Account"], ["team", "Team"], ["activity", "Shop activity"]];
-
-// The "click a user, see everything" panel — Account/Team/Shop activity
-// tabs replace what used to be scattered across separate popups (View org
-// admins, View Shop activity, Extend trial, Mark paid, Set password),
-// modeled on how tools like Microsoft 365 admin center show one person's
-// full picture in a single slide-over instead of a dropdown of one-off
-// actions. Quick actions live inline per tab instead of a "⋯" menu.
-function CustomerDetailPanel({ customer, isOwner, onClose, onChanged }) {
-  const [tab, setTab] = useState("account");
-  const [admins, setAdmins] = useState(null);
-  const [activity, setActivity] = useState(null);
-  const [activityErr, setActivityErr] = useState("");
-  const [err, setErr] = useState("");
-  const [busyUid, setBusyUid] = useState(null);
-  const [showExtend, setShowExtend] = useState(false);
-  const [showMarkPaid, setShowMarkPaid] = useState(false);
-  const [showSetPassword, setShowSetPassword] = useState(false);
-  const [guestSeatsInput, setGuestSeatsInput] = useState(customer.guestSeats || 0);
-  const [savingGuestSeats, setSavingGuestSeats] = useState(false);
-  const [openingApp, setOpeningApp] = useState(null);
-  const [showDelete, setShowDelete] = useState(false);
-  const [showFree, setShowFree] = useState(false);
-  const isFree = customer.billing === "complimentary";
-
-  async function endFree() {
-    if (!confirm("End this free license? They'll get 7 days of trial to choose a paid plan.")) return;
-    try {
-      const reason = prompt("Reason for ending the free license (recorded in the audit log):");
-      if (!reason || reason.trim().length < 3) throw new Error("A reason is required");
-      await api("/api/admin/customers", "POST", { action: "endFree", id: customer.id, reason: reason.trim() });
-      onChanged && onChanged();
-      onClose();
-    } catch (e) {
-      setErr(e.message);
-    }
-  }
-
-  async function loadAdmins() {
-    try {
-      const d = await api(`/api/admin/customers?id=${customer.id}`, "GET");
-      setAdmins(d.admins || []);
-    } catch (e) {
-      setErr(e.message);
-    }
-  }
-  useEffect(() => {
-    loadAdmins();
-    (async () => {
-      try {
-        setActivity(await api(`/api/admin/customer-activity?id=${customer.id}`, "GET"));
-      } catch (e) {
-        // Kept to the Shop activity tab. A Bizzux Business hiccup (e.g. a
-        // missing Firestore index, whose raw message is a very long URL)
-        // shouldn't cover the Account tab everyone lands on.
-        console.error("Shop activity failed:", e);
-        setActivityErr("Couldn't load Bizzux Business activity right now. Try again in a few minutes.");
-      }
-    })();
-  }, [customer.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function revokeSessions(uid) {
-    if (!confirm("Sign this person out of every device right now?")) return;
-    setBusyUid(uid);
-    try {
-      await api("/api/admin/customers", "POST", { action: "revokeSessions", uid });
-    } catch (e) {
-      setErr(e.message);
-    }
-    setBusyUid(null);
-  }
-
-  async function toggleRequire2fa(uid, required) {
-    setBusyUid(uid);
-    try {
-      await api("/api/admin/two-factor", "POST", { uid, required });
-      await loadAdmins();
-    } catch (e) {
-      setErr(e.message);
-    }
-    setBusyUid(null);
-  }
-
-  async function toggleSuspend() {
-    const suspending = customer.status !== "suspended";
-    if (!confirm(suspending ? `Suspend ${customer.email}? They'll immediately lose access to every Bizzux app.` : `Reactivate ${customer.email}?`)) return;
-    try {
-      let reason;
-      if (suspending) {
-        reason = prompt("Reason for suspending (recorded in the audit log):");
-        if (!reason || reason.trim().length < 3) throw new Error("A reason is required");
-      }
-      await api("/api/admin/customers", "POST", { action: suspending ? "suspend" : "reactivate", id: customer.id, reason: reason ? reason.trim() : undefined });
-      onChanged && onChanged();
-      onClose();
-    } catch (e) {
-      setErr(e.message);
-    }
-  }
-
-  async function resetPasswordEmail() {
-    if (!confirm(`Email a password reset link to ${customer.email}?`)) return;
-    try {
-      await api("/api/admin/customers", "POST", { action: "resetPassword", id: customer.id });
-      alert("Reset email sent.");
-    } catch (e) {
-      setErr(e.message);
-    }
-  }
-
-  async function openAsOrg(label, endpoint) {
-    setOpeningApp(label);
-    setErr("");
-    try {
-      const sep = endpoint.includes("?") ? "&" : "?";
-      const d = await api(`${endpoint}${sep}asOrg=${customer.id}`, "GET");
-      window.open(d.url, "_blank", "noopener,noreferrer");
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setOpeningApp(null);
-    }
-  }
-
-  async function saveGuestSeats() {
-    setSavingGuestSeats(true);
-    try {
-      const reason = prompt("Reason for changing guest seats (recorded in the audit log):");
-      if (!reason || reason.trim().length < 3) throw new Error("A reason is required");
-      await api("/api/admin/customers", "POST", { action: "setGuestSeats", id: customer.id, guestSeats: Number(guestSeatsInput), reason: reason.trim() });
-      onChanged && onChanged();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setSavingGuestSeats(false);
-    }
-  }
-
-  return (
-    <>
-      {showDelete && (
-        <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setShowDelete(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560, width: "100%" }}>
-            <DeleteUserPanel
-              initialEmail={customer.email}
-              onDeleted={() => {
-                onChanged && onChanged();
-                onClose();
-              }}
-            />
-            <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
-              <button type="button" className="btn-outline-dark" onClick={() => setShowDelete(false)}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640, width: "100%" }}>
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <h2 style={{ marginBottom: 2 }}>{customer.organizationName || customer.email}</h2>
-              <p className="muted" style={{ margin: 0, fontSize: 13 }}>{customer.email}</p>
-            </div>
-            <span className={"status-pill " + (customer.status === "suspended" ? "expired" : customer.status || "trial")}>
-              {customer.status || "trial"}
-            </span>
-          </div>
-
-          <div className="admin-tabs" role="tablist" style={{ marginTop: 14, marginBottom: 14 }}>
-            {DETAIL_TABS.map(([id, label]) => (
-              <button
-                key={id} type="button" role="tab" aria-selected={tab === id}
-                className={"admin-tab" + (tab === id ? " active" : "")}
-                onClick={() => setTab(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {err && <p className="error" style={{ overflowWrap: "anywhere" }}>{err}</p>}
-
-          {tab === "account" && (
-            <div>
-              <div className="row" style={{ gap: 22, flexWrap: "wrap", marginBottom: 16 }}>
-                <div><div className="label">Plan</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.planName || "N/A"}</div></div>
-                <div><div className="label">Signed up</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.createdAt ? new Date(customer.createdAt).toLocaleDateString() : "N/A"}</div></div>
-                <div><div className="label">Last login</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{timeAgo(customer.lastLoginAt)}</div></div>
-                <div><div className="label">Trial ends</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.status === "trial_pending" ? "Not started (phone not verified)" : customer.trialEndDate ? new Date(customer.trialEndDate).toLocaleDateString() : "N/A"}</div></div>
-                {customer.subscription && (
-                  <div>
-                    <div className="label">Locked-in price</div>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>
-                      {customer.subscription.quantity} user{customer.subscription.quantity === 1 ? "" : "s"} × ₹{Number(customer.subscription.unitPrice).toLocaleString("en-IN")} = ₹{Number(customer.subscription.totalPrice).toLocaleString("en-IN")}/{customer.subscription.billingCycle === "year" ? "year" : "month"}
-                    </div>
-                    <div className="muted" style={{ fontSize: 11.5 }}>
-                      Since {customer.subscription.agreedAt ? new Date(customer.subscription.agreedAt).toLocaleDateString() : "—"}
-                      {customer.subscription.listUnitPrice !== customer.subscription.unitPrice ? ` · list ₹${customer.subscription.listUnitPrice}` : ""}
-                      {customer.subscription.couponCode ? ` · code ${customer.subscription.couponCode}` : ""}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* Sales follow-up context, from the "Set up your Bizzux account"
-                  onboarding wizard — why this trial exists and who to ask for
-                  when calling, not operational account state like the row above. */}
-              <div className="row" style={{ gap: 22, flexWrap: "wrap", marginBottom: 16 }}>
-                <div><div className="label">Job title</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.jobTitle || "N/A"}</div></div>
-                <div><div className="label">Using it for</div><div style={{ fontWeight: 700, fontSize: 13.5, textTransform: "capitalize" }}>{customer.useCase || "N/A"}</div></div>
-                <div><div className="label">Employees</div><div style={{ fontWeight: 700, fontSize: 13.5 }}>{customer.employeeCount || "N/A"}</div></div>
-                <div><div className="label">Business type</div><div style={{ fontWeight: 700, fontSize: 13.5, textTransform: "capitalize" }}>{customer.businessType || "N/A"}</div></div>
-              </div>
-              {/* Grouped by what they do, so the panel reads as a set of
-                  options rather than one long run of links. */}
-              <div style={{ paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-                <div className="label" style={{ marginBottom: 8 }}>Subscription</div>
-                {isFree && (
-                  <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: 10, fontSize: 13, marginBottom: 10 }}>
-                    <strong>Free license</strong> · {customer.planName || "plan"} · {freeReasonLabel(customer.compReason)} ·{" "}
-                    {customer.compUntil ? "until " + new Date(customer.compUntil).toLocaleDateString() : "no end date"}
-                    {customer.compNote && <div className="muted" style={{ marginTop: 4 }}>{customer.compNote}</div>}
-                  </div>
-                )}
-                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  {!isFree && <button className="btn-small" onClick={() => setShowExtend(true)}>Extend trial</button>}
-                  <button className="btn-small" onClick={() => setShowMarkPaid(true)}>Mark as paid</button>
-                  {isOwner && (
-                    <button className="btn-small" onClick={() => setShowFree(true)}>{isFree ? "Change free license" : "Give free license"}</button>
-                  )}
-                  {isOwner && isFree && <button className="btn-small" onClick={endFree}>End free license</button>}
-                </div>
-              </div>
-
-              <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-                <div className="label" style={{ marginBottom: 8 }}>Sign-in &amp; security</div>
-                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <button className="btn-small" onClick={resetPasswordEmail}>Email a reset link</button>
-                  <button className="btn-small" onClick={() => setShowSetPassword(true)}>Set new password</button>
-                  <button className="btn-small" disabled={busyUid === customer.id} onClick={() => revokeSessions(customer.id)}>Sign out everywhere</button>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 18, padding: 14, border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 12 }}>
-                <div className="label" style={{ marginBottom: 4, color: "var(--red)" }}>Danger zone</div>
-                <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-                  Suspend blocks every app right away and can be undone. Delete removes the user for good.
-                </p>
-                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                  <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={toggleSuspend}>
-                    {customer.status === "suspended" ? "Reactivate" : "Suspend"}
-                  </button>
-                  {isOwner && (
-                    <button className="btn-small" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => setShowDelete(true)}>
-                      Delete user…
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-                <div className="label" style={{ marginBottom: 6 }}>Open apps as this organization</div>
-                <p className="muted" style={{ fontSize: 12, marginBottom: 0, maxWidth: 460 }}>
-                  Opening a customer's app now needs approved, time-limited support access (Platform Owner approval, fully audited). Open this organization under
-                  Organizations &gt; Support to request it.
-                </p>
-              </div>
-              <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-                <div className="label" style={{ marginBottom: 6 }}>Bizzux Projects guest seats</div>
-                <p className="muted" style={{ fontSize: 12, marginBottom: 8, maxWidth: 420 }}>
-                  How many outside collaborators this org can have accepted across all its projects — 0 by default. Someone they invite can't accept until a seat is available here.
-                </p>
-                <div className="row" style={{ gap: 8 }}>
-                  <input
-                    type="number" min="0" step="1" className="input" style={{ width: 90 }}
-                    value={guestSeatsInput}
-                    onChange={(e) => setGuestSeatsInput(e.target.value)}
-                  />
-                  <button className="btn-small" disabled={savingGuestSeats} onClick={saveGuestSeats}>
-                    {savingGuestSeats ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {tab === "team" && (
-            <div>
-              {admins === null && <p className="muted">Loading…</p>}
-              {admins && admins.map((a, i) => (
-                <div key={i} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 13.5 }}>{a.email}</span>
-                    <span className="status-pill active">{a.role}</span>
-                  </div>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }} title={a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : ""}>
-                    Last login: {timeAgo(a.lastLoginAt)} · 2FA: {a.twoFactorEnabled ? "on" : "off"}
-                  </div>
-                  {a.uid && (
-                    <div className="row" style={{ gap: 14, marginTop: 6, flexWrap: "wrap" }}>
-                      <button className="link-btn" disabled={busyUid === a.uid} onClick={() => revokeSessions(a.uid)}>Sign out of all devices</button>
-                      <label className="muted" style={{ fontSize: 12 }}>
-                        <input
-                          type="checkbox" checked={!!a.twoFactorRequired} disabled={busyUid === a.uid}
-                          onChange={(e) => toggleRequire2fa(a.uid, e.target.checked)} style={{ marginRight: 6 }}
-                        />
-                        Require 2FA
-                      </label>
-                    </div>
-                  )}
-                </div>
-              ))}
-              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-                <AddTeamMemberForm accountId={customer.id} onDone={loadAdmins} />
-              </div>
-            </div>
-          )}
-
-          {tab === "activity" && (
-            <div>
-              {activityErr && <p className="error">{activityErr}</p>}
-              {!activity && !activityErr && <p className="muted">Loading…</p>}
-              {activity && (
-                <>
-                  <p className="muted" style={{ marginTop: 0, marginBottom: 12, fontSize: 12.5 }}>
-                    Usage only — sales/purchase/expense amounts are never shown here.
-                  </p>
-                  <ActivityRow label="🧾 Sales" data={activity.sales} />
-                  <ActivityRow label="🛒 Purchases" data={activity.purchases} />
-                  <ActivityRow label="🧺 Expenses" data={activity.expenses} />
-                  <div className="row" style={{ marginTop: 14, gap: 6, flexWrap: "wrap" }}>
-                    {[["Menu", activity.usesMenu], ["Inventory", activity.usesInventory], ["Reservations", activity.usesReservations], ["CapEx", activity.usesCapex]].map(([label, used]) => (
-                      <span key={label} className={"status-pill " + (used ? "active" : "")} style={!used ? { opacity: 0.5 } : undefined}>
-                        {used ? "✓" : "—"} {label}
-                      </span>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          <div className="row" style={{ justifyContent: "flex-end", marginTop: 18 }}>
-            <button className="btn-outline-dark" onClick={onClose}>Close</button>
-          </div>
-        </div>
-      </div>
-
-      {showExtend && (
-        <ExtendTrialModal customer={customer} onClose={() => setShowExtend(false)} onExtended={async () => { setShowExtend(false); onChanged && onChanged(); }} />
-      )}
-      {showMarkPaid && (
-        <MarkPaidModal customer={customer} onClose={() => setShowMarkPaid(false)} onMarked={async () => { setShowMarkPaid(false); onChanged && onChanged(); }} />
-      )}
-      {showFree && (
-        <FreeLicenseModal
-          customer={customer} onClose={() => setShowFree(false)}
-          onDone={() => { setShowFree(false); onChanged && onChanged(); onClose(); }}
-        />
-      )}
-      {showSetPassword && (
-        <SetPasswordModal customer={customer} onClose={() => setShowSetPassword(false)} />
-      )}
-    </>
-  );
-}
-
-function CustomersList({ isOwner }) {
-  const [customers, setCustomers] = useState(null);
-  const [viewingDetail, setViewingDetail] = useState(null); // customer row, or null
-  const [err, setErr] = useState("");
-  const [search, setSearch] = useState("");
-
-  async function load() {
-    try {
-      const d = await api("/api/admin/customers", "GET");
-      setCustomers(d.customers || []);
-    } catch {
-      setCustomers([]);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  if (customers === null) return <p className="muted">Loading…</p>;
-
-  const q = search.trim().toLowerCase();
-  const filtered = q
-    ? customers.filter((c) =>
-        [c.organizationName, c.fullName, c.email, c.phone].some((v) => v && v.toLowerCase().includes(q))
-      )
-    : customers;
-
-  return (
-    <div className="card">
-      {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
-      <input
-        type="text"
-        className="input"
-        placeholder="Search by organization, owner, email or mobile…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ marginBottom: 14, maxWidth: 360 }}
-      />
-      {customers.length === 0 && <p className="muted">No signups yet.</p>}
-      {customers.length > 0 && filtered.length === 0 && <p className="muted">No customers match "{search}".</p>}
-      {filtered.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Organization</th><th>Owner</th><th>Email</th><th>Mobile</th><th>Location</th>
-                <th>Signed up</th><th>Customer for</th><th>Last login</th><th>Status</th><th>Type</th><th>Plan</th><th>Apps used</th><th>Trial ends</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c) => {
-                const usedKeys = Object.keys(c.appUsage || {});
-                return (
-                <tr key={c.id}>
-                  <td>
-                    <button type="button" className="link-btn" style={{ textAlign: "left" }} onClick={() => setViewingDetail(c)}>
-                      {c.organizationName || c.email}
-                    </button>
-                  </td>
-                  <td>{c.fullName || "N/A"}</td>
-                  <td>{c.email}</td>
-                  <td>{c.phone || "N/A"}</td>
-                  <td>
-                    {c.city || c.region ? (
-                      <>
-                        <div>{[c.city, c.region].filter(Boolean).join(", ")}</div>
-                        {c.country && <div className="muted" style={{ fontSize: 11.5 }}>{c.country}</div>}
-                      </>
-                    ) : (
-                      c.country || "N/A"
-                    )}
-                  </td>
-                  <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}</td>
-                  <td title={c.createdAt ? new Date(c.createdAt).toLocaleString() : ""}>{c.createdAt ? timeAgo(c.createdAt) : "N/A"}</td>
-                  <td title={c.lastLoginAt ? new Date(c.lastLoginAt).toLocaleString() : ""}>{timeAgo(c.lastLoginAt)}</td>
-                  <td>
-                    {c.billing === "complimentary" ? (
-                      <span className="status-pill active" style={{ background: "#ecfdf5", color: "#047857" }}>free</span>
-                    ) : (
-                      <span className={"status-pill " + (c.status === "suspended" || c.status === "closed" ? "expired" : c.status || "trial")}>{c.status || "trial"}</span>
-                    )}
-                  </td>
-                  <td>{c.customerType}</td>
-                  <td>{c.planName || "N/A"}</td>
-                  <td>
-                    {usedKeys.length === 0 ? (
-                      <span className="muted" style={{ fontSize: 12 }}>Not used yet</span>
-                    ) : (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {usedKeys.map((k) => (
-                          <span key={k} className="status-pill active" style={{ fontSize: 11 }}>
-                            {APP_USAGE_LABELS[k] || k}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td>{c.trialEndDate ? new Date(c.trialEndDate).toLocaleDateString() : "N/A"}</td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {viewingDetail && (
-        <CustomerDetailPanel customer={viewingDetail} isOwner={isOwner} onClose={() => setViewingDetail(null)} onChanged={load} />
-      )}
-    </div>
-  );
-}
 
 // Usage/engagement visibility ONLY — never the customer's actual sales,
 // purchase or expense amounts. See app/api/admin/customer-activity/route.js

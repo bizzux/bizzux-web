@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { APPS } from "@/lib/appCatalog";
 import { api, orgCall, UsersTab, DetailsTab, plusDays, Field, useReason } from "./shared";
+import OrgTickets from "../support/OrgTickets";
 
 const ACCOUNT = { active: "Active", suspended: "Suspended", expired: "Expired", archived: "Archived", pending_admin: "No administrator", closed: "Closed" };
 const PAYMENT = { paid: "Paid", complimentary: "Free / complimentary", unpaid: "Not paid", not_recorded: "Payment not recorded", past_due: "Past due", cancelled: "Cancelled", none: "None" };
@@ -518,10 +519,7 @@ function SupportTab({ d, legacy, id }) {
       )}
 
       <div style={{ marginTop: 18, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-        <div className="label" style={{ marginBottom: 6 }}>Tickets &amp; follow-ups</div>
-        <p className="muted" style={{ fontSize: 12 }}>
-          The Customer Support workspace (tickets, troubleshooting notes, follow-ups) is coming and will be linked to this organization ID: <code>{id}</code>.
-        </p>
+        <OrgTickets orgId={id} orgName={d.row.name} onOpenOrg={() => {}} />
       </div>
     </div>
   );

@@ -20,7 +20,8 @@ export default function OrganizationsAdmin({ legacy, platformRole }) {
   // Deep link: #org=<id> opens that organization.
   useEffect(() => {
     const m = typeof window !== "undefined" && window.location.hash.match(/org=([^&]+)/);
-    if (m) setView({ name: "details", id: decodeURIComponent(m[1]) });
+    const t = typeof window !== "undefined" && window.location.hash.match(/tab=([a-z]+)/);
+    if (m) setView({ name: "details", id: decodeURIComponent(m[1]), tab: t ? t[1] : undefined });
   }, []);
 
   const open = (id, tab) => {
