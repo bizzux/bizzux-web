@@ -7,7 +7,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizationMembership";
 import {
   INDUSTRIES, assertOrgPermission, provisionOrganization, changeOrganizationStatus,
-  updateOrganizationEntitlements, resendOrgInvite, deleteOrganizationPermanently, listOrganizations,
+  updateOrganizationEntitlements, resendOrgInvite, resetOrgAdminPassword, deleteOrganizationPermanently, listOrganizations,
 } from "@/lib/orgProvisioning";
 
 export const runtime = "nodejs";
@@ -108,6 +108,12 @@ export async function POST(req) {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
       await assertOrgPermission(c, "organizations.manage");
       return NextResponse.json(await resendOrgInvite({ actor: c, organizationId: body.id, origin }));
+    }
+    if (body.action === "resetAdminPassword") {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      return NextResponse.json(
+        await resetOrgAdminPassword({ actor: c, organizationId: body.id, password: body.password, requirePasswordChange: body.requirePasswordChange }),
+        { headers: { "Cache-Control": "no-store" } });
     }
     if (body.action === "deletePermanently") {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };

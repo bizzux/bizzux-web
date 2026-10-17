@@ -54,6 +54,7 @@ export default function OrganizationsAdmin() {
   const [result, setResult] = useState(null);
   const [listErr, setListErr] = useState("");
   const [managing, setManaging] = useState(null);
+  const [resetResult, setResetResult] = useState(null);
   // Time zones that belong to the chosen country (null = show the full list).
   const [tzOptions, setTzOptions] = useState(null);
 
@@ -154,6 +155,20 @@ export default function OrganizationsAdmin() {
     try {
       const d = await api("/api/admin/organizations", "POST", { action, id, ...extra });
       if (action === "resendInvite") alert("Invitation sent to " + d.email);
+      await load();
+    } catch (e2) {
+      setListErr(e2.message);
+    }
+  }
+
+  async function resetPassword(o) {
+    const typed = prompt(`Reset the administrator password for "${o.name}".\nType a new password (min 8 characters), or leave blank to auto-generate:`);
+    if (typed === null) return;
+    const must = confirm("Require them to change it at first login?\nOK = yes (expires in 72 hours), Cancel = no (they may keep it).");
+    setListErr("");
+    try {
+      const d = await api("/api/admin/organizations", "POST", { action: "resetAdminPassword", id: o.id, password: typed, requirePasswordChange: must });
+      setResetResult({ name: o.name, ...d });
       await load();
     } catch (e2) {
       setListErr(e2.message);
@@ -335,6 +350,18 @@ export default function OrganizationsAdmin() {
           </div>
         </div>
         {listErr && <p className="error">{listErr}</p>}
+        {resetResult && (
+          <div style={{ background: "var(--line, #f1f5f9)", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Password reset for {resetResult.name}</p>
+            <p style={{ margin: "4px 0 0", fontFamily: "monospace", fontSize: 13 }}>
+              username: {resetResult.username} · {resetResult.temporaryPassword ? "password: " + resetResult.temporaryPassword : "password: the one you typed (not shown)"}
+            </p>
+            <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+              Shown once, never stored. {resetResult.mustChangePassword ? "They must set their own at first login." : "They may keep it."}
+            </p>
+            <button type="button" className="link-btn" onClick={() => setResetResult(null)}>Dismiss</button>
+          </div>
+        )}
         {visible.length === 0 && <p className="muted">No organizations.</p>}
         <div style={{ overflowX: "auto" }}>
           {visible.length > 0 && (
@@ -348,7 +375,7 @@ export default function OrganizationsAdmin() {
                 {visible.map((o) => (
                   <OrgRow key={o.id} o={o} open={managing === o.id}
                     onManage={() => setManaging(managing === o.id ? null : o.id)}
-                    act={act} removeForever={removeForever} />
+                    act={act} removeForever={removeForever} resetPassword={resetPassword} />
                 ))}
               </tbody>
             </table>
@@ -359,7 +386,7 @@ export default function OrganizationsAdmin() {
   );
 }
 
-function OrgRow({ o, open, onManage, act, removeForever }) {
+function OrgRow({ o, open, onManage, act, removeForever, resetPassword }) {
   const seats = o.licensedSeats != null ? `${o.activeUsers} / ${o.licensedSeats} seats`
     : o.kind === "placeholder" ? (o.estimatedUsers ? `Est. ${o.estimatedUsers}` : "—")
     : `${o.activeUsers}${o.estimatedUsers ? ` (est. ${o.estimatedUsers})` : ""}`;
@@ -374,7 +401,7 @@ function OrgRow({ o, open, onManage, act, removeForever }) {
         </td>
         <td>
           {o.adminName || <span className="muted">Unassigned</span>}
-          <div className="muted" style={{ fontSize: 12 }}>{o.adminContact}</div>
+          <div className="muted" style={{ fontSize: 12 }}>{o.adminUsername ? "Username: " + o.adminUsername : o.adminContact}</div>
         </td>
         <td>{o.planLabel}{o.expiresAt && <div className="muted" style={{ fontSize: 12 }}>to {o.expiresAt.slice(0, 10)}</div>}</td>
         <td>{seats}</td>
@@ -386,6 +413,7 @@ function OrgRow({ o, open, onManage, act, removeForever }) {
           {o.internal ? <span className="muted">Internal</span> : (
             <>
               {o.editable && o.kind === "admin-provisioned" && <button className="link-btn" onClick={onManage}>Manage</button>}{" "}
+              {o.adminUsername && o.editable && <button className="link-btn" onClick={() => resetPassword(o)}>Reset password</button>}{" "}
               {o.adminLoginMethod === "EMAIL_INVITE" && o.awaitingActivation !== false && (
                 <button className="link-btn" onClick={() => act(o.id, "resendInvite")}>Resend invite</button>
               )}{" "}

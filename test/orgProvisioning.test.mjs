@@ -283,3 +283,24 @@ test("INTERNAL plan: group company, free, no expiry, manageable, Owner-only dele
   await assert.rejects(lib.changeOrganizationStatus({ actor: owner, organizationId: "bizzux-own", action: "suspend" }), (e) => e.status === 400);
   assert.equal((await lib.changeOrganizationStatus({ actor: owner, organizationId: r.organizationId, action: "suspend" })).status, "suspended");
 });
+
+test("reset org admin password: generated, hashed, forced change, unlocks; list shows username", async () => {
+  const ua = await import("../lib/usernameAuth.js");
+  const r = await prov(base({ admin: { fullName: "Reset Me", loginMethod: "USERNAME_TEMP", username: "rst" + rnd(), email: "rm@example.test" } }));
+  const username = r.credentials[0].username;
+  const row = (await lib.listOrganizations({})).find((x) => x.id === r.organizationId);
+  assert.equal(row.adminUsername, username);
+  await db.doc("usernames/" + username).update({ failedCount: 5, lockedUntil: new Date(Date.now() + 600000) });
+  const out = await lib.resetOrgAdminPassword({ actor: admin, organizationId: r.organizationId });
+  assert.equal(out.username, username); assert.equal(out.mustChangePassword, true);
+  const dump = JSON.stringify([...(await db.collection("usernames").get()).docs.map((d) => d.data()), ...(await db.collection("auditLogs").get()).docs.map((d) => d.data())]);
+  assert.ok(!dump.includes(out.temporaryPassword));
+  assert.equal((await ua.usernameLogin({ username, password: out.temporaryPassword, ip: "t9" })).mustChangePassword, true);
+  await assert.rejects(ua.usernameLogin({ username, password: r.credentials[0].temporaryPassword, ip: "t9" }), (e) => e.status === 401);
+  const man = await lib.resetOrgAdminPassword({ actor: owner, organizationId: r.organizationId, password: "Chosen-pass-55", requirePasswordChange: false });
+  assert.equal(man.temporaryPassword, undefined);
+  assert.equal((await ua.usernameLogin({ username, password: "Chosen-pass-55", ip: "t9" })).mustChangePassword, false);
+  // email-invite admins have no username login to reset
+  const inv = await prov(base({ admin: { fullName: "E", loginMethod: "EMAIL_INVITE", email: "e" + rnd() + "@example.test" } }));
+  await assert.rejects(lib.resetOrgAdminPassword({ actor: owner, organizationId: inv.organizationId }), (e) => e.status === 400);
+});
