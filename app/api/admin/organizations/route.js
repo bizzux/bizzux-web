@@ -9,6 +9,10 @@ import {
   INDUSTRIES, assertOrgPermission, provisionOrganization, changeOrganizationStatus,
   updateOrganizationEntitlements, resendOrgInvite, resetOrgAdminPassword, deleteOrganizationPermanently, listOrganizations,
 } from "@/lib/orgProvisioning";
+import {
+  updateOrganizationDetails, listOrgUsers, updateOrgUser, resetOrgUserPassword,
+  setOrgUserDisabled, deleteOrgUser, addOrgUser,
+} from "@/lib/orgManagement";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,6 +112,20 @@ export async function POST(req) {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
       await assertOrgPermission(c, "organizations.manage");
       return NextResponse.json(await resendOrgInvite({ actor: c, organizationId: body.id, origin }));
+    }
+    // ---- Manage panel: details and users ----------------------------------
+    const manageActions = {
+      updateDetails: () => updateOrganizationDetails({ actor: c, organizationId: body.id, body }),
+      listUsers: () => listOrgUsers({ actor: c, organizationId: body.id }),
+      updateUser: () => updateOrgUser({ actor: c, organizationId: body.id, uid: body.uid, body }),
+      resetUserPassword: () => resetOrgUserPassword({ actor: c, organizationId: body.id, uid: body.uid, password: body.password, requirePasswordChange: body.requirePasswordChange }),
+      setUserDisabled: () => setOrgUserDisabled({ actor: c, organizationId: body.id, uid: body.uid, disabled: body.disabled }),
+      deleteUser: () => deleteOrgUser({ actor: c, organizationId: body.id, uid: body.uid }),
+      addUser: () => addOrgUser({ actor: c, organizationId: body.id, body: body.user || {}, origin }),
+    };
+    if (manageActions[body.action]) {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      return NextResponse.json(await manageActions[body.action](), { headers: { "Cache-Control": "no-store" } });
     }
     if (body.action === "resetAdminPassword") {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };

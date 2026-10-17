@@ -304,3 +304,70 @@ test("reset org admin password: generated, hashed, forced change, unlocks; list 
   const inv = await prov(base({ admin: { fullName: "E", loginMethod: "EMAIL_INVITE", email: "e" + rnd() + "@example.test" } }));
   await assert.rejects(lib.resetOrgAdminPassword({ actor: owner, organizationId: inv.organizationId }), (e) => e.status === 400);
 });
+
+test("manage: list/edit/reset/disable/delete/add users, edit details; tenant isolated", async () => {
+  const mg = await import("../lib/orgManagement.js");
+  const ua = await import("../lib/usernameAuth.js");
+  const purgeUser = async (info) => { await fa.adminAuth().deleteUser(info.uid).catch(() => {}); return { skipped: [] }; };
+  const uname = "mu" + rnd();
+  const r = await prov(base({
+    setupMode: "ORG_ADMIN_USERS", licensedSeats: 3,
+    admin: { fullName: "Singaravlan", loginMethod: "USERNAME_TEMP", username: "adm" + rnd() },
+    users: [{ fullName: "Mari", loginMethod: "USERNAME_TEMP", username: uname, profile: "Manager", apps: ["bizzux-notes"] }],
+  }));
+  const id = r.organizationId;
+  let list = await mg.listOrgUsers({ actor: admin, organizationId: id });
+  assert.equal(list.users.length, 2);
+  const adm = list.users.find((u) => u.isAdmin); const usr = list.users.find((u) => !u.isAdmin);
+  assert.equal(adm.username, r.credentials[0].username); assert.equal(usr.username, uname); assert.deepEqual(usr.apps, ["bizzux-notes"]);
+
+  // fix a misspelt admin name everywhere it is shown
+  await mg.updateOrgUser({ actor: admin, organizationId: id, uid: adm.uid, body: { fullName: "Singaravelan" } });
+  assert.equal((await db.doc("organizations/" + id).get()).data().adminName, "Singaravelan");
+  assert.equal((await db.doc("customers/" + id).get()).data().owner.name, "Singaravelan");
+  assert.equal((await fa.adminAuth().getUser(adm.uid)).displayName, "Singaravelan");
+
+  // edit a user: role + apps
+  await mg.updateOrgUser({ actor: admin, organizationId: id, uid: usr.uid, body: { profile: "Staff/Shopkeeper", apps: ["bizzux-crm"] } });
+  list = await mg.listOrgUsers({ actor: admin, organizationId: id });
+  const usr2 = list.users.find((u) => u.uid === usr.uid);
+  assert.equal(usr2.profile, "Staff/Shopkeeper"); assert.deepEqual(usr2.apps, ["bizzux-crm"]);
+
+  // reset a normal user's password; disable blocks login; enable restores
+  const rs = await mg.resetOrgUserPassword({ actor: admin, organizationId: id, uid: usr.uid });
+  assert.ok((await ua.usernameLogin({ username: uname, password: rs.temporaryPassword, ip: "m1" })).token);
+  await mg.setOrgUserDisabled({ actor: admin, organizationId: id, uid: usr.uid, disabled: true });
+  await assert.rejects(ua.usernameLogin({ username: uname, password: rs.temporaryPassword, ip: "m1" }), (e) => e.status === 403);
+  await mg.setOrgUserDisabled({ actor: admin, organizationId: id, uid: usr.uid, disabled: false });
+  assert.ok((await ua.usernameLogin({ username: uname, password: rs.temporaryPassword, ip: "m1" })).token);
+
+  // seats: 3 total, owner + user used, add one more OK then refused
+  const add = await mg.addOrgUser({ actor: admin, organizationId: id, body: { fullName: "Third", loginMethod: "USERNAME_TEMP", username: "th" + rnd(), profile: "Viewer/Auditor", apps: ["bizzux-notes"] } }, { sendInvite: async () => {} });
+  assert.ok(add.credential.temporaryPassword);
+  await assert.rejects(mg.addOrgUser({ actor: admin, organizationId: id, body: { fullName: "Fourth", loginMethod: "USERNAME_TEMP", username: "fo" + rnd(), profile: "Manager", apps: [] } }), (e) => e.status === 400);
+  assert.equal((await db.collection("usernames").where("organizationId", "==", id).get()).size, 3);
+
+  // admin can't be deleted/disabled; other users can be deleted
+  await assert.rejects(mg.deleteOrgUser({ actor: admin, organizationId: id, uid: adm.uid }, { purgeUser }), (e) => e.status === 400);
+  await assert.rejects(mg.setOrgUserDisabled({ actor: admin, organizationId: id, uid: adm.uid, disabled: true }), (e) => e.status === 400);
+  await mg.deleteOrgUser({ actor: admin, organizationId: id, uid: usr.uid }, { purgeUser });
+  list = await mg.listOrgUsers({ actor: admin, organizationId: id });
+  assert.ok(!list.users.some((u) => u.uid === usr.uid));
+  assert.equal((await db.doc("usernames/" + uname).get()).exists, false);
+
+  // tenant isolation: a user of another org can't be touched through this org
+  const other = await prov(base({ admin: { fullName: "Other", loginMethod: "USERNAME_TEMP", username: "oth" + rnd() } }));
+  await assert.rejects(mg.resetOrgUserPassword({ actor: admin, organizationId: id, uid: other.organizationId }), (e) => e.status === 404);
+  await assert.rejects(mg.deleteOrgUser({ actor: admin, organizationId: id, uid: other.organizationId }, { purgeUser }), (e) => e.status === 404);
+
+  // details: rename moves the name lock; duplicate name refused
+  const newName = "Renamed " + rnd();
+  await mg.updateOrganizationDetails({ actor: admin, organizationId: id, body: { organizationName: newName, city: "Chennai" } });
+  assert.equal((await db.doc("customers/" + id).get()).data().organizationName, newName);
+  assert.equal((await db.doc("organizations/" + id).get()).data().city, "Chennai");
+  const otherName = (await db.doc("organizations/" + other.organizationId).get()).data().organizationName;
+  await assert.rejects(mg.updateOrganizationDetails({ actor: admin, organizationId: id, body: { organizationName: otherName } }), (e) => e.status === 409);
+
+  // self-service orgs are not editable here
+  await assert.rejects(mg.listOrgUsers({ actor: admin, organizationId: "selfsvc-1" }), (e) => e.status === 400);
+});
