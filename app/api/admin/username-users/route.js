@@ -6,7 +6,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizationMembership";
 import { getOrganizationAppSubscriptions, upsertAppAssignment } from "@/lib/appAccess";
 import { APP_IDS } from "@/lib/appCatalog";
-import { createUsernameUser, usernameForUid, setUsernamePassword, generateRecoveryCodes } from "@/lib/usernameAuth";
+import { createUsernameUser, usernameForUid, setUsernamePassword, generateRecoveryCodes, tempExpiry } from "@/lib/usernameAuth";
 import { validatePassword } from "@/lib/passwordPolicy";
 
 export const runtime = "nodejs";
@@ -191,7 +191,7 @@ export async function POST(req) {
       const password = String(body.password || "").trim() || generateTempPassword();
       const problem = await validatePassword(orgId, password);
       if (problem) throw { status: 400, message: problem };
-      await setUsernamePassword(uid, password, true);
+      await setUsernamePassword(uid, password, true, { tempExpiresAt: tempExpiry() });
       await adminDb().doc("memberships/" + uid).set({ mustChangePassword: true }, { merge: true });
       await logAuditEvent({ action: "user.reset_username_password", actor: c, targetType: "user", targetId: uid, details: { orgId } });
       return NextResponse.json({ ok: true, password });

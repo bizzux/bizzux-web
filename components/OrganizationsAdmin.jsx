@@ -34,7 +34,7 @@ const STATUS_LABEL = { active: "Active", suspended: "Suspended", archived: "Arch
 
 const newId = () => (globalThis.crypto?.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9_-]/g, "");
 const plusDays = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
-const blankPerson = () => ({ fullName: "", email: "", phone: "", loginMethod: "USERNAME_TEMP", username: "" });
+const blankPerson = () => ({ fullName: "", email: "", phone: "", loginMethod: "USERNAME_TEMP", username: "", requirePasswordChange: true, passwordMode: "AUTO", password: "" });
 const blankUser = () => ({ ...blankPerson(), profile: "Staff/Shopkeeper", apps: [] });
 const blankForm = () => ({
   setupMode: "ORG_ADMIN", organizationName: "", industry: "", countryCode: "", state: "", timezone: "", currency: "",
@@ -398,11 +398,11 @@ function ResultPanel({ result, onClose }) {
       {result.credentials?.length > 0 && (
         <>
           <p className="muted" style={{ margin: "0 0 6px", fontSize: 12 }}>
-            One-time temporary credentials — shown once, never stored. Each person must choose a new password at first login.
+            One-time temporary credentials — shown once, never stored. Where "require password change" was on, each person must choose a new password at first login (within 72 hours).
           </p>
           {result.credentials.map((c, i) => (
             <p key={i} style={{ margin: "0 0 2px", fontFamily: "monospace", fontSize: 13 }}>
-              {c.role} · {c.fullName} — username: {c.username} · password: {c.temporaryPassword}
+              {c.role} · {c.fullName} — username: {c.username} · {c.temporaryPassword ? "password: " + c.temporaryPassword : "password: set by you (not shown)"}
             </p>
           ))}
         </>
@@ -439,9 +439,32 @@ function PersonFields({ p, onChange }) {
           </Field>
         )}
       </div>
+      {p.loginMethod === "USERNAME_TEMP" && (
+        <div className="row">
+          <Field label="Password">
+            <select className="input" value={p.passwordMode} onChange={(e) => onChange("passwordMode", e.target.value)}>
+              <option value="AUTO">Auto-generate</option>
+              <option value="MANUAL">Set manually</option>
+            </select>
+          </Field>
+          {p.passwordMode === "MANUAL" && (
+            <Field label="Password * (min 8 characters)">
+              <input className="input" type="text" autoComplete="off" value={p.password} onChange={(e) => onChange("password", e.target.value)} minLength={8} required />
+            </Field>
+          )}
+        </div>
+      )}
+      {p.loginMethod === "USERNAME_TEMP" && (
+        <label style={{ fontSize: 13, display: "block", marginTop: 2 }}>
+          <input type="checkbox" checked={p.requirePasswordChange} onChange={(e) => onChange("requirePasswordChange", e.target.checked)} style={{ marginRight: 6 }} />
+          Require password change at first login
+        </label>
+      )}
       <p className="muted" style={{ fontSize: 12, margin: "2px 0 0" }}>
         {p.loginMethod === "USERNAME_TEMP"
-          ? "A random temporary password is generated, shown to you once, and must be changed at first login."
+          ? (p.passwordMode === "MANUAL" ? "The password you type is stored only as a hash and is not shown again. " : "A random password is generated and shown to you once. ") + (p.requirePasswordChange
+            ? "They must set their own at first login, within 72 hours."
+            : "They may keep it or change it whenever they like; it does not expire.")
           : "They receive an email link to set their own password; no password is generated."}
       </p>
     </>

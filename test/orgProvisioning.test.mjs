@@ -160,3 +160,56 @@ test("entitlement change deactivates removed apps for users and is audited", asy
   const logs = await db.collection("auditLogs").where("targetId", "==", r.organizationId).get();
   assert.ok(logs.docs.filter((d) => d.data().action === "organization.entitlements_set").length >= 2);
 });
+
+test("temporary password expires; reset and normal logins still work", async () => {
+  const ua = await import("../lib/usernameAuth.js");
+  const body = base();
+  const r = await prov(body);
+  const cred = r.credentials[0];
+  const ok = await ua.usernameLogin({ username: cred.username, password: cred.temporaryPassword, ip: "t1" });
+  assert.equal(ok.mustChangePassword, true);
+  // force expiry
+  await db.doc("usernames/" + cred.username).update({ tempExpiresAt: new Date(Date.now() - 1000) });
+  await assert.rejects(ua.usernameLogin({ username: cred.username, password: cred.temporaryPassword, ip: "t1" }), (e) => e.code === "temp_password_expired");
+  // wrong password on an expired account still gets the generic error (no leak)
+  await assert.rejects(ua.usernameLogin({ username: cred.username, password: "nope-nope-1", ip: "t1" }), (e) => e.status === 401);
+  // admin reissue restores access with a fresh expiry
+  const uid = (await db.doc("usernames/" + cred.username).get()).data().uid;
+  await ua.setUsernamePassword(uid, "Fresh-temp-123", true, { tempExpiresAt: ua.tempExpiry() });
+  assert.equal((await ua.usernameLogin({ username: cred.username, password: "Fresh-temp-123", ip: "t1" })).mustChangePassword, true);
+  // after the user sets their own password the expiry is cleared
+  await ua.setUsernamePassword(uid, "My-own-pass-123", false);
+  assert.equal((await db.doc("usernames/" + cred.username).get()).data().tempExpiresAt, null);
+  assert.equal((await ua.usernameLogin({ username: cred.username, password: "My-own-pass-123", ip: "t1" })).mustChangePassword, false);
+  // legacy accounts (no tempExpiresAt field) are unaffected
+  await db.doc("usernames/" + cred.username).update({ tempExpiresAt: (await import("firebase-admin/firestore")).FieldValue.delete(), mustChangePassword: true });
+  assert.ok((await ua.usernameLogin({ username: cred.username, password: "My-own-pass-123", ip: "t1" })).token);
+});
+
+test("password change at first login is optional per person", async () => {
+  const ua = await import("../lib/usernameAuth.js");
+  const r = await prov(base({
+    setupMode: "ORG_ADMIN_USERS",
+    admin: { fullName: "Keep Pw", loginMethod: "USERNAME_TEMP", username: "keep" + rnd(), requirePasswordChange: false },
+    users: [{ fullName: "Must Change", loginMethod: "USERNAME_TEMP", username: "must" + rnd(), profile: "Manager", apps: [] }],
+  }));
+  const [a, u] = r.credentials;
+  assert.equal(a.mustChangePassword, false); assert.equal(u.mustChangePassword, true);
+  const login = await ua.usernameLogin({ username: a.username, password: a.temporaryPassword, ip: "t2" });
+  assert.equal(login.mustChangePassword, false);
+  assert.equal((await db.doc("usernames/" + a.username).get()).data().tempExpiresAt, null);
+  assert.equal((await db.doc("customers/" + r.organizationId).get()).data().mustChangePassword, false);
+  assert.equal((await ua.usernameLogin({ username: u.username, password: u.temporaryPassword, ip: "t2" })).mustChangePassword, true);
+});
+
+test("manual password: used for login, never echoed or stored in plaintext", async () => {
+  const ua = await import("../lib/usernameAuth.js");
+  const pw = "Typed-by-admin-77";
+  const r = await prov(base({ admin: { fullName: "Manual", loginMethod: "USERNAME_TEMP", username: "man" + rnd(), passwordMode: "MANUAL", password: pw, requirePasswordChange: false } }));
+  assert.equal(r.credentials[0].temporaryPassword, undefined);
+  assert.ok(!JSON.stringify(r).includes(pw));
+  const dump = JSON.stringify((await db.collection("usernames").get()).docs.map((d) => d.data()));
+  assert.ok(!dump.includes(pw));
+  assert.ok((await ua.usernameLogin({ username: r.credentials[0].username, password: pw, ip: "t3" })).token);
+  await assert.rejects(prov(base({ admin: { fullName: "Short", loginMethod: "USERNAME_TEMP", username: "sh" + rnd(), passwordMode: "MANUAL", password: "abc" } })), (e) => e.status === 400);
+});
