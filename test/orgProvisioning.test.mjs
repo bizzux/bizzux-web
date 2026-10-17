@@ -213,3 +213,27 @@ test("manual password: used for login, never echoed or stored in plaintext", asy
   assert.ok((await ua.usernameLogin({ username: r.credentials[0].username, password: pw, ip: "t3" })).token);
   await assert.rejects(prov(base({ admin: { fullName: "Short", loginMethod: "USERNAME_TEMP", username: "sh" + rnd(), passwordMode: "MANUAL", password: "abc" } })), (e) => e.status === 400);
 });
+
+test("TEST plan: no trial clock, not billed, duplicate names allowed, plan switch works", async () => {
+  const trial = await import("../lib/trial.js");
+  const name = "Test Retail " + rnd();
+  const mk = () => prov(base({ organizationName: name, planType: "TEST", expiryDate: undefined, admin: { fullName: "T", loginMethod: "USERNAME_TEMP", username: "t" + rnd() } }));
+  const a = await mk(); const b = await mk();
+  assert.notEqual(a.organizationId, b.organizationId);
+  const cust = (await db.doc("customers/" + a.organizationId).get()).data();
+  assert.equal(cust.status, "active"); assert.equal(cust.billing, "complimentary"); assert.equal(cust.isTestAccount, true);
+  assert.equal(trial.canAccessApps(cust), true);
+  assert.equal(trial.isPayingCustomer(cust), false);
+  assert.equal((await db.doc("organizations/" + a.organizationId).get()).data().isTestAccount, true);
+  const subs = await db.collection("organizationAppSubscriptions").where("organizationId", "==", a.organizationId).get();
+  assert.ok(subs.docs.every((d) => d.data().subscriptionType === "INTERNAL"));
+  // switching to Trial requires an expiry, then applies the trial clock
+  await assert.rejects(lib.updateOrganizationEntitlements({ actor: owner, organizationId: a.organizationId, body: { planType: "TRIAL" } }), (e) => e.status === 400);
+  const exp = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10);
+  await lib.updateOrganizationEntitlements({ actor: owner, organizationId: a.organizationId, body: { planType: "TRIAL", expiryDate: exp } });
+  const after = (await db.doc("customers/" + a.organizationId).get()).data();
+  assert.equal(after.status, "trial"); assert.equal(after.isTestAccount, false); assert.equal(after.billing, undefined);
+  // non-test duplicates are still refused
+  const real = base(); await prov(real);
+  await assert.rejects(prov({ ...real, requestId: rid(), admin: { ...real.admin, username: "x" + rnd() } }), (e) => e.status === 409);
+});

@@ -229,11 +229,14 @@ export default function OrganizationsAdmin() {
                 <select className="input" value={form.planType} onChange={(e) => set("planType", e.target.value)}>
                   <option value="TRIAL">Trial</option>
                   <option value="PAID">Paid</option>
+                  <option value="TEST">Test (no trial limits, not billed)</option>
                 </select>
               </Field>
-              <Field label="Subscription expiry *">
-                <input className="input" type="date" value={form.expiryDate} onChange={(e) => set("expiryDate", e.target.value)} required />
-              </Field>
+              {form.planType !== "TEST" && (
+                <Field label="Subscription expiry *">
+                  <input className="input" type="date" value={form.expiryDate} onChange={(e) => set("expiryDate", e.target.value)} required />
+                </Field>
+              )}
               <Field label="Licensed Seats *">
                 <input className="input" type="number" min="1" max="100000" value={form.licensedSeats} onChange={(e) => set("licensedSeats", e.target.value)} required />
               </Field>
@@ -390,11 +393,11 @@ function ManagePanel({ o, act }) {
       <div className="row" style={{ marginBottom: 8 }}>
         <Field label="Plan">
           <select className="input" value={planType} onChange={(e) => setPlanType(e.target.value)}>
-            <option value="TRIAL">Trial</option><option value="PAID">Paid</option>
+            <option value="TRIAL">Trial</option><option value="PAID">Paid</option><option value="TEST">Test</option>
           </select>
         </Field>
         <Field label="Licensed Seats"><input className="input" type="number" min="1" value={seats} onChange={(e) => setSeats(e.target.value)} /></Field>
-        <Field label="Expiry"><input className="input" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
+        {planType !== "TEST" && <Field label="Expiry"><input className="input" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginBottom: 8 }}>
         {APPS.map((a) => (
