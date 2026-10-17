@@ -248,3 +248,19 @@ test("backfill script: estimate writes nothing, dry-run writes nothing, apply bu
   run("--apply"); // idempotent
   assert.equal((await db.collection("organizationDirectory").where("orgId", "==", id).get()).size, 1);
 });
+
+test("REGRESSION: org permission checks resolve the role for callers that arrive without platformRole", async () => {
+  const uid = "envsuper-" + rnd(), email = "envsuper-" + rnd() + "@bizzux.test";
+  // like requireOrgManager() for a SUPER_ADMIN_EMAIL caller: isSuper, no platformRole
+  await prov.assertOrgPermission({ uid, email, isSuper: true }, "organizations.manage");
+  await prov.assertOrgPermission({ uid, email, isSuper: true }, "organizations.create");
+  await assert.rejects(prov.assertOrgPermission({ uid, email, isSuper: false }, "organizations.manage"), (e) => e.status === 403);
+  // platformAdmins doc but no platformRole on the caller object
+  const su = "sup-" + rnd();
+  await db.doc("platformAdmins/" + su).set({ email: "x", role: "SUPPORT_AGENT", status: "active", permissions: null });
+  await assert.rejects(prov.assertOrgPermission({ uid: su, email: "x@y.z" }, "organizations.manage"), (e) => e.status === 403);
+  const ad = "adm-" + rnd();
+  await db.doc("platformAdmins/" + ad).set({ email: "a", role: "ADMIN", status: "active", permissions: null });
+  await prov.assertOrgPermission({ uid: ad, email: "a@y.z" }, "organizations.manage");
+  await assert.rejects(prov.assertOrgPermission({ uid: ad, email: "a@y.z" }, "organizations.delete"), (e) => e.status === 403);
+});

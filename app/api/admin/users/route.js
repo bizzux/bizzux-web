@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeSyncDirectory } from "@/lib/orgDirectory";
 import { requirePlatformOwner, adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { logAuditEvent } from "@/lib/audit";
@@ -73,6 +74,7 @@ export async function POST(req) {
       }
       await db.doc("closedAccounts/" + info.uid).delete();
       await logAuditEvent({ action: "user.recover", actor, targetType: "user", targetId: info.uid, details: { email } });
+      if (info.ownsBusiness) await safeSyncDirectory(info.uid);
       return NextResponse.json({ ok: true });
     }
 
@@ -101,6 +103,7 @@ export async function POST(req) {
         action: "user.close", actor, targetType: "user", targetId: info.uid,
         details: { email, organizationName: info.ownsBusiness?.organizationName || null, purgeAfter: purgeAfter.toDate().toISOString() },
       });
+      if (info.ownsBusiness) await safeSyncDirectory(info.uid);
       return NextResponse.json({ ok: true, purgeAfter: purgeAfter.toDate().toISOString() });
     }
 

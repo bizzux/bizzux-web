@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeSyncDirectory } from "@/lib/orgDirectory";
 import { createHash } from "crypto";
 import { requireUser, adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -69,6 +70,7 @@ export async function POST(req) {
     });
 
     await logAuditEvent({ action: "customer.trial_start", actor: c, targetType: "organization", targetId: c.uid, details: { trialDays } });
+    await safeSyncDirectory(c.uid);
     return NextResponse.json({ ok: true, trialEndDate: endDate.toDate().toISOString(), trialDays });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed", ...(e.code ? { code: e.code } : {}) }, { status: e.status || 500 });

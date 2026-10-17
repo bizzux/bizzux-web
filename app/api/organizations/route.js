@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeSyncDirectory } from "@/lib/orgDirectory";
 import { requireUser, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { createOrganization } from "@/lib/organization";
@@ -132,6 +133,7 @@ export async function POST(req) {
       );
       await setCurrentOrganization(c.uid, c.uid);
 
+      await safeSyncDirectory(c.uid);
       return NextResponse.json({ ok: true, organizationId: c.uid });
     }
 

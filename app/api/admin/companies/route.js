@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeSyncDirectory } from "@/lib/orgDirectory";
 import { requireSuperAdmin, adminAuth, adminDb, generateTempPassword } from "@/lib/firebaseAdmin";
 import { Timestamp, FieldValue } from "firebase-admin/firestore";
 import { logAuditEvent } from "@/lib/audit";
@@ -159,6 +160,7 @@ export async function POST(req) {
         action: "company.create", actor: c, targetType: "organization", targetId: uid,
         details: { name, companyCode, planType, apps, ownerUsername: username },
       });
+      await safeSyncDirectory(uid);
       return NextResponse.json({ ok: true, id: uid, companyCode, ownerUsername: username, ownerPassword: password });
     }
 
@@ -177,6 +179,7 @@ export async function POST(req) {
       if (PLAN_TYPES.includes(body.planType)) patch.planType = body.planType;
       await snap.ref.set(patch, { merge: true });
       await logAuditEvent({ action: "company.update", actor: c, targetType: "organization", targetId: id, details: { fields: Object.keys(patch) } });
+      await safeSyncDirectory(id);
       return NextResponse.json({ ok: true });
     }
 
@@ -193,6 +196,7 @@ export async function POST(req) {
         await Promise.all(uids.map((u) => adminAuth().revokeRefreshTokens(u).catch(() => {})));
       }
       await logAuditEvent({ action: "company.set_status", actor: c, targetType: "organization", targetId: id, details: { status: body.status } });
+      await safeSyncDirectory(id);
       return NextResponse.json({ ok: true });
     }
 
@@ -200,6 +204,7 @@ export async function POST(req) {
       const apps = parseApps(body.apps);
       await applyEntitlements(id, apps, snap.data().planType === "PAID" ? "PAID" : "TRIAL");
       await logAuditEvent({ action: "company.set_apps", actor: c, targetType: "organization", targetId: id, details: { apps } });
+      await safeSyncDirectory(id);
       return NextResponse.json({ ok: true });
     }
 

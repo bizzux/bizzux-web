@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeSyncDirectory } from "@/lib/orgDirectory";
 import { requirePlatformAdmin, adminAuth, adminDb, sendAuthEmail, generateTempPassword } from "@/lib/firebaseAdmin";
 import { logAuditEvent } from "@/lib/audit";
 import { findCountryByPhone } from "@/lib/countryCodes";
@@ -91,11 +92,69 @@ async function loadOrgAdmins(accountId, ownerEmail) {
   return admins;
 }
 
+// One customer row, shared by the full list and the single-row lookup used by
+// the Organizations details view.
+function toCustomerRow(id, data, lastLoginAt) {
+    // Prefer the country Vercel's edge saw at signup (accurate for every
+    // account, not just ones with a phone number) — falls back to the
+    // phone-code guess for accounts created before this was added.
+    const country = data.signupCountry || findCountryByPhone(data.phone)?.name || null;
+    const appUsage = data.appUsage || {};
+    return {
+      id: id,
+      email: data.email || "",
+      fullName: data.fullName || null,
+      organizationName: data.organizationName || data.companyName || null,
+      jobTitle: data.jobTitle || null,
+      useCase: data.useCase || null,
+      employeeCount: data.employeeCount || null,
+      businessType: data.businessType || null,
+      phone: data.phone || null,
+      country,
+      region: data.signupRegion || null,
+      city: data.signupCity || null,
+      status: data.status || "trial",
+      customerType: customerType(data),
+      planName: data.planName || null,
+      // The price this customer agreed to (App/Suite pricing only).
+      subscription: data.subscription
+        ? (({ planCode, displayName, appKey, billingCycle, quantity, unitPrice, listUnitPrice, totalPrice, currency, couponCode, agreedAt }) =>
+            ({ planCode, displayName, appKey, billingCycle, quantity, unitPrice, listUnitPrice, totalPrice, currency, couponCode, agreedAt }))(data.subscription)
+        : null,
+      createdAt: toIso(data.createdAt),
+      trialEndDate: toIso(data.trialEndDate),
+      lastLoginAt: lastLoginAt,
+      // { juicechatjunction: "2026-..." , notes: "2026-..." , ... } — every
+      // key that's ever had an SSO hand-off minted for it (see
+      // appUsage.<key> stamps in app-sso/route.js and shop-sso/route.js).
+      // Empty object means this account has never opened any app yet.
+      appUsage: Object.fromEntries(Object.entries(appUsage).map(([k, v]) => [k, toIso(v)])),
+      // Paid Bizzux Projects guest/collaborator seats this org has bought
+      // — see the "setGuestSeats" action below and bizzux-projects'
+      // lib/seats.js. Defaults to 0: no free guest seats.
+      guestSeats: Number(data.guestSeats) || 0,
+      // Free license (see grantFree below / lib/trial.js).
+      billing: data.billing || null,
+      compReason: data.compReason || null,
+      compUntil: toIso(data.compUntil),
+      compNote: data.compNote || null,
+    };
+}
+
 export async function GET(req) {
   try {
     await requirePlatformAdmin(req);
 
-    const id = new URL(req.url).searchParams.get("id");
+    const params = new URL(req.url).searchParams;
+    const rowId = params.get("row");
+    if (rowId) {
+      const snap1 = await adminDb().doc("customers/" + rowId).get();
+      if (!snap1.exists) throw { status: 404, message: "Customer not found" };
+      let last = null;
+      try { const u = await adminAuth().getUser(rowId); last = u.metadata.lastSignInTime ? new Date(u.metadata.lastSignInTime).toISOString() : null; } catch { /* no sign-in account */ }
+      return NextResponse.json({ customer: toCustomerRow(rowId, snap1.data(), last) });
+    }
+    const id = params.get("id");
     if (id) {
       const snap = await adminDb().doc("customers/" + id).get();
       if (!snap.exists) throw { status: 404, message: "Customer not found" };
@@ -126,53 +185,7 @@ export async function GET(req) {
       }
     }
 
-    const customers = snap.docs.map((d) => {
-      const data = d.data();
-      // Prefer the country Vercel's edge saw at signup (accurate for every
-      // account, not just ones with a phone number) — falls back to the
-      // phone-code guess for accounts created before this was added.
-      const country = data.signupCountry || findCountryByPhone(data.phone)?.name || null;
-      const appUsage = data.appUsage || {};
-      return {
-        id: d.id,
-        email: data.email || "",
-        fullName: data.fullName || null,
-        organizationName: data.organizationName || data.companyName || null,
-        jobTitle: data.jobTitle || null,
-        useCase: data.useCase || null,
-        employeeCount: data.employeeCount || null,
-        businessType: data.businessType || null,
-        phone: data.phone || null,
-        country,
-        region: data.signupRegion || null,
-        city: data.signupCity || null,
-        status: data.status || "trial",
-        customerType: customerType(data),
-        planName: data.planName || null,
-        // The price this customer agreed to (App/Suite pricing only).
-        subscription: data.subscription
-          ? (({ planCode, displayName, appKey, billingCycle, quantity, unitPrice, listUnitPrice, totalPrice, currency, couponCode, agreedAt }) =>
-              ({ planCode, displayName, appKey, billingCycle, quantity, unitPrice, listUnitPrice, totalPrice, currency, couponCode, agreedAt }))(data.subscription)
-          : null,
-        createdAt: toIso(data.createdAt),
-        trialEndDate: toIso(data.trialEndDate),
-        lastLoginAt: lastLoginByUid.get(d.id) || null,
-        // { juicechatjunction: "2026-..." , notes: "2026-..." , ... } — every
-        // key that's ever had an SSO hand-off minted for it (see
-        // appUsage.<key> stamps in app-sso/route.js and shop-sso/route.js).
-        // Empty object means this account has never opened any app yet.
-        appUsage: Object.fromEntries(Object.entries(appUsage).map(([k, v]) => [k, toIso(v)])),
-        // Paid Bizzux Projects guest/collaborator seats this org has bought
-        // — see the "setGuestSeats" action below and bizzux-projects'
-        // lib/seats.js. Defaults to 0: no free guest seats.
-        guestSeats: Number(data.guestSeats) || 0,
-        // Free license (see grantFree below / lib/trial.js).
-        billing: data.billing || null,
-        compReason: data.compReason || null,
-        compUntil: toIso(data.compUntil),
-        compNote: data.compNote || null,
-      };
-    });
+    const customers = snap.docs.map((d) => toCustomerRow(d.id, d.data(), lastLoginByUid.get(d.id) || null));
     customers.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
     return NextResponse.json({ customers });
   } catch (e) {
@@ -217,6 +230,7 @@ export async function POST(req) {
         details: { amount, unit, newTrialEndDate: newEnd.toISOString() },
       });
 
+      await safeSyncDirectory(id);
       return NextResponse.json({ ok: true, trialEndDate: newEnd.toISOString() });
     }
 
@@ -316,6 +330,7 @@ export async function POST(req) {
           { merge: true }
         );
         await logAuditEvent({ action: "customer.free_license_end", actor: c, targetType: "organization", targetId: id, details: { graceDays: days } });
+        await safeSyncDirectory(id);
         return NextResponse.json({ ok: true });
       }
 
@@ -343,6 +358,7 @@ export async function POST(req) {
         action: "customer.free_license_grant", actor: c, targetType: "organization", targetId: id,
         details: { planId: snapshot.planCode, planName: snapshot.displayName, users: snapshot.quantity, reason, until: compUntil ? compUntil.toDate().toISOString() : null, note },
       });
+      await safeSyncDirectory(id);
       return NextResponse.json({ ok: true });
     }
 
@@ -386,6 +402,7 @@ export async function POST(req) {
         details: { planId: snapshot.planCode, planName: snapshot.displayName, users: snapshot.quantity, billingCycle: snapshot.billingCycle, unitPrice: snapshot.unitPrice, totalPrice: snapshot.totalPrice, notes },
       });
 
+      await safeSyncDirectory(id);
       return NextResponse.json({ ok: true });
     }
 
@@ -439,6 +456,7 @@ export async function POST(req) {
         actor: c, targetType: "organization", targetId: id, details: { email: snap.data().email },
       });
 
+      await safeSyncDirectory(id);
       return NextResponse.json({ ok: true });
     }
 

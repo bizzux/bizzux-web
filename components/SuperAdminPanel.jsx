@@ -128,7 +128,15 @@ export default function SuperAdminPanel() {
       {tab === "offers" && <OffersManager />}
       {tab === "resellers" && <ResellersManager />}
       {tab === "customers" && <CustomersList isOwner={platformRole === "OWNER"} />}
-      {tab === "organizations" && <OrganizationsAdmin />}
+      {tab === "organizations" && (
+        <OrganizationsAdmin
+          platformRole={platformRole}
+          legacy={{
+            ExtendTrialModal, MarkPaidModal, FreeLicenseModal, SetPasswordModal, AddTeamMemberForm,
+            DeleteUserPanel, ActivityRow, APP_USAGE_LABELS, timeAgo, freeReasonLabel,
+          }}
+        />
+      )}
       {tab === "platformadmins" && <PlatformAdminsManager isOwner={platformRole === "OWNER"} />}
       {tab === "auditlogs" && <AuditLogsPanel />}
       {tab === "security" && <SecuritySettingsPanel />}
