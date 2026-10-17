@@ -237,3 +237,26 @@ test("TEST plan: no trial clock, not billed, duplicate names allowed, plan switc
   const real = base(); await prov(real);
   await assert.rejects(prov({ ...real, requestId: rid(), admin: { ...real.admin, username: "x" + rnd() } }), (e) => e.status === 409);
 });
+
+test("platform admin can delete a TEST org (with users) by typing its name; real orgs stay protected", async () => {
+  const purged = [];
+  const purgeUser = async (info) => { purged.push(info.uid); await fa.adminAuth().deleteUser(info.uid).catch(() => {}); return { skipped: [] }; };
+  const name = "Disposable " + rnd();
+  const r = await prov(base({
+    organizationName: name, planType: "TEST", setupMode: "ORG_ADMIN_USERS",
+    users: [{ fullName: "U", loginMethod: "USERNAME_TEMP", username: "u" + rnd(), profile: "Manager", apps: [] }],
+  }));
+  const uids = (await db.collection("usernames").where("organizationId", "==", r.organizationId).get()).docs.map((d) => d.data().uid);
+  assert.equal(uids.length, 2);
+  await assert.rejects(lib.deleteOrganizationPermanently({ actor: admin, organizationId: r.organizationId, confirmName: "nope" }, { purgeUser }), (e) => e.status === 400);
+  const out = await lib.deleteOrganizationPermanently({ actor: admin, organizationId: r.organizationId, confirmName: name }, { purgeUser });
+  assert.equal(out.usersRemoved, 2);
+  assert.equal((await db.doc("organizations/" + r.organizationId).get()).exists, false);
+  assert.equal((await db.doc("customers/" + r.organizationId).get()).exists, false);
+  assert.equal((await db.collection("usernames").where("organizationId", "==", r.organizationId).get()).size, 0);
+  for (const u of uids) await assert.rejects(fa.adminAuth().getUser(u));
+  // a real (non-test) org is still not deletable by a platform admin
+  const real = await prov(base());
+  await assert.rejects(lib.deleteOrganizationPermanently({ actor: admin, organizationId: real.organizationId, confirmName: "x" }, { purgeUser }), (e) => e.status === 403);
+  assert.equal((await db.doc("organizations/" + real.organizationId).get()).exists, true);
+});

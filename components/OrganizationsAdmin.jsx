@@ -139,7 +139,8 @@ export default function OrganizationsAdmin() {
   }
 
   async function removeForever(o) {
-    const typed = prompt(`Permanently delete "${o.name}"? This cannot be undone. Type the organization name to confirm:`);
+    const extra = o.isTest ? " This is a TEST organization: its users and all their data are deleted too." : "";
+    const typed = prompt(`Permanently delete "${o.name}"?${extra} This cannot be undone. Type the organization name to confirm:`);
     if (typed === null) return;
     await act(o.id, "deletePermanently", { confirmName: typed });
   }
@@ -370,7 +371,7 @@ function OrgRow({ o, open, onManage, act, removeForever }) {
                 : <button className="link-btn" onClick={() => act(o.id, "suspend", {}, `Suspend ${o.name}? Its users are signed out and blocked until reactivated.`)}>Suspend</button>}{" "}
               {o.status !== "archived" && o.kind !== "placeholder" &&
                 <button className="link-btn" onClick={() => act(o.id, "archive", {}, `Archive ${o.name}? It is suspended and hidden from this list; data is kept.`)}>Archive</button>}{" "}
-              {(o.status === "archived" || o.status === "pending" || o.status === "pending_admin") &&
+              {(o.isTest || o.status === "archived" || o.status === "pending" || o.status === "pending_admin") &&
                 <button className="link-btn danger" onClick={() => removeForever(o)}>Delete permanently</button>}
             </>
           )}
