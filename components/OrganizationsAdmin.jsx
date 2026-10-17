@@ -103,6 +103,28 @@ export default function OrganizationsAdmin() {
     } catch { /* leave the fields for manual choice */ }
   }
 
+  // Choosing a state refines the time zone from the state's coordinates (matters
+  // for multi-zone countries; single-zone countries just get the same answer).
+  async function onState(name) {
+    set("state", name);
+    if (!name || !form.countryCode) return;
+    const code = form.countryCode;
+    try {
+      const [{ State }, tzlookup] = await Promise.all([import("country-state-city"), import("tz-lookup")]);
+      const st = State.getStatesOfCountry(code).find((x) => x.name === name);
+      if (!st?.latitude) return;
+      const zone = (tzlookup.default || tzlookup)(parseFloat(st.latitude), parseFloat(st.longitude));
+      if (zone) setForm((f) => (f.countryCode === code && f.state === name ? { ...f, timezone: zone } : f));
+    } catch { /* keep whatever time zone is selected */ }
+  }
+
+  // The browser's zone list can name a zone differently (Asia/Calcutta vs
+  // Asia/Kolkata); always include the selected value so it displays correctly.
+  const tzList = (() => {
+    const base = tzOptions || timezones;
+    return form.timezone && !base.includes(form.timezone) ? [form.timezone, ...base] : base;
+  })();
+
   const mode = MODES.find((m) => m.id === form.setupMode);
   const needsAdmin = form.setupMode !== "ORG_ONLY";
   const states = STATES_BY_COUNTRY[form.countryCode];
@@ -192,7 +214,7 @@ export default function OrganizationsAdmin() {
             <div className="row">
               <Field label="State / Province / Region">
                 {states ? (
-                  <select className="input" value={form.state} onChange={(e) => set("state", e.target.value)}>
+                  <select className="input" value={form.state} onChange={(e) => onState(e.target.value)}>
                     <option value="">Select</option>
                     {states.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -203,7 +225,7 @@ export default function OrganizationsAdmin() {
               <Field label="Time Zone *">
                 <select className="input" value={form.timezone} onChange={(e) => set("timezone", e.target.value)} required>
                   <option value="" disabled>Select</option>
-                  {(tzOptions || timezones).map((tz) => <option key={tz} value={tz}>{formatTimezoneLabel(tz)}</option>)}
+                  {tzList.map((tz) => <option key={tz} value={tz}>{formatTimezoneLabel(tz)}</option>)}
                 </select>
                 {tzOptions && <span className="muted" style={{ fontSize: 12 }}>This country has several time zones — pick one.</span>}
               </Field>
