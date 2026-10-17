@@ -1,40 +1,35 @@
 import { NextResponse } from "next/server";
-import { requirePlatformAdmin, requirePlatformOwner, adminAuth, adminDb } from "@/lib/firebaseAdmin";
+import { requirePlatformAdmin, requirePlatformOwner, requireRecentAuth, adminAuth, adminDb } from "@/lib/firebaseAdmin";
 import { logAuditEvent } from "@/lib/audit";
 import { FieldValue } from "firebase-admin/firestore";
+import {
+  createInvitation, revokeInvitation, changeRole, setAccess, listAdministrators, adminHistory,
+  assertAssignableRole, normalizeEmail,
+} from "@/lib/platformAdminAccess";
+import { ASSIGNABLE_ROLES, ROLE_LABELS, ROLE_SUMMARIES } from "@/lib/platformRoles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function toIso(ts) {
-  if (!ts) return null;
-  return typeof ts.toDate === "function" ? ts.toDate().toISOString() : ts;
-}
+const fail = (e) =>
+  NextResponse.json({ error: e.message || "Failed", ...(e.code ? { code: e.code } : {}) }, { status: e.status || 500 });
 
 // Owner + Admin can both view the roster (so an Admin can see their peers),
-// but only the Owner can create or disable/reactivate one — see the POST
-// guard below. This route can never create role:"OWNER" — that only ever
-// happens via the one-time bootstrap in lib/firebaseAdmin.js's
-// resolvePlatformRole(), matched against a hardcoded env email, never from
-// a request body here.
+// but only the Owner can invite, change or revoke — see the POST guard. No
+// request can ever create, change or remove role:"OWNER": that only exists via
+// the one-time bootstrap in lib/firebaseAdmin.js's resolvePlatformRole().
 export async function GET(req) {
   try {
-    await requirePlatformAdmin(req);
-    const snap = await adminDb().collection("platformAdmins").orderBy("createdAt", "asc").get();
-    const admins = snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        uid: d.id,
-        email: data.email,
-        role: data.role,
-        status: data.status || "active",
-        createdBy: data.createdBy,
-        createdAt: toIso(data.createdAt),
-      };
+    const c = await requirePlatformAdmin(req);
+    const history = new URL(req.url).searchParams.get("history");
+    if (history) return NextResponse.json({ history: await adminHistory(history) });
+    const { admins, invitations } = await listAdministrators({ includeInvitations: c.platformRole === "OWNER" });
+    return NextResponse.json({
+      admins, invitations,
+      roles: ASSIGNABLE_ROLES.map((id) => ({ id, label: ROLE_LABELS[id], summary: ROLE_SUMMARIES[id] })),
     });
-    return NextResponse.json({ admins });
   } catch (e) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+    return fail(e);
   }
 }
 
@@ -42,62 +37,53 @@ export async function POST(req) {
   try {
     const c = await requirePlatformOwner(req);
     const body = await req.json();
+    requireRecentAuth(c); // every mutation here is a privileged change
 
+    if (body.action === "invite" || body.action === "resend") {
+      const r = await createInvitation({ actor: c, email: body.email, role: body.role, origin: new URL(req.url).origin });
+      return NextResponse.json({ ok: true, invitationId: r.id });
+    }
+
+    if (body.action === "revokeInvitation") {
+      await revokeInvitation({ actor: c, id: body.id });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "changeRole") {
+      return NextResponse.json({ ok: true, ...(await changeRole({ actor: c, uid: body.uid, role: body.role })) });
+    }
+
+    // Kept for existing callers: add someone who already has a Bizzux sign-in.
+    // New work should use "invite", which doesn't need a prior sign-in.
     if (body.action === "create") {
-      const email = String(body.email || "").trim().toLowerCase();
-      if (!email) throw { status: 400, message: "Email is required" };
-
+      const email = normalizeEmail(body.email);
       let user;
       try {
         user = await adminAuth().getUserByEmail(email);
       } catch {
-        throw { status: 404, message: "No Bizzux sign-in exists yet for that email — they need to sign up or sign in at least once first." };
+        throw { status: 404, message: "No Bizzux sign-in exists yet for that email. Send an invitation instead." };
       }
-
       const ref = adminDb().doc("platformAdmins/" + user.uid);
       const existing = await ref.get();
       if (existing.exists && existing.data().role === "OWNER") {
         throw { status: 400, message: "That account is already the Platform Owner." };
       }
-
-      // Owner can assign any NON-owner platform role; the default is unchanged.
-      // Roles other than ADMIN only gain access through routes that use
-      // requirePlatformPermission (lib/platformRoles.js).
-      const role = ["ADMIN", "SUPPORT_AGENT", "BILLING_ADMIN"].includes(body.role) ? body.role : "ADMIN";
+      const role = body.role ? assertAssignableRole(body.role) : "ADMIN";
       await ref.set({
         email, role, status: "active", permissions: null,
-        createdBy: c.email, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+        createdBy: c.email, invitedBy: c.email, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
       });
-
-      await logAuditEvent({
-        action: "platform_admin.create", actor: c,
-        targetType: "platformAdmin", targetId: user.uid, details: { email, role },
-      });
-
+      await logAuditEvent({ action: "platform_admin.create", actor: c, targetType: "platformAdmin", targetId: user.uid, details: { email, role } });
       return NextResponse.json({ ok: true, uid: user.uid });
     }
 
     if (body.action === "disable" || body.action === "reactivate") {
-      const uid = String(body.uid || "");
-      if (!uid) throw { status: 400, message: "Admin id is required" };
-      const ref = adminDb().doc("platformAdmins/" + uid);
-      const snap = await ref.get();
-      if (!snap.exists) throw { status: 404, message: "Platform admin not found" };
-      if (snap.data().role === "OWNER") throw { status: 400, message: "The Platform Owner can't be disabled." };
-
-      const status = body.action === "disable" ? "disabled" : "active";
-      await ref.update({ status, updatedAt: FieldValue.serverTimestamp() });
-
-      await logAuditEvent({
-        action: body.action === "disable" ? "platform_admin.disable" : "platform_admin.reactivate",
-        actor: c, targetType: "platformAdmin", targetId: uid, details: { email: snap.data().email },
-      });
-
+      await setAccess({ actor: c, uid: body.uid, enable: body.action === "reactivate" });
       return NextResponse.json({ ok: true });
     }
 
     throw { status: 400, message: "Unknown action" };
   } catch (e) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+    return fail(e);
   }
 }
