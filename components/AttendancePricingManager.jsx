@@ -223,6 +223,15 @@ function Contracts({ data, reload }) {
   const [msg, setMsg] = useState({ text: "", bad: false });
   const [busy, setBusy] = useState(false);
   const published = data.books.filter((b) => ["published", "scheduled", "retired"].includes(b.status));
+  const [ob, setOb] = useState({ manager: 0, self: 0, verified: 0, smart_geofence: 0, cycle: "month" });
+  async function onboard(mode) {
+    setBusy(true);
+    try {
+      const r = await api("POST", { action: "onboardOrg", orgId: f.orgId, counts: ob, cycle: ob.cycle, mode });
+      setMsg({ text: mode === "trial" ? `Trial started for ${f.orgId} (${r.days} days, ends ${r.trialEnds}). No payment was taken.` : "Contracted start recorded. Billing happens outside the portal until gateway billing is enabled.", bad: false });
+    } catch (e) { setMsg({ text: e.message, bad: true }); }
+    setBusy(false);
+  }
   async function save() {
     setBusy(true);
     try {
@@ -265,6 +274,13 @@ function Contracts({ data, reload }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
             <label style={{ fontSize: 12.5 }}>Fixed discount % (replaces volume/annual)<input className="input" type="number" value={f.fixedDiscountPct} onChange={(e) => setF({ ...f, fixedDiscountPct: e.target.value })} style={{ width: "100%" }} /></label>
             <label style={{ fontSize: 12.5 }}>Approved tiers needing approval (e.g. 500)<input className="input" value={f.approvedTiers} onChange={(e) => setF({ ...f, approvedTiers: e.target.value })} style={{ width: "100%" }} /></label>
+          </div>
+          <h4 style={{ margin: "12px 0 4px" }}>Sales-assisted onboarding <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>(no payment is taken)</span></h4>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+            {MODES.map((m) => <label key={"o" + m} style={{ fontSize: 12 }}>{MODE_LABEL[m]} people<input className="input" type="number" min="0" value={ob[m]} onChange={(e) => setOb({ ...ob, [m]: Number(e.target.value) })} style={{ display: "block", width: 90 }} /></label>)}
+            <label style={{ fontSize: 12 }}>Billing<select className="input" value={ob.cycle} onChange={(e) => setOb({ ...ob, cycle: e.target.value })} style={{ display: "block" }}><option value="month">Monthly</option><option value="year">Annual</option></select></label>
+            <button className="btn-outline-dark" disabled={busy || !f.orgId} onClick={() => onboard("trial")}>Start a free trial</button>
+            <button className="btn-outline-dark" disabled={busy || !f.orgId} onClick={() => confirm("Record an active, manually billed start? (Platform Owner only)") && onboard("contracted")}>Contracted start (Owner)</button>
           </div>
           <label style={{ fontSize: 12.5, display: "block", marginTop: 8 }}>Notes<input className="input" value={f.notes || ""} onChange={(e) => setF({ ...f, notes: e.target.value })} style={{ width: "100%" }} /></label>
           <div className="row" style={{ gap: 8, marginTop: 10 }}>

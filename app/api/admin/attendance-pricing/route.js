@@ -4,6 +4,7 @@ import {
   listBooks, createDraft, updateDraft, discardDraft, submitDraft, rejectSubmission, approveSubmission, listContracts, saveContract, getCostModel, saveCostModel,
   impactFor, quote, todayIst,
 } from "@/lib/attendancePriceBook";
+import { onboardForOrg, syncEntitlement } from "@/lib/attendanceSubscription";
 import { PROPOSED_BOOK, validateBook, adviceFor, cliffReport, marginFor, normalizeBook } from "@/lib/attendancePricing";
 
 export const runtime = "nodejs";
@@ -59,11 +60,18 @@ export async function POST(req) {
       case "updateDraft": return NextResponse.json(await updateDraft(actor, b.id, b));
       case "discardDraft": return NextResponse.json(await discardDraft(actor, b.id));
       case "submit": return NextResponse.json(await submitDraft(actor, b.id, String(b.effectiveFrom || "")));
+      case "onboardOrg": {
+        // Sales-assisted onboarding. A trial needs pricing.manage; an active start billed outside the portal is a commercial decision: Owner only.
+        if (b.mode === "contracted") await requirePlatformPermission(req, "pricing.publish");
+        return NextResponse.json(await onboardForOrg(actor, String(b.orgId || ""), { counts: b.counts, cycle: b.cycle, mode: b.mode === "contracted" ? "contracted" : "trial" }));
+      }
       case "saveCostModel": return NextResponse.json(await saveCostModel(actor, b));
       case "saveContract": {
         let approvals = false;
         try { await requirePlatformPermission(req, "pricing.publish"); approvals = true; } catch { approvals = false; }
-        return NextResponse.json(await saveContract(actor, String(b.orgId || ""), b, { approvals }));
+        const saved = await saveContract(actor, String(b.orgId || ""), b, { approvals });
+        await syncEntitlement(String(b.orgId || "")).catch(() => {}); // Attendance's copy of what the company may use follows the contract
+        return NextResponse.json(saved);
       }
       default: return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }
