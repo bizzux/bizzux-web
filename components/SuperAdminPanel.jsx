@@ -8,6 +8,7 @@ import OrganizationsAdmin from "@/components/OrganizationsAdmin";
 import SupportWorkspace from "@/components/support/SupportWorkspace";
 import PricingManager from "@/components/PricingManager";
 import AttendancePricingManager from "@/components/AttendancePricingManager";
+import AttendanceInsights from "@/components/AttendanceInsights";
 import AccessRoles from "@/components/AccessRoles";
 import BusinessHealthPanel from "@/components/BusinessHealthPanel";
 import { APP_CATALOG } from "@/lib/apps";
@@ -39,7 +40,7 @@ const SECTIONS = [
   { id: "support", label: "Customer Support", items: [{ id: "support", label: "Support Tickets" }] },
   {
     id: "revenue", label: "Revenue & Billing",
-    items: [{ id: "pricing", label: "Pricing Plans" }, { id: "attendancepricing", label: "Attendance Pricing" }, { id: "offers", label: "Offers & Discounts" }],
+    items: [{ id: "pricing", label: "Pricing Plans" }, { id: "attendancepricing", label: "Attendance Pricing" }, { id: "attendanceinsights", label: "Attendance Insights" }, { id: "offers", label: "Offers & Discounts" }],
   },
   { id: "insights", label: "Business Insights", items: [{ id: "business", label: "SaaS Business Health" }] },
   {
@@ -218,6 +219,7 @@ export default function SuperAdminPanel() {
       {tab === "trial" && <TrialSettings />}
       {tab === "pricing" && <PricingManager />}
       {tab === "attendancepricing" && <AttendancePricingManager />}
+      {tab === "attendanceinsights" && <AttendanceInsights />}
       {tab === "offers" && <OffersManager />}
       {tab === "resellers" && <ResellersManager />}
       {tab === "support" && <SupportWorkspace onOpenOrg={openOrg} />}

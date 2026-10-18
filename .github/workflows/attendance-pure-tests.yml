@@ -1,0 +1,15 @@
+name: Attendance pure tests
+on:
+  push:
+    paths: ["lib/attendance*.js", "lib/platformRoles.js", "test/attendance*.test.mjs", ".github/workflows/attendance-pure-tests.yml"]
+  pull_request:
+    paths: ["lib/attendance*.js", "lib/platformRoles.js", "test/attendance*.test.mjs", ".github/workflows/attendance-pure-tests.yml"]
+jobs:
+  pure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      # These tests are pure (no database, no emulator, no secrets). Emulator-backed suites are run by hand before a release.
+      - run: node --test test/attendancePricing.test.mjs test/attendanceBilling.test.mjs test/attendanceAnalytics.test.mjs test/attendanceFlags.test.mjs
