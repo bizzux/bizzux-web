@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 // Super Admin reaches all apps within ~5 minutes (plus each tab's own
 // 10-minute cache).
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 

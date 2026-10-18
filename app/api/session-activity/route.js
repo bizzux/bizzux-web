@@ -13,7 +13,6 @@ export const dynamic = "force-dynamic";
 // token is verified here); Shop, on its own project, times out on its own.
 // Stores nothing but a timestamp per user.
 const CORS = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAccountWithAppsAccess, requireUser, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
-import { createHmac } from "crypto";
+import { createHmac, randomUUID } from "crypto";
 import { CORS_HEADERS, corsPreflight } from "@/lib/cors";
 import { logAuditEvent } from "@/lib/audit";
 import { consumeGrantForOpen } from "@/lib/supportAccess";
@@ -103,12 +103,26 @@ export async function GET(req) {
     const secret = process.env.APP_SSO_SECRET;
     if (!secret) throw { status: 500, message: "SSO is not configured" };
 
-    const payload = { uid, email, iat: Date.now(), ...(supportGrant ? { exp: supportGrant.expiresAtMs, sg: supportGrant.id } : {}) };
+    // SSO_V2_SIGNING=1 switches to audience-bound, single-use tokens signed with
+    // a per-app key derived from the master secret (receivers: APP_SSO_KEY).
+    // Off by default so this can ship before every receiver is redeployed.
+    const v2 = process.env.SSO_V2_SIGNING === "1";
+    const payload = {
+      uid, email, iat: Date.now(),
+      ...(v2 ? { v: 2, aud: appKey, jti: randomUUID() } : {}),
+      ...(supportGrant ? { exp: supportGrant.expiresAtMs, sg: supportGrant.id } : {}),
+    };
     const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
-    const sig = createHmac("sha256", secret).update(payloadB64).digest("hex");
+    const signKey = v2 ? createHmac("sha256", secret).update("bizzux-sso-v2|" + appKey).digest("hex") : secret;
+    const sig = createHmac("sha256", signKey).update(payloadB64).digest("hex");
     const token = payloadB64 + "." + sig;
 
-    return NextResponse.json({ url: `${targetUrl}/sso?token=${token}` }, { headers: CORS_HEADERS });
+    // SSO_TOKEN_IN_FRAGMENT=1 puts the token after "#" instead of "?": a URL
+    // fragment is never sent to the server, so it stays out of access logs,
+    // proxies and the Referer header. Needs the receivers' /sso page that
+    // reads the fragment (deploy those first); off by default.
+    const sep = process.env.SSO_TOKEN_IN_FRAGMENT === "1" ? "#" : "?";
+    return NextResponse.json({ url: `${targetUrl}/sso${sep}token=${token}` }, { headers: CORS_HEADERS });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed", ...(e.code ? { code: e.code } : {}) }, { status: e.status || 500, headers: CORS_HEADERS });
   }
