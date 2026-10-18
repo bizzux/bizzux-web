@@ -45,15 +45,33 @@ export default function LoginPage() {
   // resolves the pending sign-in here rather than at the click site.
   useEffect(() => {
     let cancelled = false;
+    // Coming back from Google, getRedirectResult + /api/claim + /api/me take
+    // a few seconds during which the form used to look idle (users clicked
+    // again). The flag set just before the redirect lets us show the busy
+    // state from the very first paint of the return trip.
+    let returning = false;
+    try { returning = sessionStorage.getItem("bzx:googleRedirect") === "1"; } catch {}
+    if (returning) setGoogleBusy(true);
     (async () => {
       try {
         const result = await getRedirectResult(auth);
         if (result && !cancelled) {
+          try { sessionStorage.removeItem("bzx:googleRedirect"); } catch {}
           setGoogleBusy(true);
           await afterAuth();
+          return;
+        }
+        if (!cancelled && returning) {
+          // Redirect came back without a result — release the form.
+          try { sessionStorage.removeItem("bzx:googleRedirect"); } catch {}
+          setGoogleBusy(false);
         }
       } catch (err) {
-        if (!cancelled) setError("That didn't go through. Mind giving it another try?");
+        try { sessionStorage.removeItem("bzx:googleRedirect"); } catch {}
+        if (!cancelled) {
+          setGoogleBusy(false);
+          setError("That didn't go through. Mind giving it another try?");
+        }
       }
     })();
     return () => {
@@ -89,7 +107,11 @@ export default function LoginPage() {
     } else if (result?.twoFactorEnabled && sessionStorage.getItem("2fa_verified") !== "true") {
       router.push("/verify-2fa");
     } else {
-      router.push((await isPlatformAdmin()) ? "/admin" : "/dashboard");
+      // /api/claim now reports platformRole itself; only fall back to a
+      // separate /api/me call if an older response didn't include it.
+      const role = result && "platformRole" in result ? result.platformRole : undefined;
+      const isAdmin = role !== undefined ? role === "OWNER" || role === "ADMIN" : await isPlatformAdmin();
+      router.push(isAdmin ? "/admin" : "/dashboard");
     }
   }
 
@@ -115,8 +137,10 @@ export default function LoginPage() {
     // return. Only the (rare) synchronous failure to even start the
     // redirect lands in this catch.
     try {
+      try { sessionStorage.setItem("bzx:googleRedirect", "1"); } catch {}
       await signInWithRedirect(auth, new GoogleAuthProvider());
     } catch (err) {
+      try { sessionStorage.removeItem("bzx:googleRedirect"); } catch {}
       setError("That didn't go through. Mind giving it another try?");
       setGoogleBusy(false);
     }
@@ -246,7 +270,14 @@ export default function LoginPage() {
           full-viewport click-catcher above everything is the simplest way
           to freeze the whole page for that brief window. */}
       {(busy || googleBusy) && (
-        <div className="fixed inset-0 z-[999] cursor-wait" style={{ background: "transparent" }} aria-hidden="true" />
+        <div
+          className="fixed inset-0 z-[999] cursor-wait flex items-center justify-center"
+          style={{ background: googleBusy ? "rgba(255,255,255,0.85)" : "transparent" }}
+          role="status"
+          aria-live="polite"
+        >
+          {googleBusy && <span style={{ fontSize: 16, fontWeight: 600, color: "#0f172a" }}>Signing you in…</span>}
+        </div>
       )}
       <Nav />
       <div className="login-wrap">

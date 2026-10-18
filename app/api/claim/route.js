@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, adminDb } from "@/lib/firebaseAdmin";
+import { requireUser, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { getTwoFactorSettings } from "@/lib/twoFactor";
 import { deriveVerificationSettings, deriveVerificationFlags } from "@/lib/verification";
@@ -20,10 +20,19 @@ export const dynamic = "force-dynamic";
 export async function POST(req) {
   try {
     const c = await requireUser(req);
-    const twoFactor = await getTwoFactorSettings(c.uid);
-    const twoFactorFields = { twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null, twoFactorRequired: !!twoFactor.required };
+    // Fetched together (they're independent) — platformRole is returned so
+    // the sign-in page can pick /admin vs /dashboard without a second
+    // /api/me round trip.
+    const [twoFactor, platformRole, ownerSnap] = await Promise.all([
+      getTwoFactorSettings(c.uid),
+      resolvePlatformRole(c.uid, c.email).catch(() => null),
+      adminDb().doc("customers/" + c.uid).get(),
+    ]);
+    const twoFactorFields = {
+      twoFactorEnabled: !!twoFactor.enabled, twoFactorMethod: twoFactor.method || null, twoFactorRequired: !!twoFactor.required,
+      platformRole: platformRole || (c.isSuper ? "OWNER" : null),
+    };
 
-    const ownerSnap = await adminDb().doc("customers/" + c.uid).get();
     if (ownerSnap.exists) {
       return NextResponse.json({
         ok: true, hasOrganization: true, mustChangePassword: !!ownerSnap.data().mustChangePassword,
