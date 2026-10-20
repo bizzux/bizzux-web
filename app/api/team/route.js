@@ -1,9 +1,9 @@
+import { newInviteToken } from "@/lib/inviteTokens";
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { requireAccountAdmin, adminAuth, adminDb, sendAuthEmail, generateTempPassword } from "@/lib/firebaseAdmin";
 import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { randomUUID } from "crypto";
 import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile, ORGANIZATION_ROLES } from "@/lib/organizationMembership";
 import { upsertAppAssignment, ensureAppSubscriptionActive } from "@/lib/appAccess";
@@ -36,10 +36,11 @@ function teamCollection(accountId) {
 // way app/api/send-verification-email/route.js already does for the
 // email-verification link.
 async function sendInvite({ accountId, teamMemberId, email, firstName, lastName, role, profile, orgName, origin }) {
-  const token = randomUUID();
+  const { token, id: inviteId } = newInviteToken();
   await adminDb()
-    .doc("invites/" + token)
+    .doc("invites/" + inviteId)
     .set({
+      tokenHashed: true,
       accountId,
       teamMemberId,
       email,
@@ -76,10 +77,11 @@ async function sendInvite({ accountId, teamMemberId, email, firstName, lastName,
 // Google. Sent directly through Resend instead of sendAuthEmail, which can
 // only generate Firebase's own oob-code email types.
 async function sendExistingAccountInvite({ accountId, teamMemberId, email, firstName, lastName, role, profile, orgName, origin }) {
-  const token = randomUUID();
+  const { token, id: inviteId } = newInviteToken();
   await adminDb()
-    .doc("invites/" + token)
+    .doc("invites/" + inviteId)
     .set({
+      tokenHashed: true,
       accountId, teamMemberId, email, firstName, lastName, role, profile,
       existingAccount: true,
       createdAt: FieldValue.serverTimestamp(),

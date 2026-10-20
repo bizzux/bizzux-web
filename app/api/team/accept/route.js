@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { findInvite } from "@/lib/inviteTokens";
 import { requireUser, adminDb, adminAuth } from "@/lib/firebaseAdmin";
 import { DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue } from "firebase-admin/firestore";
@@ -9,11 +10,11 @@ export const dynamic = "force-dynamic";
 
 // Shared validity check used by both GET (pre-signin lookup) and POST
 // (finalization). Throws the same {status, message} shape either way.
-async function loadValidInvite(token) {
+async function loadValidInvite(token, { signedIn = false } = {}) {
   if (!token) throw { status: 400, message: "Missing invite" };
-  const inviteRef = adminDb().doc("invites/" + token);
-  const inviteSnap = await inviteRef.get();
-  if (!inviteSnap.exists) {
+  const inviteSnap = await findInvite(token, (id) => adminDb().doc("invites/" + id).get(), { signedIn });
+  const inviteRef = inviteSnap?.ref;
+  if (!inviteSnap) {
     throw { status: 404, message: "This invite link is invalid or has already been used." };
   }
   const inv = inviteSnap.data();
@@ -45,15 +46,26 @@ export async function GET(req) {
 // roster row active, records the reverse-lookup membership doc, and burns
 // the one-time invite token.
 export async function POST(req) {
+  let claimedRef = null;
   try {
     const c = await requireUser(req);
     const { invite } = await req.json();
     const token = String(invite || "");
-    const { inviteRef, inv } = await loadValidInvite(token);
+    const { inviteRef, inv } = await loadValidInvite(token, { signedIn: true });
 
     if ((inv.email || "").toLowerCase() !== c.email.toLowerCase()) {
       throw { status: 403, message: "This invite was sent to a different email address." };
     }
+
+    // Single use even under a double-click or a replay: only the request that flips `used` inside the transaction goes on.
+    const won = await adminDb().runTransaction(async (tx) => {
+      const cur = await tx.get(inviteRef);
+      if (!cur.exists || cur.data().used) return false;
+      tx.update(inviteRef, { used: true, usedAt: FieldValue.serverTimestamp() });
+      return true;
+    });
+    if (!won) throw { status: 410, message: "This invite has already been used." };
+    claimedRef = inviteRef;
 
     // Setting a password via the reset-password flow proves inbox
     // ownership, same as clicking a verification link.
@@ -94,10 +106,10 @@ export async function POST(req) {
       );
     }
 
-    await inviteRef.set({ used: true }, { merge: true });
-
     return NextResponse.json({ ok: true, accountId: inv.accountId });
   } catch (e) {
+    // If finishing the membership failed after the invite was claimed, give it back so the person can try again.
+    if (claimedRef) await claimedRef.update({ used: false }).catch(() => {});
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
 }
