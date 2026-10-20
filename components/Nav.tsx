@@ -11,6 +11,7 @@ import { roleLabel } from "@/lib/roleLabel";
 import LiveClock from "@/components/LiveClock";
 import AppLauncher from "@/components/AppLauncher";
 import AccountSwitcher from "@/components/AccountSwitcher";
+import LinkRequestsBanner from "@/components/LinkRequestsBanner";
 
 // "All apps" sits first, right next to the logo, on every page. The rest
 // are the marketing tabs, always shown, signed in or not, so the menu bar
@@ -372,6 +373,7 @@ export default function Nav() {
           </div>
         </div>
       )}
+      {signedIn && <LinkRequestsBanner />}
     </header>
   );
 }

@@ -7,6 +7,7 @@ import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizatio
 import { getOrganizationAppSubscriptions, upsertAppAssignment } from "@/lib/appAccess";
 import { APP_IDS } from "@/lib/appCatalog";
 import { createUsernameUser, usernameForUid, setUsernamePassword, generateRecoveryCodes, tempExpiry } from "@/lib/usernameAuth";
+import { linkUserToOrganization, createLinkRequest } from "@/lib/linkRequests";
 import { validatePassword } from "@/lib/passwordPolicy";
 
 export const runtime = "nodejs";
@@ -139,6 +140,14 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, uid, teamMemberId: memberRef.id, username, password });
     }
 
+    if (body.action === "requestLink") {
+      // A company admin (for their own company) or a Platform Admin asks an existing username user to join. The person must accept.
+      const organizationId = String(body.organizationId || c.accountId || "").trim();
+      if (!organizationId) throw { status: 400, message: "Select a company" };
+      assertTenant(c, organizationId);
+      return NextResponse.json(await createLinkRequest({ actor: c, organizationId, username: body.username, profile: body.profile, apps: body.apps }));
+    }
+
     if (body.action === "linkUser") {
       // Platform Admin only: give an EXISTING username user a second company
       // membership with its own role and apps (one login, several companies).
@@ -148,37 +157,10 @@ export async function POST(req) {
       if (!u.exists) throw { status: 404, message: "Username not found" };
       const uid = u.data().uid;
       const organizationId = String(body.organizationId || "");
-      const org = await adminDb().doc("customers/" + organizationId).get();
-      if (!org.exists) throw { status: 404, message: "Company not found" };
-      if (organizationId === u.data().organizationId) throw { status: 400, message: "That is already this user's company" };
-      const existing = await adminDb().doc("organizationMemberships/" + organizationId + "_" + uid).get();
-      if (existing.exists) throw { status: 409, message: "Already a member of that company" };
-      if (org.data().allowedUsers) {
-        const team = await adminDb().collection("customers/" + organizationId + "/team").count().get();
-        if (team.data().count + 1 >= org.data().allowedUsers) throw { status: 400, message: "User limit reached for that company's subscription" };
-      }
-      const profile = PROFILE_VALUES.includes(body.profile) ? body.profile : DEFAULT_PROFILE;
-      const subs = await getOrganizationAppSubscriptions(organizationId);
-      const enabled = new Set(subs.filter((x) => x.status === "ACTIVE").map((x) => x.appId));
-      const apps = (Array.isArray(body.apps) ? body.apps : []).filter((a) => APP_IDS.includes(a));
-      const denied = apps.filter((a) => !enabled.has(a));
-      if (denied.length) throw { status: 400, message: "Not enabled for that company: " + denied.join(", ") };
-      await adminDb().doc("organizationMemberships/" + organizationId + "_" + uid).set({
-        organizationId, userId: uid, role: roleFromProfile(profile, false), profile, status: "active",
-        createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      await linkUserToOrganization({
+        actor: c, uid, username, displayName: u.data().displayName, homeOrganizationId: u.data().organizationId,
+        organizationId, profile: body.profile, apps: body.apps, via: "platform_admin",
       });
-      await adminDb().collection("customers/" + organizationId + "/team").add({
-        firstName: u.data().displayName || username, lastName: "", email: "", username, role: profile, profile,
-        status: "active", uid, linkedFromOrganizationId: u.data().organizationId,
-        invitedBy: c.email || c.uid, invitedAt: FieldValue.serverTimestamp(), joinedAt: FieldValue.serverTimestamp(),
-      });
-      await Promise.all(apps.map((appId) => upsertAppAssignment({ organizationId, userId: uid, appId, role: "MEMBER", status: "ACTIVE" })));
-      // Flag both possible home docs so resolveAccount() looks at the active-company choice.
-      for (const path of ["customers/" + uid, "memberships/" + uid]) {
-        const d = await adminDb().doc(path).get();
-        if (d.exists) await d.ref.set({ multiOrg: true }, { merge: true });
-      }
-      await logAuditEvent({ action: "user.link_company", actor: c, targetType: "user", targetId: uid, details: { organizationId, username, profile, apps } });
       return NextResponse.json({ ok: true, uid });
     }
 

@@ -42,6 +42,7 @@ export default function TeamPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showUsernameAdd, setShowUsernameAdd] = useState(false);
+  const [showLink, setShowLink] = useState(false);
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [credentials, setCredentials] = useState(null); // { email, password } shown once after a credentials-based add or a password reset
@@ -193,6 +194,7 @@ export default function TeamPage() {
           <div className="row" style={{ gap: 8 }}>
             <button className="btn-outline-dark" onClick={() => setShowBulkAdd(true)}>Bulk add users</button>
             <button className="btn-outline-dark" onClick={() => setShowUsernameAdd(true)}>+ Username user</button>
+            <button className="btn-outline-dark" onClick={() => setShowLink(true)}>Link existing user</button>
             <button className="btn-primary-sm" onClick={() => setShowAdd(true)}>+ New User</button>
           </div>
         </div>
@@ -297,6 +299,8 @@ export default function TeamPage() {
           }}
         />
       )}
+
+      {showLink && <LinkExistingUserModal onClose={() => setShowLink(false)} />}
 
       {showUsernameAdd && (
         <UsernameUserModal
@@ -1171,6 +1175,65 @@ function UsernameUserModal({ onClose, onCreated }) {
         <div className="row" style={{ gap: 8, marginTop: 14 }}>
           <button className="btn-primary-sm" disabled={busy}>{busy ? "Creating…" : "Create user"}</button>
           <button type="button" className="btn-outline-dark" onClick={onClose}>Cancel</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// Ask someone who already has a Bizzux username login to join this company. They accept it themselves after signing in; nothing changes for
+// them until then, and this form says the same thing whether or not the username exists.
+function LinkExistingUserModal({ onClose }) {
+  const [f, setF] = useState({ username: "", profile: "Staff/Shopkeeper", apps: [] });
+  const [enabled, setEnabled] = useState(null);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  useEffect(() => {
+    api("/api/admin/username-users", "GET").then((d) => setEnabled(d.enabledApps || [])).catch((e) => setErr(e.message));
+  }, []);
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setErr("");
+    try {
+      const d = await api("/api/admin/username-users", "POST", { action: "requestLink", ...f });
+      setDone(d.message);
+    } catch (x) {
+      setErr(x.message);
+    }
+    setBusy(false);
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <form className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <h2 style={{ marginTop: 0 }}>Link an existing user</h2>
+        <p className="muted" style={{ fontSize: 12.5 }}>For someone who already has a Bizzux username login (for example from another company). They keep one login and must accept before they join. For an email address, use Invite instead.</p>
+        {done ? <p role="status">{done}</p> : (
+          <>
+            <label className="label">Their exact username</label>
+            <input className="input" value={f.username} onChange={(e) => set("username", e.target.value)} required autoCapitalize="none" />
+            <label className="label">Role</label>
+            <select className="input" value={f.profile} onChange={(e) => set("profile", e.target.value)}>
+              {PROFILES.filter((p) => p.value !== "Global Admin").map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+            <label className="label">Applications</label>
+            {enabled === null ? <p className="muted">Loading…</p> : (
+              <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+                {APPS.filter((a) => enabled.includes(a.id)).map((a) => (
+                  <label key={a.id} style={{ fontSize: 13 }}>
+                    <input type="checkbox" checked={f.apps.includes(a.id)} onChange={(e) => set("apps", e.target.checked ? [...f.apps, a.id] : f.apps.filter((x) => x !== a.id))} /> {a.name.replace("Bizzux ", "")}
+                  </label>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {err && <p className="error">{err}</p>}
+        <div className="row" style={{ gap: 8, marginTop: 14 }}>
+          {!done && <button className="btn-primary-sm" disabled={busy}>{busy ? "Sending…" : "Send request"}</button>}
+          <button type="button" className="btn-outline-dark" onClick={onClose}>{done ? "Close" : "Cancel"}</button>
         </div>
       </form>
     </div>
