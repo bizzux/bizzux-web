@@ -66,20 +66,20 @@ export default async function Home() {
             src="/images/hero-original.webp"
             alt="Bizzux: all your business apps in one place. Simple. Smart. Affordable. ₹599 / month for all apps."
             width={1672}
-            height={941}
+            height={857}
             className="block w-full h-auto"
           />
           <a
             href="/sign-in?mode=signup"
             aria-label="Start Free Trial"
             className="absolute"
-            style={{ left: "4.67%", top: "64.8%", width: "15.9%", height: "6.6%" }}
+            style={{ left: "4.67%", top: "61.4%", width: "15.9%", height: "7.2%" }}
           />
           <a
             href="/contact"
             aria-label="Book a Demo"
             className="absolute"
-            style={{ left: "21.4%", top: "64.8%", width: "12.1%", height: "6.6%" }}
+            style={{ left: "21.4%", top: "61.4%", width: "12.1%", height: "7.2%" }}
           />
         </div>
       </section>
