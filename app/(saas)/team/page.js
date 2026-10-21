@@ -80,6 +80,9 @@ export default function TeamPage() {
   const [organizationName, setOrganizationName] = useState(null);
   const [directory, setDirectory] = useState(null); // canonical rows from the shared IAM service (/api/iam/directory), null until loaded
   const [filters, setFilters] = useState({ q: "", login: "", status: "", app: "" });
+  const [selected, setSelected] = useState(() => new Set()); // row ids ticked for a bulk action
+  const [bulkApp, setBulkApp] = useState("");
+  const [bulkMsg, setBulkMsg] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showUsernameAdd, setShowUsernameAdd] = useState(false);
@@ -113,6 +116,36 @@ export default function TeamPage() {
   }, [user, me]);
 
   const rows = mergeRows(members, directory, filters);
+  // Bulk selection: the Owner is never selectable; "select all" means every selectable row that matches the current filters.
+  const selectable = (r) => !!r.uid && !r.isOwner && r.orgRoleEffective !== "OWNER";
+  const visibleSelectable = rows.filter(selectable);
+  const chosen = visibleSelectable.filter((r) => selected.has(r.id));
+  const allTicked = visibleSelectable.length > 0 && chosen.length === visibleSelectable.length;
+  const toggleAll = () => setSelected(allTicked ? new Set() : new Set(visibleSelectable.map((r) => r.id)));
+  const toggleOne = (id) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  async function bulk(kind) {
+    if (!chosen.length) return;
+    const label = kind === "disable" ? "disable" : kind === "grant" ? "give " + appName(bulkApp) + " to" : "remove " + appName(bulkApp) + " from";
+    if ((kind !== "disable" && !bulkApp) || !window.confirm("Really " + label + " " + chosen.length + " user" + (chosen.length === 1 ? "" : "s") + "?")) return;
+    setErr(""); setBulkMsg("Working…");
+    let ok = 0; const failed = [];
+    for (const r of chosen) {
+      try {
+        if (kind === "disable") {
+          if (r.dirOnly || r.status === "disabled") continue;
+          await api("/api/team", "POST", { action: "disable", id: r.id });
+        } else {
+          const cur = r.appIds || [];
+          const next = kind === "grant" ? [...new Set([...cur, bulkApp])] : cur.filter((a) => a !== bulkApp);
+          await api("/api/iam/identities", "POST", { kind: "apps", uid: r.uid, apps: next });
+        }
+        ok++;
+      } catch (e) { failed.push((r.firstName || r.username || r.email || r.uid) + ": " + e.message); }
+    }
+    setBulkMsg(ok + " done" + (failed.length ? ", " + failed.length + " failed (" + failed.slice(0, 3).join("; ") + ")" : ""));
+    setSelected(new Set());
+    await load();
+  }
 
   if (!user || isAdmin === null) {
     return (
@@ -279,6 +312,23 @@ export default function TeamPage() {
           </div>
         </div>
 
+        {(chosen.length > 0 || bulkMsg) && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <strong style={{ fontSize: 13 }}>{chosen.length} selected</strong>
+              <select className="input" style={{ maxWidth: 200 }} value={bulkApp} onChange={(e) => setBulkApp(e.target.value)} aria-label="Application for bulk grant or remove">
+                <option value="">Choose an app…</option>
+                {(directory?.enabledApps || []).map((a) => <option key={a} value={a}>{appName(a)}</option>)}
+              </select>
+              <button className="btn-outline-dark" disabled={!chosen.length || !bulkApp} onClick={() => bulk("grant")}>Give access</button>
+              <button className="btn-outline-dark" disabled={!chosen.length || !bulkApp} onClick={() => bulk("revoke")}>Remove access</button>
+              <button className="btn-outline-dark" disabled={!chosen.length} onClick={() => bulk("disable")}>Disable</button>
+              <button className="link-btn" onClick={() => { setSelected(new Set()); setBulkMsg(""); }}>Clear selection</button>
+              {bulkMsg && <span className="muted" style={{ fontSize: 12.5 }}>{bulkMsg}</span>}
+            </div>
+          </div>
+        )}
+
         <div className="card">
           {members === null && <p className="muted">Loading…</p>}
           {members && members.length === 0 && <p className="muted">No teammates yet.</p>}
@@ -287,12 +337,13 @@ export default function TeamPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th><th>Sign-in</th><th>Job title</th><th title="Describes the job in the business apps. Separate from the organization role and from app roles.">Business profile</th><th title="What this person may do in the ORGANIZATION: users, roles, app assignment. Grants no application permission.">Organization role</th><th title="Per application: the role inside that app and where the access comes from. Granted separately from the organization role.">App roles (effective access)</th><th>Status</th><th>Last sign-in</th><th></th>
+                  <th style={{ width: 28 }}><input type="checkbox" aria-label="Select all users shown" checked={allTicked} onChange={toggleAll} disabled={!visibleSelectable.length} /></th><th>Name</th><th>Sign-in</th><th>Job title</th><th title="Describes the job in the business apps. Separate from the organization role and from app roles.">Business profile</th><th title="What this person may do in the ORGANIZATION: users, roles, app assignment. Grants no application permission.">Organization role</th><th title="Per application: the role inside that app and where the access comes from. Granted separately from the organization role.">App roles (effective access)</th><th>Status</th><th>Last sign-in</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((m) => (
                   <tr key={m.id}>
+                    <td>{selectable(m) ? <input type="checkbox" aria-label={"Select " + (m.firstName || m.username || m.email)} checked={selected.has(m.id)} onChange={() => toggleOne(m.id)} /> : null}</td>
                     <td>{[m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A"}</td>
                     <td>
                       <div>{m.email || (m.username ? "@" + m.username : "")}</div>
