@@ -30,6 +30,7 @@ async function api(path, method, body) {
   return data;
 }
 
+const ORG_SOURCE = { owner: "company owner", explicit: "set by an administrator", "legacy-profile": "from business profile" };
 const LOGIN_LABEL = { google: "Google", email: "Email & password", username: "Bizzux username", "attendance-username": "Attendance username" };
 
 // Merge the legacy team list (row actions need its ids) with the canonical IAM directory (login type, last sign-in, app access). People who exist
@@ -44,11 +45,13 @@ function mergeRows(members, directory, f) {
     return {
       ...m, firstName: m.firstName || d?.name || "", loginKind: d?.loginKind || (m.username ? "username" : m.email ? "email" : ""), lastSignIn: d?.lastSignIn || null,
       appIds: d?.apps || null, appAccess: d ? d.apps.map(appName) : m.appAccess,
+      orgRoleEffective: d?.orgRoleEffective || null, orgRoleSource: d?.orgRoleSource || null,
+      appChips: d ? d.effective.filter((e) => e.access).map((e) => ({ name: appName(e.appId), role: e.appRole, source: e.source })) : null,
     };
   });
   (directory?.users || []).filter((u) => !seen.has(u.uid)).forEach((u) => rows.push({
     id: "dir_" + u.uid, uid: u.uid, dirOnly: true, firstName: u.name || u.username, lastName: "", email: u.email, username: u.username,
-    role: "", profile: u.profile, orgRole: u.orgRole, appAccess: u.apps.map(appName), appIds: u.apps, loginKind: u.loginKind, lastSignIn: u.lastSignIn,
+    role: "", profile: u.profile, orgRole: u.orgRoleEffective || u.orgRole, orgRoleEffective: u.orgRoleEffective, orgRoleSource: u.orgRoleSource, appChips: u.effective.filter((e) => e.access).map((e) => ({ name: appName(e.appId), role: e.appRole, source: e.source })), appAccess: u.apps.map(appName), appIds: u.apps, loginKind: u.loginKind, lastSignIn: u.lastSignIn,
     status: u.disabled ? "disabled" : u.pendingActivation ? "invited" : "active",
   }));
   const q = f.q.trim().toLowerCase();
@@ -71,6 +74,7 @@ export default function TeamPage() {
   const { user, me } = useMe();
   const isAdmin = me ? me.isAccountAdmin === true : null; // null = checking
   const isSuper = me?.superAdmin === true;
+  const canAssignAdmin = isSuper || (me?.orgPermissions || []).includes("roles.assign_admin"); // only an Owner can make or remove an Admin; the server enforces it
   const myRoleLabel = isSuper ? "Platform " + (me?.platformRole === "OWNER" ? "Owner" : "Admin") : roleLabel(me);
   const [members, setMembers] = useState(null);
   const [organizationName, setOrganizationName] = useState(null);
@@ -147,7 +151,10 @@ export default function TeamPage() {
     if (action !== "unlock" && !window.confirm("Continue? This signs " + m.username + " out and issues new credentials.")) return;
     setBusyId(m.id);
     try {
-      const d = await api("/api/admin/username-users", "POST", { action, uid: m.uid });
+      // A pending account is re-issued through the shared IAM service (organization-role authorization, home-company rule, audit); everything else keeps its action.
+      const d = action === "resetPassword" && m.status === "invited"
+        ? await api("/api/iam/identities", "POST", { kind: "reissue", uid: m.uid })
+        : await api("/api/admin/username-users", "POST", { action, uid: m.uid });
       if (d.password) setCredentials({ email: m.username, password: d.password });
       if (d.recoveryCodes) setCredentials({ email: m.username, password: "(unchanged) — recovery codes: " + d.recoveryCodes.join("  ") });
       await load();
@@ -280,7 +287,7 @@ export default function TeamPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th><th>Sign-in</th><th>Role</th><th>Profile</th><th>Org role</th><th>App access</th><th>Status</th><th>Last sign-in</th><th></th>
+                  <th>Name</th><th>Sign-in</th><th>Job title</th><th title="Describes the job in the business apps. Separate from the organization role and from app roles.">Business profile</th><th title="What this person may do in the ORGANIZATION: users, roles, app assignment. Grants no application permission.">Organization role</th><th title="Per application: the role inside that app and where the access comes from. Granted separately from the organization role.">App roles (effective access)</th><th>Status</th><th>Last sign-in</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -292,7 +299,7 @@ export default function TeamPage() {
                       <div className="muted" style={{ fontSize: 11.5 }}>{LOGIN_LABEL[m.loginKind] || ""}</div>
                     </td>
                     <td>{m.role || "N/A"}</td>
-                    <td>{PROFILES.find((p) => p.value === m.profile)?.label || m.profile}</td>
+                    <td>{m.isOwner ? <span className="muted">—</span> : PROFILES.find((p) => p.value === m.profile)?.label || m.profile}</td>
                     <td>
                       {m.isOwner || m.orgRole === "OWNER" ? (
                         "OWNER"
@@ -301,19 +308,21 @@ export default function TeamPage() {
                       ) : (
                         <select
                           className="input" style={{ fontSize: 12.5, padding: "3px 6px" }}
-                          value={m.orgRole} onChange={(e) => changeOrgRole(m, e.target.value)}
+                          value={m.orgRoleEffective || m.orgRole} onChange={(e) => changeOrgRole(m, e.target.value)}
+                          disabled={!canAssignAdmin && (m.orgRoleEffective || m.orgRole) === "ADMIN"}
                         >
                           {ORGANIZATION_ROLES.filter((r) => r !== "OWNER").map((r) => (
-                            <option key={r} value={r}>{r}</option>
+                            <option key={r} value={r} disabled={r === "ADMIN" && !canAssignAdmin}>{r}</option>
                           ))}
                         </select>
                       )}
+                      <div className="muted" style={{ fontSize: 11 }}>{ORG_SOURCE[m.orgRoleSource] || ""}</div>
                     </td>
                     <td>
-                      {m.appAccess && m.appAccess.length > 0 ? (
+                      {(m.appChips || m.appAccess || []).length > 0 ? (
                         <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
-                          {m.appAccess.map((name) => (
-                            <span key={name} className="status-pill active" style={{ fontSize: 11 }}>{name}</span>
+                          {(m.appChips || m.appAccess.map((name) => ({ name }))).map((c) => (
+                            <span key={c.name} className="status-pill active" style={{ fontSize: 11 }} title={c.source ? "Source: " + (c.source === "assignment" ? "assigned to this person" : c.source === "owner" ? "company owner" : c.source) : ""}>{c.name}{c.role ? " · " + (c.role === "ADMIN" ? "Admin" : "Member") : ""}</span>
                           ))}
                         </div>
                       ) : (

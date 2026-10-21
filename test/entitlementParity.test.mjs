@@ -22,7 +22,7 @@ test("matrix", async () => {
   assert.equal(await code("u", "a3"), "app_not_assigned", "assignment but NO subscription doc: denied like the apps");
   assert.equal(await code("nobody", "a1"), "app_not_assigned", "no assignment");
   await mem("sus", "suspended"); await asg("sus", "a1");
-  assert.equal(await code("sus", "a1"), "app_not_assigned", "suspended membership");
+  assert.equal(await code("sus", "a1"), "user_suspended", "suspended membership (portal now reports the same code as the apps: both deny)");
   assert.equal(await code("anyone", "a3", true), null, "an owner is tolerated without a subscription doc");
   assert.equal(await code("anyone", "a2", true), "app_not_enabled", "but not when the app is switched off");
 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOrgManager } from "@/lib/firebaseAdmin";
-import { createUsernameIdentity, requestLinkToOrganization, setUserApps, usernameAvailability, bindExistingMemberToEmployee, setOrganizationRole } from "@/lib/iam/identityService";
+import { createUsernameIdentity, requestLinkToOrganization, setUserApps, usernameAvailability, bindExistingMemberToEmployee, setOrganizationRole, reissueTemporaryPassword } from "@/lib/iam/identityService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +30,7 @@ export async function POST(req) {
     if (b.kind === "link") return NextResponse.json(await requestLinkToOrganization({ actor: c, organizationId, username: b.username, profile: b.profile, apps: b.apps, bindEmployeeId: b.bindEmployeeId }));
     if (b.kind === "apps") return NextResponse.json(await setUserApps({ actor: c, organizationId, uid: String(b.uid || ""), apps: b.apps }));
     if (b.kind === "orgRole") return NextResponse.json(await setOrganizationRole({ actor: c, organizationId, uid: String(b.uid || ""), role: b.role }));
+    if (b.kind === "reissue") return NextResponse.json(await reissueTemporaryPassword({ actor: c, organizationId, uid: String(b.uid || "") }));
     if (b.kind === "bindEmployee") return NextResponse.json(await bindExistingMemberToEmployee({ actor: c, organizationId, who: b.who, employeeId: b.employeeId }));
     throw { status: 400, message: "Unknown kind" };
   } catch (e) {

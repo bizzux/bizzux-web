@@ -132,3 +132,32 @@ test("changing an organization role never grants application access or licence",
   const t2 = await team.POST(new Request("http://x/api/team", { method: "POST", headers: hdr(w), body: JSON.stringify({ action: "setOrgRole", id: mgr.uid, role: "ADMIN" }) }));
   assert.equal(t2.status, 403, "...including the Admin-can't-mint-Admin rule");
 });
+
+test("P1: temporary-password re-issue is for PENDING accounts of the company's own people, authorized by organization role, audited", async () => {
+  const un2 = await (await iam(A, { kind: "username", fullName: "Pending Pat", username: un("pat") })).json();
+  const orig = un2.password;
+  const oldDoc = (await db.doc("usernames/" + un("pat")).get()).data();
+  assert.equal((await iam(mem, { kind: "reissue", uid: un2.uid })).status, 403, "a plain member can't");
+  assert.equal((await iam(viewer, { kind: "reissue", uid: un2.uid })).status, 403);
+  assert.equal((await iam(B, { kind: "reissue", uid: un2.uid })).status, 404, "another company's owner can't");
+  assert.equal((await iam(A, { kind: "reissue", uid: A.uid })).status, 403, "never the Owner");
+  assert.equal((await iam(adm2, { kind: "reissue", uid: adm2.uid })).status, 403, "never yourself");
+  const r = await iam(adm2, { kind: "reissue", uid: un2.uid });
+  assert.equal(r.status, 200); const out = await r.json();
+  assert.ok(out.password && out.password !== orig && out.username === un("pat"));
+  const nd = (await db.doc("usernames/" + un("pat")).get()).data();
+  assert.ok(nd.hash !== oldDoc.hash && nd.mustChangePassword === true, "new hash, change still forced");
+  assert.ok(!JSON.stringify(nd).includes(out.password), "never stored in clear text");
+  const { usernameLogin } = await import("../lib/usernameAuth.js");
+  await assert.rejects(usernameLogin({ username: un("pat"), password: orig, ip: "1.1.1.1" }), (e) => e.status === 401, "the old temporary password is dead");
+  assert.equal((await usernameLogin({ username: un("pat"), password: out.password, ip: "1.1.1.1" })).mustChangePassword, true);
+  // active account (already chose its own password): refused with guidance
+  await db.doc("usernames/" + un("pat")).set({ mustChangePassword: false }, { merge: true });
+  assert.equal((await iam(A, { kind: "reissue", uid: un2.uid })).status, 409);
+  // a login homed in ANOTHER company that merely joined this one can't be reset by this company's admin
+  const other = await (await iam(B, { kind: "username", fullName: "Home B", username: un("homeb") })).json();
+  await db.doc(`organizationMemberships/${A.uid}_${other.uid}`).set({ organizationId: A.uid, userId: other.uid, role: "MEMBER", status: "active" });
+  assert.equal((await iam(A, { kind: "reissue", uid: other.uid })).status, 403);
+  const aud = await db.collection("auditLogs").where("action", "==", "user.reissue_temp_password").get();
+  assert.ok(aud.size >= 1, "audit event written");
+});
