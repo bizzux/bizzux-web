@@ -23,16 +23,14 @@ export default function OrganizationsPage() {
   const onAdminHost = useIsAdminHost();
   const { user, me } = useMe();
   const isAdmin = me ? me.isAccountAdmin === true : null;
-  const [orgs, setOrgs] = useState(null);
-  const [current, setCurrent] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
 
   useEffect(() => { if (user === null) router.push("/sign-in"); }, [user, router]);
-  async function load() {
-    try { const d = await api("/api/organizations", "GET"); setOrgs(d.organizations || []); setCurrent(d.currentOrganizationId || null); } catch (e) { setErr(e.message); }
-  }
-  useEffect(() => { if (user && isAdmin) load(); }, [user, isAdmin]);
+  // The switchable companies and the active one come from /api/me (the same source the rest of the portal uses; the active company is the one
+  // the server resolves for every app). A login with a single company just shows that company.
+  const current = me?.activeOrganizationId || null;
+  const orgs = me ? (me.organizations || (me.organizationName ? [{ id: current || "current", name: me.organizationName, role: me.profile || "" }] : [])) : null;
 
   async function switchTo(id) {
     setBusy(id); setErr("");
@@ -55,12 +53,12 @@ export default function OrganizationsPage() {
         {orgs === null ? <p className="muted">Loading…</p> : orgs.length === 0 ? <p className="muted">No organizations found.</p> : (
           <div className="card" style={{ padding: 0 }}>
             {orgs.map((o) => (
-              <div key={o.organizationId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid #eef2f7" }}>
+              <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid #eef2f7" }}>
                 <div style={{ flex: 1 }}>
-                  <strong>{o.name || o.organizationName || "Organization"}</strong>
-                  <div className="muted" style={{ fontSize: 12 }}>{o.role || o.organizationRole || ""}</div>
+                  <strong>{o.name || "Organization"}</strong>
+                  <div className="muted" style={{ fontSize: 12 }}>{o.role || ""}</div>
                 </div>
-                {o.organizationId === current ? <span className="badge">Active</span> : <button className="btn-primary-sm" disabled={!!busy} onClick={() => switchTo(o.organizationId)}>{busy === o.organizationId ? "Switching…" : "Switch"}</button>}
+                {(o.id === current || orgs.length === 1) ? <span className="badge">Active</span> : <button className="btn-primary-sm" disabled={!!busy} onClick={() => switchTo(o.id)}>{busy === o.id ? "Switching…" : "Switch"}</button>}
               </div>
             ))}
           </div>
