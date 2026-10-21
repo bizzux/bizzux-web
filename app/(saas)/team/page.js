@@ -94,6 +94,7 @@ export default function TeamPage() {
   useEffect(() => { setPageNo(0); }, [filters, sort.key, sort.dir, pageSize]);
   // Choose columns: the administrator's own saved column set (server validated), shown or hidden per column.
   const [wizard, setWizard] = useState({ open: false, method: "username" });
+  const [wizardCtx, setWizardCtx] = useState(null); // set when this visit started in another Bizzux app (for example Attendance "Add employee")
   const [detail, setDetail] = useState(null); // the row whose details drawer is open
   const [resetFor, setResetFor] = useState(null); // the row whose reset-password drawer is open
   const [colKeys, setColKeys] = useState(DEFAULT_COLUMNS);
@@ -104,6 +105,18 @@ export default function TeamPage() {
     if (!user || !me?.isAccountAdmin) return;
     api("/api/iam/prefs", "GET").then((d) => setColKeys(cleanColumns(d.activeUsers?.columns))).catch(() => { /* defaults stay */ });
   }, [user, me]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Arriving from an app with an add-employee intent opens the wizard straight away with that app preselected (once per visit). The server still
+  // checks permission, licence and seats when the person finishes.
+  useEffect(() => {
+    if (!directory || !me?.isAccountAdmin) return;
+    try {
+      const c = JSON.parse(sessionStorage.getItem("bzx.admin.ctx") || "null");
+      if (c && /^add-employee/.test(c.intent || "") && !c.handled) {
+        sessionStorage.setItem("bzx.admin.ctx", JSON.stringify({ ...c, handled: true }));
+        setWizardCtx(c); setWizard({ open: true, method: c.intent === "add-employee-existing" ? "member" : "username" });
+      }
+    } catch { /* no context */ }
+  }, [directory, me]); // eslint-disable-line react-hooks/exhaustive-deps
   async function saveCols(cols) {
     setSavingCols(true); setColErr("");
     try { const d = await api("/api/iam/prefs", "PUT", { activeUsers: { columns: cols } }); setColKeys(cleanColumns(d.activeUsers.columns)); setShowCols(false); }
@@ -378,6 +391,7 @@ export default function TeamPage() {
         <CommandBar label="User actions">
           <CmdMenu primary icon="plus" label="Add a user" items={[
             { label: "Create user (username and password)", icon: "plus", onClick: () => setWizard({ open: true, method: "username" }) },
+            { label: "Existing member of your company", icon: "people", onClick: () => setWizard({ open: true, method: "member" }) },
             { label: "Invite user (Google or email)", icon: "people", onClick: () => setWizard({ open: true, method: "invite" }) },
             { label: "Link existing user", icon: "link", onClick: () => setWizard({ open: true, method: "link" }) },
           ]} />
@@ -499,7 +513,7 @@ export default function TeamPage() {
 
       <ColumnChooser open={showCols} columns={colKeys} onClose={() => setShowCols(false)} onSave={saveCols} saving={savingCols} error={colErr} />
 
-      <AddUserWizard open={wizard.open} method={wizard.method} api={api} directory={directory} canAssignAdmin={canAssignAdmin}
+      <AddUserWizard open={wizard.open} method={wizard.method} context={wizardCtx} api={api} directory={directory} canAssignAdmin={canAssignAdmin}
         onClose={() => setWizard((w) => ({ ...w, open: false }))} onCreated={() => load()}
         onManage={(q) => { setFilters({ q: String(q || ""), login: "", status: "", app: "", role: "" }); }} />
 

@@ -9,7 +9,7 @@ test("pure rules: returnTo is a plain path on the app, origins come only from th
   for (const bad of ["//evil.com", "https://evil.com", "/..//etc", "/a\\b", "javascript:alert(1)", "people", "", "/" + "a".repeat(250)]) assert.equal(cleanReturnTo(bad), "/", String(bad).slice(0, 20));
   assert.equal(originOfFrom("attendance"), "https://attendance.bizzux.com");
   assert.equal(originOfFrom("evil"), null); assert.equal(originOfFrom("https://evil.com"), null);
-  assert.equal(cleanIntent("add-employee"), "add-employee"); assert.equal(cleanIntent("drop-tables"), "");
+  assert.equal(cleanIntent("add-employee"), "add-employee"); assert.equal(cleanIntent("add-employee-existing"), "add-employee-existing"); assert.equal(cleanIntent("add-employee-new"), "add-employee-new"); assert.equal(cleanIntent("drop-tables"), "");
 });
 
 const emu = process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_AUTH_EMULATOR_HOST;

@@ -13,20 +13,21 @@ const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const METHODS = [
   { id: "username", title: "Bizzux username and password", hint: "For someone with no email. You hand over a temporary password; no email address is invented." },
+  { id: "member", title: "Existing member of your company", hint: "Pick someone who is already in your company and give them app access. No new login is created." },
   { id: "invite", title: "Invite by email (Google or email)", hint: "They get an invitation and sign in with their own Google or email account. An existing Bizzux account is attached, never duplicated." },
   { id: "link", title: "Link an existing Bizzux user", hint: "They already have a Bizzux username login (for example from another company). They must accept before they join." },
 ];
 const EMPLOYMENT = ["", "Full-time", "Part-time", "Contractor", "Intern"];
 const blank = (method) => ({
   method, first: "", last: "", display: "", displayTouched: false, username: "", usernameTouched: false, autoPw: false, password: "", showPw: false, mustChange: false,
-  email: "", linkUsername: "", apps: [], noApps: false, orgRole: "MEMBER", profile: "Staff/Shopkeeper", appRoles: {},
+  email: "", linkUsername: "", memberUid: "", apps: [], noApps: false, orgRole: "MEMBER", profile: "Staff/Shopkeeper", appRoles: {},
   contact: { jobTitle: "", department: "", employmentType: "", office: "", officePhone: "", mobilePhone: "", streetAddress: "", city: "", state: "", zip: "", country: "" },
   employeeId: "", branch: "", accountExpiresAt: "",
 });
 const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
 const appName = (id) => APPS.find((a) => a.id === id)?.name || id;
 
-export default function AddUserWizard({ open, method: initialMethod = "username", api, directory, canAssignAdmin, onClose, onCreated, onManage }) {
+export default function AddUserWizard({ open, method: initialMethod = "username", context = null, api, directory, canAssignAdmin, onClose, onCreated, onManage }) {
   const [f, setF] = useState(() => blank(initialMethod));
   const [step, setStep] = useState(0);
   const [tried, setTried] = useState(false);
@@ -43,7 +44,9 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
     if (!open) { mounted.current = false; return; }
     if (mounted.current) return;
     mounted.current = true;
-    setF(blank(initialMethod)); setStep(0); setTried(false); setUCheck({ state: "idle", message: "" }); setServer({ checking: false, problems: [] }); setError(""); setResult(null); setBusy(false);
+    // A visit that started in an app (for example Attendance) preselects that app, but the server still checks licence and permission at Finish.
+    const pre = context?.from ? "bizzux-" + context.from : "";
+    setF({ ...blank(initialMethod), apps: pre && (directory?.enabledApps || []).includes(pre) ? [pre] : [] }); setStep(0); setTried(false); setUCheck({ state: "idle", message: "" }); setServer({ checking: false, problems: [] }); setError(""); setResult(null); setBusy(false);
     key.current = (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "k" + Date.now() + Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
   }, [open, initialMethod]);
 
@@ -79,12 +82,14 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
   // ---- per-step validation (advisory; the server re-checks) ----
   const basics = useMemo(() => {
     const p = {};
-    if (!f.display.trim()) p.display = "Display name is required.";
+    if (f.method !== "member" && !f.display.trim()) p.display = "Display name is required.";
     if (f.method === "username") {
       if (!f.username.trim()) p.username = "Choose a username.";
       else if (uCheck.state === "bad") p.username = uCheck.message;
       else if (uCheck.state === "checking") p.username = "Wait for the username check to finish.";
       if (!f.autoPw) { if (!f.password) p.password = "Enter a temporary password or choose automatic."; else if (!strength.ok) p.password = "Choose a stronger password (at least 8 characters with a mix of letters, numbers or symbols)."; }
+    } else if (f.method === "member") {
+      if (!f.memberUid) p.memberUid = "Choose a person.";
     } else if (f.method === "invite") {
       if (!f.first.trim()) p.first = "First name is required.";
       if (!EMAIL_RE.test(f.email.trim())) p.email = "Enter a valid email address.";
@@ -121,6 +126,11 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
           accountExpiresAt: f.accountExpiresAt, contactInfo: c,
         });
         setResult({ kind: "username", username: r.username, password: r.password, apps, orgRole: f.orgRole, appRoles: f.appRoles, reused: !!r.reused });
+      } else if (f.method === "member") {
+        const person = (directory?.users || []).find((u) => u.uid === f.memberUid);
+        const union = [...new Set([...(person?.apps || []), ...apps])];
+        await api("/api/iam/identities", "POST", { kind: "apps", uid: f.memberUid, apps: union });
+        setResult({ kind: "member", username: person?.username, email: person?.email, name: person?.name || person?.username || person?.email, apps });
       } else if (f.method === "invite") {
         const r = await api("/api/team", "POST", {
           action: "invite", firstName: f.first.trim(), lastName: f.last.trim(), email: f.email.trim().toLowerCase(), profile: f.profile, role: f.contact.jobTitle,
@@ -145,7 +155,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
 
   const show = (k) => (tried ? stepProblems[k] : undefined);
 
-  const body = result ? <Done r={result} onManage={onManage} onClose={onClose} onAnother={() => { setF(blank(f.method)); setStep(0); setResult(null); setTried(false); key.current = key.current + "n"; }} /> : (
+  const body = result ? <Done r={result} context={context} onManage={onManage} onClose={onClose} onAnother={() => { setF(blank(f.method)); setStep(0); setResult(null); setTried(false); key.current = key.current + "n"; }} /> : (
     <div className="adm-wiz">
       <ol className="adm-stepper" aria-label="Steps">
         {STEPS.map((s, i) => (
@@ -167,13 +177,21 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
                 </label>
               ))}
             </fieldset>
-            {f.method !== "link" && (
+            {f.method === "member" && (
+              <Field label="Person" required error={show("memberUid")} wide hint="Everyone already in your company.">
+                <select className="input" data-autofocus value={f.memberUid} onChange={(e) => set({ memberUid: e.target.value })}>
+                  <option value="">Choose a person…</option>
+                  {(directory?.users || []).filter((u) => u.orgRoleEffective !== "OWNER").map((u) => <option key={u.uid} value={u.uid}>{(u.name || u.username || u.email) + (u.username ? " (@" + u.username + ")" : u.email ? " (" + u.email + ")" : "")}</option>)}
+                </select>
+              </Field>
+            )}
+            {f.method !== "link" && f.method !== "member" && (
               <div className="adm-grid">
                 <Field label="First name" required={f.method === "invite"} error={show("first")}><input className="input" data-autofocus value={f.first} onChange={(e) => onName({ first: e.target.value })} /></Field>
                 <Field label="Last name"><input className="input" value={f.last} onChange={(e) => onName({ last: e.target.value })} /></Field>
               </div>
             )}
-            <Field label="Display name" required error={show("display")} wide><input className="input" value={f.display} onChange={(e) => set({ display: e.target.value, displayTouched: true })} /></Field>
+            {f.method !== "member" && <Field label="Display name" required error={show("display")} wide><input className="input" value={f.display} onChange={(e) => set({ display: e.target.value, displayTouched: true })} /></Field>}
             {f.method === "username" && (
               <>
                 <Field label="Username" required error={show("username") || (uCheck.state === "bad" ? uCheck.message : undefined)} wide
@@ -280,8 +298,8 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
             <h3 id="w3">Review and finish</h3>
             <p className="muted">Check everything. Select Edit to change a section; your entries are kept.</p>
             <dl className="adm-review">
-              <Row label="Display name" value={f.display} onEdit={() => goTo(0)} />
-              <Row label="Username / email" value={f.method === "username" ? f.username : f.method === "invite" ? f.email : f.linkUsername} onEdit={() => goTo(0)} />
+              <Row label="Display name" value={f.method === "member" ? ((directory?.users || []).find((u) => u.uid === f.memberUid)?.name || "") : f.display} onEdit={() => goTo(0)} />
+              <Row label="Username / email" value={f.method === "username" ? f.username : f.method === "invite" ? f.email : f.method === "member" ? ((directory?.users || []).find((u) => u.uid === f.memberUid)?.username || (directory?.users || []).find((u) => u.uid === f.memberUid)?.email || "") : f.linkUsername} onEdit={() => goTo(0)} />
               <Row label="Sign-in" value={METHODS.find((m) => m.id === f.method).title} onEdit={() => goTo(0)} />
               {f.method === "username" && <Row label="Password" value={(f.autoPw ? "Generated automatically" : "Set by you") + (f.mustChange ? ", must be changed at first sign-in" : "")} onEdit={() => goTo(0)} />}
               <Row label="Applications" value={f.noApps || !f.apps.length ? "None (identity only)" : f.apps.map((id) => appName(id) + (f.appRoles[id] === "ADMIN" ? " (Admin)" : "")).join(", ")} onEdit={() => goTo(1)} />
@@ -304,7 +322,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
     <>
       {step > 0 && <button type="button" className="btn-outline-dark" onClick={() => setStep((s) => s - 1)} disabled={busy}>Back</button>}
       {step < 3 ? <button type="button" className="btn-primary-sm" onClick={goNext}>Next</button>
-        : <button type="button" className="btn-primary-sm" onClick={finish} disabled={busy || (f.method === "username" && (server.checking || server.problems.length > 0))}>{busy ? "Adding…" : f.method === "username" ? "Finish adding" : f.method === "invite" ? "Send invitation" : "Send request"}</button>}
+        : <button type="button" className="btn-primary-sm" onClick={finish} disabled={busy || (f.method === "username" && (server.checking || server.problems.length > 0))}>{busy ? "Adding…" : f.method === "username" ? "Finish adding" : f.method === "member" ? "Give access" : f.method === "invite" ? "Send invitation" : "Send request"}</button>}
       <button type="button" className="btn-outline-dark" style={{ marginLeft: "auto" }} onClick={onClose} disabled={busy}>Cancel</button>
     </>
   );
@@ -327,7 +345,7 @@ function Row({ label, value, onEdit }) {
   return (<div className="adm-rv"><dt>{label}</dt><dd>{value || "—"}</dd><dd><button type="button" className="adm-link" onClick={onEdit}>Edit</button></dd></div>);
 }
 
-function Done({ r, onManage, onClose, onAnother }) {
+function Done({ r, context, onManage, onClose, onAnother }) {
   const [copied, setCopied] = useState(false);
   const copy = async (t) => { try { await navigator.clipboard.writeText(t); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } };
   return (
@@ -341,11 +359,15 @@ function Done({ r, onManage, onClose, onAnother }) {
           <p className="muted" style={{ marginBottom: 0 }}>Give these to the person in a secure way. They sign in with the username and set their own password.{r.reused ? " A new temporary password was issued for the same user." : ""}</p>
         </div>
       )}
+      {r.kind === "member" && <p>App access was updated for <b>{r.name}</b>. They keep their existing login.</p>}
       {r.kind === "invite" && <p>An invitation was emailed to <b>{r.email}</b>. If they already have a Bizzux account, it is attached to your company instead of creating a second one.</p>}
       {r.kind === "link" && <p>If <b>{r.username}</b> is a Bizzux user, they will see your request the next time they sign in. Nothing changes for them until they accept.</p>}
       <p><b>Access:</b> {r.apps.length ? r.apps.map(appName).join(", ") : "no applications assigned yet"}{r.orgRole && r.orgRole !== "MEMBER" ? `; organization role ${r.orgRole === "ADMIN" ? "Admin" : "Viewer"}` : ""}.</p>
       <div className="row" style={{ gap: 8 }}>
-        <button type="button" className="btn-primary-sm" onClick={() => { onManage?.(r.username || r.email); onClose(); }}>Manage this user</button>
+        {context?.returnUrl && /^add-employee/.test(context.intent || "") && (r.kind === "username" || r.kind === "member") && (
+          <a className="btn-primary-sm" style={{ textDecoration: "none" }} href={context.returnUrl + (context.returnUrl.includes("?") ? "&" : "?") + "linked=" + encodeURIComponent(r.username || r.email || "") + "&n=" + encodeURIComponent(r.name || r.username || "")}>Back to {String(context.from || "").replace(/^./, (c) => c.toUpperCase())} to finish adding the employee</a>
+        )}
+        <button type="button" className="btn-outline-dark" onClick={() => { onManage?.(r.username || r.email); onClose(); }}>Manage this user</button>
         <button type="button" className="btn-outline-dark" onClick={onAnother}>Add another</button>
         <button type="button" className="btn-outline-dark" onClick={onClose}>Close</button>
       </div>
