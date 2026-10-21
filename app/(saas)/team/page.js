@@ -11,6 +11,8 @@ import { useIsAdminHost, wwwHrefFor } from "@/lib/adminLinks";
 import AccountTabs from "@/components/AccountTabs";
 import JoinRequestsPanel from "@/components/JoinRequestsPanel";
 import { useMe } from "@/lib/useMe";
+import { CommandBar, Cmd, CmdMenu, CmdSep, Pager } from "@/components/admin/CommandBar";
+import { sortRows, paginate, toCsv } from "@/lib/adminTable";
 import { roleLabel } from "@/lib/roleLabel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -58,6 +60,7 @@ function mergeRows(members, directory, f) {
   return rows.filter((r) => {
     if (q && ![r.firstName, r.lastName, r.email, r.username].some((x) => String(x || "").toLowerCase().includes(q))) return false;
     if (f.login && r.loginKind !== f.login) return false;
+    if (f.role && (r.orgRoleEffective || r.orgRole) !== f.role) return false;
     if (f.status && r.status !== f.status) return false;
     if (f.app === "none") return !(r.appAccess || []).length;
     if (f.app && !(r.appIds || []).includes(f.app)) return false;
@@ -79,7 +82,11 @@ export default function TeamPage() {
   const [members, setMembers] = useState(null);
   const [organizationName, setOrganizationName] = useState(null);
   const [directory, setDirectory] = useState(null); // canonical rows from the shared IAM service (/api/iam/directory), null until loaded
-  const [filters, setFilters] = useState({ q: "", login: "", status: "", app: "" });
+  const [filters, setFilters] = useState({ q: "", login: "", status: "", app: "", role: "" });
+  const [sort, setSort] = useState({ key: "name", dir: "asc" });
+  const [pageNo, setPageNo] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  useEffect(() => { setPageNo(0); }, [filters, sort.key, sort.dir, pageSize]);
   const [selected, setSelected] = useState(() => new Set()); // row ids ticked for a bulk action
   const [bulkApp, setBulkApp] = useState("");
   const [bulkMsg, setBulkMsg] = useState("");
@@ -116,6 +123,15 @@ export default function TeamPage() {
   }, [user, me]);
 
   const rows = mergeRows(members, directory, filters);
+  const sorted = sortRows(rows, sort);
+  const pg = paginate(sorted, pageNo, pageSize);
+  const sortTh = (key, label, title) => (
+    <th className="adm-sortable" title={title} aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button type="button" onClick={() => setSort((c) => (c.key === key ? { key, dir: c.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }))}>
+        {label}<span className="adm-sortmark" aria-hidden="true">{sort.key === key ? (sort.dir === "asc" ? "▲" : "▼") : ""}</span>
+      </button>
+    </th>
+  );
   // Bulk selection: the Owner is never selectable; "select all" means every selectable row that matches the current filters.
   const selectable = (r) => !!r.uid && !r.isOwner && r.orgRoleEffective !== "OWNER";
   const visibleSelectable = rows.filter(selectable);
@@ -123,6 +139,30 @@ export default function TeamPage() {
   const allTicked = visibleSelectable.length > 0 && chosen.length === visibleSelectable.length;
   const toggleAll = () => setSelected(allTicked ? new Set() : new Set(visibleSelectable.map((r) => r.id)));
   const toggleOne = (id) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const one = chosen.length === 1 ? chosen[0] : null;
+  function resetForSelected() {
+    if (!one) return;
+    if (one.dirOnly) { setErr("This person has no team record here, so their password can't be reset from this list."); return; }
+    if (one.loginKind === "google") { setErr("This person signs in with Google, so their password is managed by Google. It can't be reset here."); return; }
+    if (one.username) usernameAction(one, "resetPassword"); else resetPasswordEmail(one);
+  }
+  async function removeSelected() {
+    const list = chosen.filter((r) => !r.dirOnly);
+    if (!list.length) { setErr("Nothing removable is selected."); return; }
+    if (!window.confirm("Remove " + list.length + " " + (list.length === 1 ? "person" : "people") + " from your company? They keep their Bizzux login and any other companies, and you can restore them for 60 days.")) return;
+    setErr(""); setBulkMsg("Working…");
+    let ok = 0; const failed = [];
+    for (const r of list) { try { await api("/api/team", "POST", { action: "remove", id: r.id }); ok++; } catch (e) { failed.push((r.firstName || r.username || r.email) + ": " + e.message); } }
+    setBulkMsg(ok + " removed" + (failed.length ? ", " + failed.length + " failed (" + failed.slice(0, 3).join("; ") + ")" : ""));
+    setSelected(new Set());
+    await load();
+  }
+  function exportCsv() {
+    const blob = new Blob(["\ufeff" + toCsv(rows)], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "bizzux-users-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
   async function bulk(kind) {
     if (!chosen.length) return;
     const label = kind === "disable" ? "disable" : kind === "grant" ? "give " + appName(bulkApp) + " to" : "remove " + appName(bulkApp) + " from";
@@ -170,7 +210,7 @@ export default function TeamPage() {
   }
 
   async function remove(id) {
-    if (!confirm("Remove this teammate?")) return;
+    if (!confirm("Remove this person from your company? They keep their Bizzux login and any other companies, and you can restore them for 60 days.")) return;
     try {
       await api("/api/team", "POST", { action: "remove", id });
       setErr("");
@@ -267,19 +307,22 @@ export default function TeamPage() {
 
       <div className="admin-shell">
         <JoinRequestsPanel />
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
-          <div>
-            <h1 className="dash-heading" style={{ fontSize: 20 }}>Users</h1>
-            {organizationName && <p className="muted" style={{ margin: "0 0 4px", fontSize: 13 }}>{organizationName}</p>}
-            <p className="dash-sub" style={{ marginBottom: 0 }}>Invite teammates and manage who has access to your Bizzux apps.</p>
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            <button className="btn-outline-dark" onClick={() => setShowBulkAdd(true)}>Bulk import</button>
-            <button className="btn-outline-dark" onClick={() => setShowLink(true)}>Link existing user</button>
-            <button className="btn-outline-dark" onClick={() => setShowAdd(true)}>Invite user</button>
-            <button className="btn-primary-sm" onClick={() => setShowUsernameAdd(true)}>Create user</button>
-          </div>
-        </div>
+        <h1 className="dash-heading" style={{ fontSize: 22, margin: "4px 0 0" }}>Active users</h1>
+        {organizationName && <p className="muted" style={{ margin: "2px 0 0", fontSize: 12.5 }}>{organizationName}</p>}
+        <CommandBar label="User actions">
+          <CmdMenu primary icon="plus" label="Add a user" items={[
+            { label: "Create user (username and password)", icon: "plus", onClick: () => setShowUsernameAdd(true) },
+            { label: "Invite user (Google or email)", icon: "people", onClick: () => setShowAdd(true) },
+            { label: "Link existing user", icon: "link", onClick: () => setShowLink(true) },
+          ]} />
+          <Cmd icon="people" onClick={() => setShowBulkAdd(true)}>Add multiple users</Cmd>
+          <CmdSep />
+          <Cmd icon="key" onClick={resetForSelected} disabled={!one} title={one ? "" : "Select exactly one user"}>Reset password</Cmd>
+          <Cmd icon="trash" onClick={removeSelected} disabled={!chosen.length} title={chosen.length ? "" : "Select one or more users"}>Remove from company</Cmd>
+          <CmdSep />
+          <Cmd icon="download" onClick={exportCsv} disabled={!rows.length} title="Exports the users matching the current filters">Export users</Cmd>
+          <Cmd icon="refresh" onClick={() => { setBulkMsg(""); load(); }}>Refresh</Cmd>
+        </CommandBar>
 
         {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
 
@@ -301,6 +344,9 @@ export default function TeamPage() {
               <option value="">All sign-in types</option>
               {Object.entries(LOGIN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
+            <select className="input" style={{ maxWidth: 170 }} value={filters.role} onChange={(e) => setFilters({ ...filters, role: e.target.value })} aria-label="Organization role">
+              <option value="">Any organization role</option><option value="OWNER">Owner</option><option value="ADMIN">Admin</option><option value="MEMBER">Member</option><option value="VIEWER">Viewer</option>
+            </select>
             <select className="input" style={{ maxWidth: 160 }} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
               <option value="">Any status</option><option value="active">Active</option><option value="invited">Invited / not activated</option><option value="disabled">Disabled</option>
             </select>
@@ -308,7 +354,7 @@ export default function TeamPage() {
               <option value="">Any app access</option><option value="none">No app access</option>
               {(directory?.enabledApps || []).map((a) => <option key={a} value={a}>{appName(a)}</option>)}
             </select>
-            {(filters.q || filters.login || filters.status || filters.app) && <button className="link-btn" onClick={() => setFilters({ q: "", login: "", status: "", app: "" })}>Clear</button>}
+            {(filters.q || filters.login || filters.status || filters.app || filters.role) && <button className="link-btn" onClick={() => setFilters({ q: "", login: "", status: "", app: "", role: "" })}>Clear</button>}
           </div>
         </div>
 
@@ -337,11 +383,11 @@ export default function TeamPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: 28 }}><input type="checkbox" aria-label="Select all users shown" checked={allTicked} onChange={toggleAll} disabled={!visibleSelectable.length} /></th><th>Name</th><th>Sign-in</th><th>Job title</th><th title="Describes the job in the business apps. Separate from the organization role and from app roles.">Business profile</th><th title="What this person may do in the ORGANIZATION: users, roles, app assignment. Grants no application permission.">Organization role</th><th title="Per application: the role inside that app and where the access comes from. Granted separately from the organization role.">App roles (effective access)</th><th>Status</th><th>Last sign-in</th><th></th>
+                  <th style={{ width: 28 }}><input type="checkbox" aria-label="Select all users shown" checked={allTicked} onChange={toggleAll} disabled={!visibleSelectable.length} /></th>{sortTh("name", "Name")}{sortTh("signin", "Sign-in")}<th>Job title</th><th title="Describes the job in the business apps. Separate from the organization role and from app roles.">Business profile</th>{sortTh("orgRole", "Organization role", "What this person may do in the ORGANIZATION: users, roles, app assignment. Grants no application permission.")}<th title="Per application: the role inside that app and where the access comes from. Granted separately from the organization role.">App roles (effective access)</th>{sortTh("status", "Status")}{sortTh("lastSignIn", "Last sign-in")}<th></th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((m) => (
+                {pg.rows.map((m) => (
                   <tr key={m.id}>
                     <td>{selectable(m) ? <input type="checkbox" aria-label={"Select " + (m.firstName || m.username || m.email)} checked={selected.has(m.id)} onChange={() => toggleOne(m.id)} /> : null}</td>
                     <td>{[m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A"}</td>
@@ -415,6 +461,7 @@ export default function TeamPage() {
               </tbody>
             </table>
           )}
+          {members && rows.length > 0 && <Pager info={pg} onPage={setPageNo} onSize={setPageSize} />}
         </div>
       </div>
 
