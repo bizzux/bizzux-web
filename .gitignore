@@ -14,3 +14,5 @@ _to_delete
 .vercel
 .env*
 *.tsbuildinfo
+# Firebase/Firestore emulator logs (can contain account emails)
+*-debug.log
