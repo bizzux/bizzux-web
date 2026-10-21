@@ -137,3 +137,18 @@ test("search by name: opt-in only, name + code only, 3+ letters, owner-only swit
   assert.equal((await call(O, { action: "discoverable", value: false })).status, 200);
   assert.deepEqual((await (await search(s, "Org")).json()).results, [], "switching it off hides the company again");
 });
+
+test("approver email: sent to eligible approvers only, name only (no free text), never breaks the request", async () => {
+  const { setJoinMailer } = await import("../lib/joinNotify.js");
+  const sent = []; setJoinMailer(async (m) => { sent.push(m); });
+  const w = await person("mailreq");
+  assert.equal((await call(w, { action: "request", code, message: "<script>alert(1)</script> send me money" })).status, 200);
+  const to = sent.map((m) => m.to).sort();
+  assert.deepEqual(to, [`ownero-${RUN}@x.test`, `adm2-${RUN}@x.test`].sort(), "owner and the granted admin; not the ungranted admin or the manager");
+  assert.ok(sent.every((m) => !m.html.includes("script") && !m.html.includes("money")), "requester free text is never emailed");
+  setJoinMailer(async () => { throw new Error("provider down"); });
+  const w2 = await person("mailreq2");
+  assert.equal((await call(w2, { action: "request", code })).status, 200, "a failing mail provider does not fail the request");
+  assert.equal((await reqDoc(O.uid, w2.uid)).data().status, "pending");
+  setJoinMailer(null);
+});

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOrgManager } from "@/lib/firebaseAdmin";
-import { createUsernameIdentity, requestLinkToOrganization, setUserApps, usernameAvailability } from "@/lib/iam/identityService";
+import { createUsernameIdentity, requestLinkToOrganization, setUserApps, usernameAvailability, bindExistingMemberToEmployee } from "@/lib/iam/identityService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +29,7 @@ export async function POST(req) {
     if (b.kind === "username") return NextResponse.json({ ok: true, ...(await createUsernameIdentity({ ...b, organizationId, actor: c })) });
     if (b.kind === "link") return NextResponse.json(await requestLinkToOrganization({ actor: c, organizationId, username: b.username, profile: b.profile, apps: b.apps, bindEmployeeId: b.bindEmployeeId }));
     if (b.kind === "apps") return NextResponse.json(await setUserApps({ actor: c, organizationId, uid: String(b.uid || ""), apps: b.apps }));
+    if (b.kind === "bindEmployee") return NextResponse.json(await bindExistingMemberToEmployee({ actor: c, organizationId, who: b.who, employeeId: b.employeeId }));
     throw { status: 400, message: "Unknown kind" };
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
