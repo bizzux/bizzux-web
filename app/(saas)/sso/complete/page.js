@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithCustomToken } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { safeAdminTarget } from "@/lib/adminHost";
+import { safeAdminTarget, ADMIN_PATHS } from "@/lib/adminHost";
 import { wwwHrefFor, useIsAdminHost } from "@/lib/adminLinks";
 
 // Landing page of the app to Admin Center hand-off. The one-time code was posted as a form (never in a URL) and burned on the server, which set a
@@ -24,7 +24,9 @@ export default function SsoCompletePage() {
         if (!r.ok) throw new Error(d.error || "Sign-in failed");
         await signInWithCustomToken(auth, d.customToken);
         try { sessionStorage.setItem("bzx.admin.ctx", JSON.stringify({ ...d.context, at: Date.now() })); } catch { /* private window: no Back link */ }
-        router.replace(safeAdminTarget(d.to));
+        // On the admin host the friendly path exists; on any other host (previews, local) the same page lives under /team.
+        const to = safeAdminTarget(d.to);
+        router.replace(/^admin\./.test(window.location.hostname) ? to : ADMIN_PATHS[to] || "/team");
       } catch (e) { setError(e.message || "Sign-in failed. Open the Admin Center again."); }
     })();
   }, [router]);

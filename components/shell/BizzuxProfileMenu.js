@@ -53,8 +53,8 @@ export default function BizzuxProfileMenu({ app, menu, getToken, onSignOut, tone
   const [err, setErr] = useState("");
   const ref = useRef(null);
   const btnRef = useRef(null);
-  const name = menu?.person?.name || fallbackName || menu?.person?.email || "";
-  const initials = menu?.person?.initials || String(name || "?").trim().charAt(0).toUpperCase();
+  const name = fallbackName || menu?.person?.name || menu?.person?.email || "";
+  const initials = String(name || "?").trim().charAt(0).toUpperCase();
 
   useEffect(() => {
     if (!open) return undefined;

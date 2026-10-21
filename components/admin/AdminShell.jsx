@@ -35,7 +35,7 @@ export default function AdminShell({ children }) {
     try {
       const c = JSON.parse(sessionStorage.getItem("bzx.admin.ctx") || "null");
       const app = c && MENU_APPS.find((a) => a.key === c.from);
-      if (app && typeof c.returnUrl === "string" && c.returnUrl.startsWith(app.url)) setBack({ name: app.name, url: c.returnUrl });
+      if (app && typeof c.returnUrl === "string" && /^https?:\/\//.test(c.returnUrl)) setBack({ name: app.name, url: c.returnUrl });
     } catch { /* no context */ }
   }, []);
   useEffect(() => { const s = read(); if (typeof s.collapsed === "boolean") setCollapsed(s.collapsed); if (s.open) setOpen((o) => ({ ...o, ...s.open })); }, []);
