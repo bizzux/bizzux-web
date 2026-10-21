@@ -287,6 +287,7 @@ function VerifyMobileGate({ user, customer }) {
 function NoOrganizationDashboard() {
   const [setupApp, setSetupApp] = useState(null);
   const [pendingInvite, setPendingInvite] = useState(undefined); // undefined = checking, null = none
+  const [staleInvite, setStaleInvite] = useState(null); // an expired/used invite to this email: tells the person to ask for a new one
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState("");
 
@@ -297,7 +298,10 @@ function NoOrganizationDashboard() {
         const token = await auth.currentUser.getIdToken();
         const r = await fetch("/api/my-pending-invite", { headers: { Authorization: "Bearer " + token } });
         const d = await r.json();
-        if (!cancelled) setPendingInvite(r.ok ? d.invite : null);
+        if (!cancelled) {
+          setPendingInvite(r.ok ? d.invite : null);
+          setStaleInvite(r.ok ? d.stale || null : null);
+        }
       } catch {
         if (!cancelled) setPendingInvite(null);
       }
@@ -372,6 +376,8 @@ function NoOrganizationDashboard() {
           ))}
         </div>
 
+        {staleInvite && <StaleInviteNotice stale={staleInvite} />}
+
         {pendingInvite === null && (
           <p className="muted" style={{ fontSize: 13, marginTop: 20 }}>
             Joining your team's Bizzux? Open the invite link they emailed you instead.
@@ -383,6 +389,7 @@ function NoOrganizationDashboard() {
         <QuickSetupModal
           app={setupApp}
           pendingInvite={pendingInvite}
+          staleInvite={staleInvite}
           onAcceptInvite={acceptInvite}
           onClose={() => setSetupApp(null)}
         />
@@ -409,13 +416,29 @@ function detectLocale() {
 // The only setup step a new user sees. It's asked when they first open a
 // company app, so the question has an obvious reason. Creates the
 // organization, then opens the app they clicked.
-function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
+function StaleInviteNotice({ stale }) {
+  const email = auth.currentUser?.email || "this email";
+  return (
+    <div className="card" style={{ marginBottom: 20, background: "#fffbeb", borderColor: "#fde68a" }}>
+      <h3 style={{ marginTop: 0, marginBottom: 4 }}>Your invite to {stale.orgName} can't be used</h3>
+      <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+        {stale.reason === "expired"
+          ? "The invite link has expired."
+          : "That invite was already used, but this login is no longer on the team."}{" "}
+        Ask your admin to {stale.reason === "expired" ? "resend it" : "add you again"} for <strong>{email}</strong>. Please don't create a new workspace for your job.
+      </p>
+    </div>
+  );
+}
+
+function QuickSetupModal({ app, pendingInvite, staleInvite, onAcceptInvite, onClose }) {
   const askBusinessType = app.key === "juicechatjunction";
   const [name, setName] = useState("");
   const [businessType, setBusinessType] = useState("shop");
   const [businessRole, setBusinessRole] = useState("");
   // "What would you like to do?" — set up a new company workspace, or join one that already exists.
-  const [intent, setIntent] = useState("create"); // create | join
+  // Someone with an invite to this email (valid, expired or used) is almost certainly joining a company, so start on "join".
+  const [intent, setIntent] = useState(pendingInvite || staleInvite ? "join" : "create"); // create | join
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -497,6 +520,13 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <div className="onboarding-hi">{app.icon} {app.name}</div>
         <h2 style={{ marginBottom: 4 }}>What would you like to do?</h2>
+        {auth.currentUser?.email && (
+          <p className="muted" style={{ fontSize: 12.5, margin: "0 0 4px" }}>Signed in as <strong>{auth.currentUser.email}</strong></p>
+        )}
+        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: 10, margin: "8px 0 4px", fontSize: 12.5 }}>
+          Work for a company that already uses Bizzux? Don't create a workspace. This email isn't linked to your company yet. Ask your admin to
+          invite <strong>{auth.currentUser?.email || "this email"}</strong> (or sign in with the email they invited), then choose "Join an existing company".
+        </div>
         <div style={{ display: "grid", gap: 8, margin: "10px 0 14px" }}>
           <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14, cursor: "pointer" }}>
             <input type="radio" name="intent" checked={intent === "create"} onChange={() => setIntent("create")} style={{ marginTop: 4 }} />
@@ -521,7 +551,12 @@ function QuickSetupModal({ app, pendingInvite, onAcceptInvite, onClose }) {
               To protect companies from outsiders, nobody can join by searching for a name. Ask the admin of your company to invite you using
               the email you signed in with, then open the invite link they send you. You will join their workspace with the access they choose.
             </p>
-            {!pendingInvite && <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>No invite has been sent to your email yet.</p>}
+            {!pendingInvite && staleInvite && (
+              <p style={{ fontSize: 12.5, marginBottom: 14, color: "#92400e" }}>
+                Your invite to <strong>{staleInvite.orgName}</strong> {staleInvite.reason === "expired" ? "has expired" : "was already used"}. Ask your admin to {staleInvite.reason === "expired" ? "resend it" : "add you again"}.
+              </p>
+            )}
+            {!pendingInvite && !staleInvite && <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>No invite has been sent to {auth.currentUser?.email || "your email"} yet. If your admin already invited you, you may have signed in with a different email.</p>}
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button type="button" className="btn-outline-dark" onClick={() => setIntent("create")}>Create a workspace instead</button>
               <button type="button" className="btn-primary" onClick={onClose}>OK</button>
