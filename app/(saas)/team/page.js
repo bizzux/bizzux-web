@@ -1200,7 +1200,7 @@ function AddUserModal({ onClose, onAdded }) {
 // (no email needed). Only company-enabled apps are offered; the server
 // enforces the same rule (and the plan's user limit) regardless.
 function UsernameUserModal({ onClose, onCreated }) {
-  const [f, setF] = useState({ fullName: "", username: "", profile: "Staff/Shopkeeper", employeeId: "", department: "", branch: "", designation: "", mobile: "", apps: [] });
+  const [f, setF] = useState({ fullName: "", username: "", password: "", mustChangePassword: true, profile: "Staff/Shopkeeper", employeeId: "", department: "", branch: "", designation: "", mobile: "", apps: [] });
   const [enabled, setEnabled] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1232,6 +1232,13 @@ function UsernameUserModal({ onClose, onCreated }) {
         <select className="input" value={f.profile} onChange={(e) => set("profile", e.target.value)}>
           {PROFILES.filter((p) => p.value !== "Global Admin").map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
+        <label>Temporary password (optional)
+          <input className="input" type="text" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="Leave blank to generate one" value={f.password} onChange={(e) => set("password", e.target.value)} />
+          <span className="muted" style={{ fontSize: 12 }}>Set your own, or leave it blank and one is generated. It must meet your company's password policy. It is shown once after you create the user.</span>
+        </label>
+        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="checkbox" checked={f.mustChangePassword} onChange={(e) => set("mustChangePassword", e.target.checked)} /> Ask them to choose their own password at first sign-in (recommended)
+        </label>
         {["employeeId", "department", "branch", "designation", "mobile"].map((k) => (
           <div key={k}>
             <label className="label" style={{ textTransform: "capitalize" }}>{k.replace(/([A-Z])/g, " $1")} (optional)</label>
