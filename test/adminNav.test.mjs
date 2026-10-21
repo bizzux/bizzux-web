@@ -13,10 +13,12 @@ test("active item follows either host's path, and groups keep their child active
   assert.equal(findActive("/security").group, null);
   assert.equal(findActive("/nothing"), null);
 });
-test("unfinished screens are hidden, not linked", () => {
+test("Users group lists its four screens and each resolves on both hosts", () => {
   const kids = visibleChildren(NAV.find((g) => g.key === "users")).map((c) => c.key);
-  assert.deepEqual(kids, ["active"]);
-  assert.equal(findActive("/users/deleted"), null);
+  assert.deepEqual(kids, ["active", "contacts", "guests", "deleted"]);
+  assert.equal(findActive("/users/deleted").item.key, "deleted");
+  assert.equal(findActive("/team/contacts").item.key, "contacts");
+  assert.equal(findActive("/users/guests").group.key, "users");
 });
 test("hrefs use the admin spelling on the admin host and the legacy one elsewhere", () => {
   const apps = NAV.find((g) => g.key === "apps");

@@ -6,9 +6,9 @@ export const NAV = [
     key: "users", label: "Users", icon: "user",
     children: [
       { key: "active", label: "Active users", admin: "/users", legacy: "/team" },
-      { key: "contacts", label: "Contacts", admin: "/users/contacts", legacy: "/team/contacts", ready: false },
-      { key: "guests", label: "Guest users", admin: "/users/guests", legacy: "/team/guests", ready: false },
-      { key: "deleted", label: "Deleted users", admin: "/users/deleted", legacy: "/team/deleted", ready: false },
+      { key: "contacts", label: "Contacts", admin: "/users/contacts", legacy: "/team/contacts" },
+      { key: "guests", label: "Guest users", admin: "/users/guests", legacy: "/team/guests" },
+      { key: "deleted", label: "Deleted users", admin: "/users/deleted", legacy: "/team/deleted" },
     ],
   },
   { key: "organizations", label: "Organizations", icon: "building", admin: "/organizations", legacy: "/team/organizations" },

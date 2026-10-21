@@ -16,6 +16,8 @@ import { sortRows, paginate, toCsv } from "@/lib/adminTable";
 import { USER_COLUMNS, DEFAULT_COLUMNS, cleanColumns } from "@/lib/adminColumns";
 import ColumnChooser from "@/components/admin/ColumnChooser";
 import AddUserWizard from "@/components/admin/AddUserWizard";
+import ResetPasswordDrawer from "@/components/admin/ResetPasswordDrawer";
+import UserDetailsDrawer from "@/components/admin/UserDetailsDrawer";
 import { roleLabel } from "@/lib/roleLabel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -92,6 +94,8 @@ export default function TeamPage() {
   useEffect(() => { setPageNo(0); }, [filters, sort.key, sort.dir, pageSize]);
   // Choose columns: the administrator's own saved column set (server validated), shown or hidden per column.
   const [wizard, setWizard] = useState({ open: false, method: "username" });
+  const [detail, setDetail] = useState(null); // the row whose details drawer is open
+  const [resetFor, setResetFor] = useState(null); // the row whose reset-password drawer is open
   const [colKeys, setColKeys] = useState(DEFAULT_COLUMNS);
   const [showCols, setShowCols] = useState(false);
   const [savingCols, setSavingCols] = useState(false);
@@ -173,7 +177,7 @@ export default function TeamPage() {
   const dash = <span className="muted">—</span>;
   const cellFor = (k, m) => {
     switch (k) {
-      case "name": return [m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A";
+      case "name": return m.uid ? <button type="button" className="adm-namebtn" onClick={() => setDetail(m)} title="Open details">{[m.firstName, m.lastName].filter(Boolean).join(" ") || m.username || m.email || "N/A"}</button> : ([m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A");
       case "signin": return (<><div>{m.email || (m.username ? "@" + m.username : "")}</div><div className="muted" style={{ fontSize: 11.5 }}>{LOGIN_LABEL[m.loginKind] || ""}</div></>);
       case "method": return LOGIN_LABEL[m.loginKind] || dash;
       case "orgRole": return (
@@ -207,12 +211,7 @@ export default function TeamPage() {
     }
   };
   const one = chosen.length === 1 ? chosen[0] : null;
-  function resetForSelected() {
-    if (!one) return;
-    if (one.dirOnly) { setErr("This person has no team record here, so their password can't be reset from this list."); return; }
-    if (one.loginKind === "google") { setErr("This person signs in with Google, so their password is managed by Google. It can't be reset here."); return; }
-    if (one.username) usernameAction(one, "resetPassword"); else resetPasswordEmail(one);
-  }
+  function resetForSelected() { if (one) setResetFor(one); }
   async function removeSelected() {
     const list = chosen.filter((r) => !r.dirOnly);
     if (!list.length) { setErr("Nothing removable is selected."); return; }
@@ -491,6 +490,12 @@ export default function TeamPage() {
           {members && rows.length > 0 && <Pager info={pg} onPage={setPageNo} onSize={setPageSize} />}
         </div>
       </div>
+
+      <UserDetailsDrawer open={!!detail} uid={detail?.uid} row={detail} api={api} canAssignAdmin={canAssignAdmin} onClose={() => setDetail(null)}
+        onResetPassword={(r) => { setDetail(null); setResetFor(r); }}
+        onManageAccess={(r) => { if (r.dirOnly) { setErr("This person has no team record here, so roles and app access are changed from the Add or Link flows."); return; } setDetail(null); setManagingMember(r); }}
+        onRoleChange={(r, role) => changeOrgRole(r, role)} onUnlock={(r) => usernameAction(r, "unlock")} onRecoveryCodes={(r) => usernameAction(r, "regenerateRecoveryCodes")} />
+      <ResetPasswordDrawer open={!!resetFor} user={resetFor} api={api} onClose={() => setResetFor(null)} onDone={() => load()} onSendEmail={(r) => resetPasswordEmail(r)} />
 
       <ColumnChooser open={showCols} columns={colKeys} onClose={() => setShowCols(false)} onSave={saveCols} saving={savingCols} error={colErr} />
 
