@@ -15,6 +15,7 @@ import { CommandBar, Cmd, CmdMenu, CmdSep, Pager } from "@/components/admin/Comm
 import { sortRows, paginate, toCsv } from "@/lib/adminTable";
 import { USER_COLUMNS, DEFAULT_COLUMNS, cleanColumns } from "@/lib/adminColumns";
 import ColumnChooser from "@/components/admin/ColumnChooser";
+import AddUserWizard from "@/components/admin/AddUserWizard";
 import { roleLabel } from "@/lib/roleLabel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -90,6 +91,7 @@ export default function TeamPage() {
   const [pageSize, setPageSize] = useState(25);
   useEffect(() => { setPageNo(0); }, [filters, sort.key, sort.dir, pageSize]);
   // Choose columns: the administrator's own saved column set (server validated), shown or hidden per column.
+  const [wizard, setWizard] = useState({ open: false, method: "username" });
   const [colKeys, setColKeys] = useState(DEFAULT_COLUMNS);
   const [showCols, setShowCols] = useState(false);
   const [savingCols, setSavingCols] = useState(false);
@@ -376,9 +378,9 @@ export default function TeamPage() {
         {organizationName && <p className="muted" style={{ margin: "2px 0 0", fontSize: 12.5 }}>{organizationName}</p>}
         <CommandBar label="User actions">
           <CmdMenu primary icon="plus" label="Add a user" items={[
-            { label: "Create user (username and password)", icon: "plus", onClick: () => setShowUsernameAdd(true) },
-            { label: "Invite user (Google or email)", icon: "people", onClick: () => setShowAdd(true) },
-            { label: "Link existing user", icon: "link", onClick: () => setShowLink(true) },
+            { label: "Create user (username and password)", icon: "plus", onClick: () => setWizard({ open: true, method: "username" }) },
+            { label: "Invite user (Google or email)", icon: "people", onClick: () => setWizard({ open: true, method: "invite" }) },
+            { label: "Link existing user", icon: "link", onClick: () => setWizard({ open: true, method: "link" }) },
           ]} />
           <Cmd icon="people" onClick={() => setShowBulkAdd(true)}>Add multiple users</Cmd>
           <CmdSep />
@@ -490,30 +492,11 @@ export default function TeamPage() {
         </div>
       </div>
 
-      {showAdd && (
-        <AddUserModal
-          onClose={() => setShowAdd(false)}
-          onAdded={async (creds) => {
-            if (creds) setCredentials(creds);
-            await load();
-          }}
-        />
-      )}
-
       <ColumnChooser open={showCols} columns={colKeys} onClose={() => setShowCols(false)} onSave={saveCols} saving={savingCols} error={colErr} />
 
-      {showLink && <LinkExistingUserModal onClose={() => setShowLink(false)} />}
-
-      {showUsernameAdd && (
-        <UsernameUserModal
-          onClose={() => setShowUsernameAdd(false)}
-          onCreated={async (creds) => {
-            setShowUsernameAdd(false);
-            setCredentials({ email: creds.username, password: creds.password });
-            await load();
-          }}
-        />
-      )}
+      <AddUserWizard open={wizard.open} method={wizard.method} api={api} directory={directory} canAssignAdmin={canAssignAdmin}
+        onClose={() => setWizard((w) => ({ ...w, open: false }))} onCreated={() => load()}
+        onManage={(q) => { setFilters({ q: String(q || ""), login: "", status: "", app: "", role: "" }); }} />
 
       {showBulkAdd && (
         <BulkAddModal

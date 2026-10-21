@@ -206,3 +206,44 @@ test("D: an employee bound after the fact keeps their attendance history (the re
   assert.equal((await db.doc(`customers/${B.uid}/attEmployees/hist1/records/2026-01-05`).get()).data().in, "09:00");
   assert.equal((await db.doc(`customers/${B.uid}/attEmployees/hist1`).get()).data().userId, mk.uid);
 });
+
+// ---- wizard support: roles at creation, dry-run validation, seats ----
+test("create with an organization role and per-app roles: Owner may set Admin, an Admin may not (and nothing is created), roles are independent", async () => {
+  const mk = async (w, body) => create(w, { kind: "username", fullName: "Wiz", apps: ["bizzux-crm"], ...body });
+  const denied = await mk(adminA, { username: un("wizadm1"), orgRole: "ADMIN" });
+  assert.equal(denied.status, 403);
+  assert.equal((await db.doc("usernames/" + un("wizadm1")).get()).exists, false, "refused before anything was created");
+  const ok = await mk(A, { username: un("wizadm2"), orgRole: "ADMIN", appRoles: { "bizzux-crm": "ADMIN" } });
+  assert.equal(ok.status, 200); const u = await ok.json();
+  const m = (await db.doc(`organizationMemberships/${A.uid}_${u.uid}`).get()).data();
+  assert.deepEqual([m.role, m.roleSource], ["ADMIN", "explicit"]);
+  assert.equal((await db.doc(`appAssignments/${A.uid}_${u.uid}_bizzux-crm`).get()).data().role, "ADMIN");
+  const viewer = await (await mk(adminA, { username: un("wizview"), orgRole: "VIEWER" })).json();
+  assert.equal((await db.doc(`organizationMemberships/${A.uid}_${viewer.uid}`).get()).data().role, "VIEWER");
+  assert.equal((await db.doc(`appAssignments/${A.uid}_${viewer.uid}_bizzux-crm`).get()).data().role, "MEMBER", "default app role is Member");
+  const plain = await (await mk(adminA, { username: un("wizmem") })).json();
+  assert.equal((await db.doc(`organizationMemberships/${A.uid}_${plain.uid}`).get()).data().roleSource || "", "", "no explicit role unless asked: legacy derivation still applies");
+  assert.equal((await mk(adminA, { username: un("wizbad"), orgRole: "OWNER" })).status, 400);
+});
+
+test("validate is a dry run: reports every problem, writes nothing", async () => {
+  const before = (await db.collection("usernames").get()).size;
+  const v = async (w, body) => (await create(w, { kind: "validate", fullName: "V", ...body })).json();
+  const bad = await v(adminA, { username: un("asha"), password: "x", apps: ["bizzux-projects"], appRoles: { "bizzux-crm": "ADMIN" }, orgRole: "ADMIN" });
+  const fields = bad.problems.map((p) => p.field).sort();
+  assert.equal(bad.ok, false);
+  assert.deepEqual(fields, ["apps", "appRoles", "orgRole", "password", "username"].sort());
+  const good = await v(adminA, { username: un("freshname"), apps: ["bizzux-crm"], appRoles: { "bizzux-crm": "MEMBER" }, orgRole: "VIEWER" });
+  assert.deepEqual(good, { ok: true, problems: [] });
+  assert.equal((await db.collection("usernames").get()).size, before, "no identity was created");
+  assert.equal((await create(manager, { kind: "validate", fullName: "V", username: un("x") })).status, 403, "only administrators");
+  assert.equal((await create(B, { kind: "validate", fullName: "V", username: un("x"), organizationId: A.uid })).status, 403, "tenant scoped");
+});
+
+test("directory reports seats and creation date for the Users screen", async () => {
+  await db.doc("customers/" + A.uid).set({ allowedUsers: 50 }, { merge: true });
+  const d = await (await directory(adminA)).json();
+  assert.equal(d.seats.allowed, 50); assert.ok(d.seats.used >= 3);
+  assert.ok(d.users.every((u) => "created" in u));
+  await db.doc("customers/" + A.uid).set({ allowedUsers: 0 }, { merge: true });
+});
