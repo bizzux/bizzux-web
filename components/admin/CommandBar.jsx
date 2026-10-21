@@ -6,7 +6,7 @@ import { PAGE_SIZES } from "@/lib/adminTable";
 const ICON = {
   plus: "M12 5v14M5 12h14", people: "M9 11a3 3 0 100-6 3 3 0 000 6zM3 20a6 6 0 0112 0M16 5a3 3 0 010 6M21 20a6 6 0 00-4-5.6",
   key: "M15 7a4 4 0 11-3.5 6L4 20.5V17h3v-3h3l1.5-1.5A4 4 0 0115 7z", trash: "M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
-  refresh: "M20 11a8 8 0 10-2.3 5.7M20 4v7h-7", download: "M12 4v11m0 0l-4-4m4 4l4-4M5 20h14", chevron: "M6 9l6 6 6-6", link: "M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1",
+  columns: "M4 5h16v14H4zM9 5v14M15 5v14", refresh: "M20 11a8 8 0 10-2.3 5.7M20 4v7h-7", download: "M12 4v11m0 0l-4-4m4 4l4-4M5 20h14", chevron: "M6 9l6 6 6-6", link: "M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1",
 };
 const Ic = ({ n }) => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={ICON[n]} /></svg>);
 

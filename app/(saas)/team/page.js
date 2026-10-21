@@ -13,6 +13,8 @@ import JoinRequestsPanel from "@/components/JoinRequestsPanel";
 import { useMe } from "@/lib/useMe";
 import { CommandBar, Cmd, CmdMenu, CmdSep, Pager } from "@/components/admin/CommandBar";
 import { sortRows, paginate, toCsv } from "@/lib/adminTable";
+import { USER_COLUMNS, DEFAULT_COLUMNS, cleanColumns } from "@/lib/adminColumns";
+import ColumnChooser from "@/components/admin/ColumnChooser";
 import { roleLabel } from "@/lib/roleLabel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -87,6 +89,21 @@ export default function TeamPage() {
   const [pageNo, setPageNo] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   useEffect(() => { setPageNo(0); }, [filters, sort.key, sort.dir, pageSize]);
+  // Choose columns: the administrator's own saved column set (server validated), shown or hidden per column.
+  const [colKeys, setColKeys] = useState(DEFAULT_COLUMNS);
+  const [showCols, setShowCols] = useState(false);
+  const [savingCols, setSavingCols] = useState(false);
+  const [colErr, setColErr] = useState("");
+  useEffect(() => {
+    if (!user || !me?.isAccountAdmin) return;
+    api("/api/iam/prefs", "GET").then((d) => setColKeys(cleanColumns(d.activeUsers?.columns))).catch(() => { /* defaults stay */ });
+  }, [user, me]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function saveCols(cols) {
+    setSavingCols(true); setColErr("");
+    try { const d = await api("/api/iam/prefs", "PUT", { activeUsers: { columns: cols } }); setColKeys(cleanColumns(d.activeUsers.columns)); setShowCols(false); }
+    catch (e) { setColErr(e.message); }
+    setSavingCols(false);
+  }
   const [selected, setSelected] = useState(() => new Set()); // row ids ticked for a bulk action
   const [bulkApp, setBulkApp] = useState("");
   const [bulkMsg, setBulkMsg] = useState("");
@@ -139,6 +156,54 @@ export default function TeamPage() {
   const allTicked = visibleSelectable.length > 0 && chosen.length === visibleSelectable.length;
   const toggleAll = () => setSelected(allTicked ? new Set() : new Set(visibleSelectable.map((r) => r.id)));
   const toggleOne = (id) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const colLabel = Object.fromEntries(USER_COLUMNS.map((c) => [c.key, c.label]));
+  const headCell = (k) => {
+    if (k === "name") return sortTh("name", "Name");
+    if (k === "signin") return sortTh("signin", "Sign-in");
+    if (k === "orgRole") return sortTh("orgRole", "Organization role", "What this person may do in the ORGANIZATION: users, roles, app assignment. Grants no application permission.");
+    if (k === "status") return sortTh("status", "Status");
+    if (k === "lastSignIn") return sortTh("lastSignIn", "Last sign-in");
+    if (k === "created") return sortTh("created", "Created date");
+    if (k === "apps") return <th key={k} title="Per application: the role inside that app and where the access comes from. Granted separately from the organization role.">{colLabel[k]}</th>;
+    if (k === "profile") return <th key={k} title="Describes the job in the business apps. Separate from the organization role and from app roles.">{colLabel[k]}</th>;
+    return <th key={k}>{colLabel[k]}</th>;
+  };
+  const dash = <span className="muted">—</span>;
+  const cellFor = (k, m) => {
+    switch (k) {
+      case "name": return [m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A";
+      case "signin": return (<><div>{m.email || (m.username ? "@" + m.username : "")}</div><div className="muted" style={{ fontSize: 11.5 }}>{LOGIN_LABEL[m.loginKind] || ""}</div></>);
+      case "method": return LOGIN_LABEL[m.loginKind] || dash;
+      case "orgRole": return (
+        <>
+          {m.isOwner || m.orgRole === "OWNER" ? "OWNER" : m.dirOnly ? m.orgRole : (
+            <select className="input" style={{ fontSize: 12.5, padding: "3px 6px" }} value={m.orgRoleEffective || m.orgRole} onChange={(e) => changeOrgRole(m, e.target.value)}
+              disabled={!canAssignAdmin && (m.orgRoleEffective || m.orgRole) === "ADMIN"}>
+              {ORGANIZATION_ROLES.filter((r) => r !== "OWNER").map((r) => (<option key={r} value={r} disabled={r === "ADMIN" && !canAssignAdmin}>{r}</option>))}
+            </select>
+          )}
+          <div className="muted" style={{ fontSize: 11 }}>{ORG_SOURCE[m.orgRoleSource] || ""}</div>
+        </>
+      );
+      case "apps": return (m.appChips || m.appAccess || []).length > 0 ? (
+        <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+          {(m.appChips || m.appAccess.map((name) => ({ name }))).map((c) => (
+            <span key={c.name} className="status-pill active" style={{ fontSize: 11 }} title={c.source ? "Source: " + (c.source === "assignment" ? "assigned to this person" : c.source === "owner" ? "company owner" : c.source) : ""}>{c.name}{c.role ? " · " + (c.role === "ADMIN" ? "Admin" : "Member") : ""}</span>
+          ))}
+        </div>
+      ) : <span className="muted" style={{ fontSize: 12 }}>None</span>;
+      case "status": return (<span className={"status-pill " + (m.status === "active" ? "active" : m.status === "disabled" ? "expired" : "trial")}>{m.status === "active" ? "Active" : m.status === "disabled" ? "Disabled" : "Invited"}</span>);
+      case "lastSignIn": return <span className="muted" style={{ fontSize: 12 }}>{m.lastSignIn ? new Date(m.lastSignIn).toLocaleDateString() : "—"}</span>;
+      case "created": return <span className="muted" style={{ fontSize: 12 }}>{m.created ? new Date(m.created).toLocaleDateString() : "—"}</span>;
+      case "jobTitle": return m.designation || dash;
+      case "profile": return m.isOwner ? dash : PROFILES.find((p) => p.value === m.profile)?.label || m.profile || dash;
+      case "department": return m.department || dash;
+      case "branch": return m.branch || dash;
+      case "employeeId": return m.employeeId || dash;
+      case "employmentType": return m.employmentType || dash;
+      default: return null;
+    }
+  };
   const one = chosen.length === 1 ? chosen[0] : null;
   function resetForSelected() {
     if (!one) return;
@@ -322,6 +387,7 @@ export default function TeamPage() {
           <CmdSep />
           <Cmd icon="download" onClick={exportCsv} disabled={!rows.length} title="Exports the users matching the current filters">Export users</Cmd>
           <Cmd icon="refresh" onClick={() => { setBulkMsg(""); load(); }}>Refresh</Cmd>
+          <Cmd icon="columns" onClick={() => { setColErr(""); setShowCols(true); }}>Choose columns</Cmd>
         </CommandBar>
 
         {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
@@ -383,55 +449,14 @@ export default function TeamPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: 28 }}><input type="checkbox" aria-label="Select all users shown" checked={allTicked} onChange={toggleAll} disabled={!visibleSelectable.length} /></th>{sortTh("name", "Name")}{sortTh("signin", "Sign-in")}<th>Job title</th><th title="Describes the job in the business apps. Separate from the organization role and from app roles.">Business profile</th>{sortTh("orgRole", "Organization role", "What this person may do in the ORGANIZATION: users, roles, app assignment. Grants no application permission.")}<th title="Per application: the role inside that app and where the access comes from. Granted separately from the organization role.">App roles (effective access)</th>{sortTh("status", "Status")}{sortTh("lastSignIn", "Last sign-in")}<th></th>
+                  <th style={{ width: 28 }}><input type="checkbox" aria-label="Select all users shown" checked={allTicked} onChange={toggleAll} disabled={!visibleSelectable.length} /></th>{colKeys.map((k) => headCell(k))}<th></th>
                 </tr>
               </thead>
               <tbody>
                 {pg.rows.map((m) => (
                   <tr key={m.id}>
                     <td>{selectable(m) ? <input type="checkbox" aria-label={"Select " + (m.firstName || m.username || m.email)} checked={selected.has(m.id)} onChange={() => toggleOne(m.id)} /> : null}</td>
-                    <td>{[m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A"}</td>
-                    <td>
-                      <div>{m.email || (m.username ? "@" + m.username : "")}</div>
-                      <div className="muted" style={{ fontSize: 11.5 }}>{LOGIN_LABEL[m.loginKind] || ""}</div>
-                    </td>
-                    <td>{m.role || "N/A"}</td>
-                    <td>{m.isOwner ? <span className="muted">—</span> : PROFILES.find((p) => p.value === m.profile)?.label || m.profile}</td>
-                    <td>
-                      {m.isOwner || m.orgRole === "OWNER" ? (
-                        "OWNER"
-                      ) : m.dirOnly ? (
-                        m.orgRole
-                      ) : (
-                        <select
-                          className="input" style={{ fontSize: 12.5, padding: "3px 6px" }}
-                          value={m.orgRoleEffective || m.orgRole} onChange={(e) => changeOrgRole(m, e.target.value)}
-                          disabled={!canAssignAdmin && (m.orgRoleEffective || m.orgRole) === "ADMIN"}
-                        >
-                          {ORGANIZATION_ROLES.filter((r) => r !== "OWNER").map((r) => (
-                            <option key={r} value={r} disabled={r === "ADMIN" && !canAssignAdmin}>{r}</option>
-                          ))}
-                        </select>
-                      )}
-                      <div className="muted" style={{ fontSize: 11 }}>{ORG_SOURCE[m.orgRoleSource] || ""}</div>
-                    </td>
-                    <td>
-                      {(m.appChips || m.appAccess || []).length > 0 ? (
-                        <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
-                          {(m.appChips || m.appAccess.map((name) => ({ name }))).map((c) => (
-                            <span key={c.name} className="status-pill active" style={{ fontSize: 11 }} title={c.source ? "Source: " + (c.source === "assignment" ? "assigned to this person" : c.source === "owner" ? "company owner" : c.source) : ""}>{c.name}{c.role ? " · " + (c.role === "ADMIN" ? "Admin" : "Member") : ""}</span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="muted" style={{ fontSize: 12 }}>None</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={"status-pill " + (m.status === "active" ? "active" : m.status === "disabled" ? "expired" : "trial")}>
-                        {m.status === "active" ? "Active" : m.status === "disabled" ? "Disabled" : "Invited"}
-                      </span>
-                    </td>
-                    <td className="muted" style={{ fontSize: 12 }}>{m.lastSignIn ? new Date(m.lastSignIn).toLocaleDateString() : "—"}</td>
+                    {colKeys.map((k) => <td key={k}>{cellFor(k, m)}</td>)}
                     <td>
                       {m.dirOnly && <span className="muted" style={{ fontSize: 11.5 }}>Read-only here: no team record</span>}
                       {!m.isOwner && !m.dirOnly && (
@@ -474,6 +499,8 @@ export default function TeamPage() {
           }}
         />
       )}
+
+      <ColumnChooser open={showCols} columns={colKeys} onClose={() => setShowCols(false)} onSave={saveCols} saving={savingCols} error={colErr} />
 
       {showLink && <LinkExistingUserModal onClose={() => setShowLink(false)} />}
 

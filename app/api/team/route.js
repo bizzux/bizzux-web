@@ -214,6 +214,7 @@ async function handleGET(req) {
           lastName: t.lastName || "",
           email: t.email || "",
           role: t.role || "",
+          designation: t.designation || "", department: t.department || "", branch: t.branch || "", employeeId: t.employeeId || "", employmentType: t.employmentType || "",
           profile: t.profile || DEFAULT_PROFILE,
           orgRole: (t.uid && orgRoleByUid.get(t.uid)) || roleFromProfile(t.profile || DEFAULT_PROFILE, false),
           appAccess: t.uid ? appAccessFor(t.uid) : [],

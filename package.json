@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:iam": "firebase emulators:exec --only auth,firestore --project demo-bizzux \"tsx --test --test-concurrency=1 test/authzPolicy.test.mjs test/authzOrg.test.mjs test/iamService.test.mjs test/iamAttendanceConsumer.test.mjs test/provisionedAccounts.test.mjs test/joinRequests.test.mjs test/linkRequests.test.mjs test/acceptanceOrgSwitch.test.mjs\"",
+    "test:iam": "firebase emulators:exec --only auth,firestore --project demo-bizzux \"tsx --test --test-concurrency=1 test/adminNav.test.mjs test/adminTable.test.mjs test/adminPrefs.test.mjs test/membershipLifecycle.test.mjs test/authzPolicy.test.mjs test/authzOrg.test.mjs test/iamService.test.mjs test/iamAttendanceConsumer.test.mjs test/provisionedAccounts.test.mjs test/joinRequests.test.mjs test/linkRequests.test.mjs test/acceptanceOrgSwitch.test.mjs\"",
     "test:health": "tsx --test test/businessHealth.test.mjs && firebase emulators:exec --only auth,firestore --project demo-bizzux \"tsx --test --test-concurrency=1 test/businessHealthRoute.test.mjs\"",
     "test:orgs": "firebase emulators:exec --only auth,firestore --project demo-bizzux \"tsx --test --test-concurrency=1 test/orgProvisioning.test.mjs test/orgContacts.test.mjs test/accessRoles.test.mjs test/platformFoundation.test.mjs test/phase3.test.mjs test/phase4.test.mjs test/phase5.test.mjs test/phase6.test.mjs\""
   },
