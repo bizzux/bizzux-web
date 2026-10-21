@@ -11,6 +11,7 @@ import { useMe } from "@/lib/useMe";
 import { useIsAdminHost, wwwHrefFor } from "@/lib/adminLinks";
 import SideNav from "./SideNav";
 import { findActive, breadcrumbOf } from "./adminNavConfig";
+import { MENU_APPS } from "@/lib/shell/menuModel";
 import "./admin.css";
 
 const KEY = "bzx.admin.nav.v1";
@@ -25,9 +26,18 @@ export default function AdminShell({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState({ users: true });
   const [mobile, setMobile] = useState(false); // overlay open on a narrow screen
+  const [back, setBack] = useState(null); // where this Admin Center visit started: { name, url }
 
   // The browser address is what the person sees (/users on the admin host), so the active item follows window.location, not the rewritten route.
   useEffect(() => { setPath(window.location.pathname); }, [routerPath]);
+  // A visit that started in another Bizzux app remembers where to go back to (the address was validated against the app allow-list on the server).
+  useEffect(() => {
+    try {
+      const c = JSON.parse(sessionStorage.getItem("bzx.admin.ctx") || "null");
+      const app = c && MENU_APPS.find((a) => a.key === c.from);
+      if (app && typeof c.returnUrl === "string" && c.returnUrl.startsWith(app.url)) setBack({ name: app.name, url: c.returnUrl });
+    } catch { /* no context */ }
+  }, []);
   useEffect(() => { const s = read(); if (typeof s.collapsed === "boolean") setCollapsed(s.collapsed); if (s.open) setOpen((o) => ({ ...o, ...s.open })); }, []);
   const save = useCallback((c, o) => write({ collapsed: c, open: o }), []);
 
@@ -58,6 +68,7 @@ export default function AdminShell({ children }) {
           <span>Admin Center</span>
         </Link>
         <div className="adm-spacer" />
+        {back && <a className="adm-toplink" href={back.url} onClick={() => { try { sessionStorage.removeItem("bzx.admin.ctx"); } catch { /* ok */ } }}>← Back to {back.name}</a>}
         {me?.organizationName && <span className="adm-org" title="Company">{me.organizationName}</span>}
         <a className="adm-toplink" href={wwwHrefFor(onAdminHost, "/dashboard")}><span className="adm-long">Back to bizzux.com</span><span className="adm-short">bizzux.com</span></a>
         <button type="button" className="adm-toplink" onClick={async () => { await signOut(auth); window.location.assign(wwwHrefFor(onAdminHost, "/sign-in")); }}>Sign out</button>

@@ -3,6 +3,7 @@ import { createHmac, randomUUID } from "crypto";
 import { requireAccountAdmin } from "@/lib/firebaseAdmin";
 import { logAuditEvent } from "@/lib/audit";
 import { safeAdminTarget } from "@/lib/adminHost";
+import { createCode } from "@/lib/shell/handoff";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,21 @@ export async function GET(req) {
     const sig = createHmac("sha256", key).update(payloadB64).digest("hex");
     await logAuditEvent({ action: "admin_center.handoff", actor: acct, targetType: "organization", targetId: acct.accountId, details: { to } }).catch(() => {});
     return NextResponse.json({ url: `${ADMIN_ORIGIN()}/sso#token=${payloadB64}.${sig}&to=${encodeURIComponent(to)}` });
+  } catch (e) {
+    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+  }
+}
+
+// POST { from, intent?, returnTo?, to? }: the URL-free hand-off used by every Bizzux app and by the portal. Returns a one-time CODE and the address to POST it to.
+// Only a company Owner or Admin gets one (403 otherwise, whatever the menu showed). `from` and `returnTo` are validated against the Bizzux app allow-list
+// here, so the destination of the later "Back to the app" link can never be chosen by the caller.
+export async function POST(req) {
+  try {
+    const acct = await requireAccountAdmin(req);
+    const b = await req.json().catch(() => ({}));
+    const { code, returnUrl } = await createCode({ uid: acct.uid, orgId: acct.accountId, from: String(b.from || "portal"), intent: b.intent, returnTo: b.returnTo, to: b.to });
+    await logAuditEvent({ action: "admin_center.handoff", actor: acct, targetType: "organization", targetId: acct.accountId, details: { to: safeAdminTarget(b.to), from: String(b.from || "portal"), intent: String(b.intent || ""), method: "post_code" } }).catch(() => {});
+    return NextResponse.json({ code, action: `${ADMIN_ORIGIN()}/api/admin-center/redeem`, returnUrl }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }

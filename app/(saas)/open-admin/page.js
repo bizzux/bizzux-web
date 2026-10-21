@@ -25,11 +25,14 @@ function OpenAdmin() {
     (async () => {
       try {
         const token = await auth.currentUser.getIdToken();
-        const r = await fetch("/api/admin-center/handoff?to=" + encodeURIComponent(to), { headers: { Authorization: "Bearer " + token } });
+        const r = await fetch("/api/admin-center/handoff", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ from: "portal", returnTo: "/dashboard", to }) });
         const d = await r.json();
         if (r.status === 403) throw new Error("The Admin Center is for company owners and admins. Ask your admin if you need access.");
         if (!r.ok) throw new Error(d.error || "Could not open the Admin Center");
-        window.location.assign(d.url);
+        // The one-time code goes in a form POST body, never in the address.
+        const f = document.createElement("form"); f.method = "POST"; f.action = d.action;
+        const i = document.createElement("input"); i.type = "hidden"; i.name = "code"; i.value = d.code; f.appendChild(i);
+        document.body.appendChild(f); f.submit();
       } catch (e) { setError(e.message); }
     })();
   }, [user, to, router]);
