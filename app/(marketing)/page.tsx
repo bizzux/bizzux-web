@@ -56,102 +56,32 @@ export default async function Home() {
   return (
     <>
       <SuperAdminHomeRedirect />
-      {/* Hero — "All your business apps in one place". Left: pitch, CTAs and
-          reassurance ticks. Right: the app-orbit illustration (hero-visual.webp,
-          photo + app tiles + handwritten notes; the price is deliberately NOT in
-          the image so it can't drift from the real plans — see lib/pricingDefaults.js
-          SUITE offer price) with a live price badge on top. Trust strip below. */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-white to-sky-50/60">
-        <Container className="relative !max-w-7xl pt-8 pb-6 md:pt-10">
-          <div className="grid lg:grid-cols-[1fr_1.15fr] gap-6 lg:gap-4 items-center">
-            <div>
-              <p className="text-brand-tealDark italic text-lg mb-1" style={{ fontFamily: "cursive" }}>
-                One login ↓
-              </p>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05] text-ink">
-                All your business apps in{" "}
-                <span className="bg-yellow-200/80 rounded-md px-1 text-brand-blueDark">one place.</span>
-              </h1>
-              <p className="mt-4 text-2xl md:text-3xl font-semibold text-slate-800">
-                Simple. Smart.{" "}
-                <span className="underline decoration-brand-teal decoration-4 underline-offset-8">Affordable.</span>
-              </p>
-              <p className="mt-5 text-slate-600 max-w-md text-base">
-                Manage CRM, sales, POS, inventory, billing, projects, files and more — with Bizzux&apos;s powerful
-                all-in-one business platform.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <a
-                  href="/sign-in?mode=signup"
-                  className="inline-flex items-center gap-2 justify-center rounded-full h-12 px-8 text-base font-semibold bg-gradient-to-r from-brand-tealDark to-brand-blueDark hover:opacity-90 transition-opacity shadow-md"
-                  style={{ color: "#ffffff" }}
-                >
-                  Start Free Trial <IconArrowRight className="w-4 h-4" />
-                </a>
-                <a
-                  href="/contact"
-                  className="inline-flex items-center justify-center rounded-full h-12 px-8 text-base font-semibold border border-slate-300 bg-white text-ink hover:border-brand-blue hover:text-brand-blue transition-colors"
-                >
-                  Book a Demo
-                </a>
-              </div>
-              <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
-                {["No credit card required", "Easy setup", "Cancel anytime"].map((t) => (
-                  <li key={t} className="inline-flex items-center gap-1.5">
-                    <IconCheck className="w-4 h-4 text-emerald-500" />
-                    {t}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/images/hero-visual.webp"
-                alt="A smiling Bizzux customer surrounded by the Bizzux apps: CRM, POS, Billing, Inventory, Sales, Projects, Files, HR, Notes, AI Apps and Dashboard"
-                width={1062}
-                height={702}
-                className="w-full h-auto"
-                style={{
-                  WebkitMaskImage: "linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%)",
-                  maskImage: "linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%)",
-                }}
-              />
-              <div className="absolute top-0 right-0 -rotate-3 text-right select-none">
-                <div
-                  className="inline-block bg-yellow-200 rounded-lg px-3 py-1 text-2xl md:text-4xl font-extrabold italic text-ink"
-                  style={{ fontFamily: "cursive" }}
-                >
-                  ₹999 / user / month
-                </div>
-                <div
-                  className="mt-1 text-lg md:text-2xl font-bold italic text-ink border-b-4 border-brand-teal inline-block"
-                  style={{ fontFamily: "cursive" }}
-                >
-                  for all apps
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-2xl bg-white border border-slate-100 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 lg:divide-x divide-slate-100">
-            {[
-              { icon: IconSpark, t: "20+ Integrated Apps", d: "Everything your business needs" },
-              { icon: IconCloud, t: "Works on Web & Mobile", d: "Access anywhere, anytime" },
-              { icon: IconUsers, t: "Trusted by Growing Businesses", d: "From startups to established teams" },
-              { icon: IconShield, t: "Secure & Reliable", d: "Your data is always protected" },
-            ].map((x) => (
-              <div key={x.t} className="flex items-center gap-4 px-6 py-4">
-                <x.icon className="w-8 h-8 text-brand-blue shrink-0" />
-                <div>
-                  <div className="font-semibold text-ink text-sm">{x.t}</div>
-                  <div className="text-xs text-slate-500">{x.d}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Container>
+      {/* Hero — the approved design image, shown exactly as supplied (1672x941,
+          nothing cropped or edited). Only the two buttons are made clickable
+          with transparent links positioned over them (percentages of the image). */}
+      <section className="relative bg-white">
+        <div className="relative mx-auto w-full max-w-[1672px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/hero-original.webp"
+            alt="Bizzux: all your business apps in one place. Simple. Smart. Affordable. ₹599 / month for all apps."
+            width={1672}
+            height={941}
+            className="block w-full h-auto"
+          />
+          <a
+            href="/sign-in?mode=signup"
+            aria-label="Start Free Trial"
+            className="absolute"
+            style={{ left: "4.67%", top: "64.8%", width: "15.9%", height: "6.6%" }}
+          />
+          <a
+            href="/contact"
+            aria-label="Book a Demo"
+            className="absolute"
+            style={{ left: "21.4%", top: "64.8%", width: "12.1%", height: "6.6%" }}
+          />
+        </div>
       </section>
 
       {/* Featured apps — right under the hero, no scroll needed to reach it */}
