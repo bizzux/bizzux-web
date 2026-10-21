@@ -1,0 +1,25 @@
+import { NextResponse } from "next/server";
+import { requireOrgManager } from "@/lib/firebaseAdmin";
+import { createUsernameIdentity, requestLinkToOrganization, setUserApps } from "@/lib/iam/identityService";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// The shared IAM entry point used by the Admin Center AND by other apps (Attendance Add Person) with the caller's Bearer token.
+//   POST { kind: "username", fullName, username, password?, profile?, apps?, ... }  -> new username login (temporary password returned ONCE)
+//   POST { kind: "link", username, profile?, apps? }                                -> ask an existing login to join; the person accepts
+//   POST { kind: "apps", uid, apps }                                                 -> replace the person's application access
+// The caller identity always comes from the verified token, never from the body; a company admin can only act on their own company.
+export async function POST(req) {
+  try {
+    const c = await requireOrgManager(req);
+    const b = await req.json();
+    const organizationId = b.organizationId;
+    if (b.kind === "username") return NextResponse.json({ ok: true, ...(await createUsernameIdentity({ ...b, organizationId, actor: c })) });
+    if (b.kind === "link") return NextResponse.json(await requestLinkToOrganization({ actor: c, organizationId, username: b.username, profile: b.profile, apps: b.apps }));
+    if (b.kind === "apps") return NextResponse.json(await setUserApps({ actor: c, organizationId, uid: String(b.uid || ""), apps: b.apps }));
+    throw { status: 400, message: "Unknown kind" };
+  } catch (e) {
+    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+  }
+}
