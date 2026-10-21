@@ -8,6 +8,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFromProfile, ORGANIZATION_ROLES } from "@/lib/organizationMembership";
 import { upsertAppAssignment, ensureAppSubscriptionActive } from "@/lib/appAccess";
 import { APPS, APP_IDS } from "@/lib/appCatalog";
+import { setOrganizationRole } from "@/lib/iam/identityService";
 import { validatePassword } from "@/lib/passwordPolicy";
 import { CORS_HEADERS_WRITE, corsPreflightWrite } from "@/lib/cors";
 import { existingAccountInviteEmailHtml, newAccountInviteEmailHtml } from "@/lib/emailTemplates";
@@ -494,13 +495,8 @@ async function handlePOST(req) {
       const t = memberSnap.data();
       if (!t.uid) throw { status: 400, message: "This teammate hasn't joined yet" };
 
-      await upsertOrganizationMembership({ organizationId: acct.accountId, userId: t.uid, role, status: "active" });
-
-      await logAuditEvent({
-        action: "team.set_org_role", actor: acct, targetType: "organization", targetId: acct.accountId,
-        details: { email: t.email, role },
-      });
-
+      // Central rule set (lib/authz/policy.js): escalation limits, no self-change, never touches profile / app assignments / licences.
+      await setOrganizationRole({ actor: acct, organizationId: acct.accountId, uid: t.uid, role });
       return NextResponse.json({ ok: true });
     }
 

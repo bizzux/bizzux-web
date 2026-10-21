@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireUser, resolveAccount, resolvePlatformRole, adminDb } from "@/lib/firebaseAdmin";
 import { ACCOUNT_ADMIN_PROFILES } from "@/lib/roles";
 import { getTwoFactorSettings } from "@/lib/twoFactor";
+import { loadOrgSubject } from "@/lib/authz/orgAuthz";
+import { isOrgAdmin, orgPermissionsOf } from "@/lib/authz/policy.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +13,7 @@ export async function GET(req) {
     const c = await requireUser(req);
     let accountId = c.uid;
     let isAccountAdmin = true;
+    let orgRoleEffective = null, orgRoleSource = null, orgPermissions = [];
     let hasAccount = true;
     let profile = "Admin";
     let isOwner = true;
@@ -39,7 +42,10 @@ export async function GET(req) {
     try {
       const acct = await resolveAccount(c.uid);
       accountId = acct.accountId;
-      isAccountAdmin = ACCOUNT_ADMIN_PROFILES.includes(acct.profile);
+      // Central authorization: the ORGANIZATION role (legacy profile until explicitly set) decides admin-ness; app roles are separate.
+      const subject = await loadOrgSubject(adminDb(), acct, c.uid);
+      isAccountAdmin = isOrgAdmin(subject);
+      orgRoleEffective = subject.role; orgRoleSource = subject.source; orgPermissions = orgPermissionsOf(subject);
       profile = acct.profile;
       isOwner = acct.isOwner;
       organizationId = acct.organizationId;
@@ -111,7 +117,7 @@ export async function GET(req) {
     const twoFactor = await getTwoFactorSettings(c.uid);
     return NextResponse.json({
       email: c.email, superAdmin: isSuper, platformRole: resolvedPlatformRole, accountType,
-      accountId, isAccountAdmin, hasAccount, profile, isOwner,
+      accountId, isAccountAdmin, hasAccount, profile, isOwner, orgRoleEffective, orgRoleSource, orgPermissions,
       organizationId, organizationRole, organizationName, mustChangePassword,
       organizations, activeOrganizationId,
       dualContext, useMembershipContext, ownAccountEmail, membershipOrgEmail,
