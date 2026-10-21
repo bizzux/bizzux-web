@@ -1,4 +1,5 @@
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import HeroShowcase from "@/components/HeroShowcase";
 import FeaturedAppsGrid from "@/components/FeaturedAppsGrid";
 import SuperAdminHomeRedirect from "@/components/SuperAdminHomeRedirect";
 import {
@@ -56,33 +57,8 @@ export default async function Home() {
   return (
     <>
       <SuperAdminHomeRedirect />
-      {/* Hero — the approved design image, shown exactly as supplied (1672x941,
-          nothing cropped or edited). Only the two buttons are made clickable
-          with transparent links positioned over them (percentages of the image). */}
-      <section className="relative bg-white">
-        <div className="relative mx-auto w-full max-w-[1672px]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/images/hero-original.webp"
-            alt="Bizzux: all your business apps in one place. Simple. Smart. Affordable. ₹599 / month for all apps."
-            width={1672}
-            height={857}
-            className="block w-full h-auto"
-          />
-          <a
-            href="/sign-in?mode=signup"
-            aria-label="Start Free Trial"
-            className="absolute"
-            style={{ left: "4.67%", top: "61.4%", width: "15.9%", height: "7.2%" }}
-          />
-          <a
-            href="/contact"
-            aria-label="Book a Demo"
-            className="absolute"
-            style={{ left: "21.4%", top: "61.4%", width: "12.1%", height: "7.2%" }}
-          />
-        </div>
-      </section>
+      {/* Hero — animated showcase (rotating app orbit around the photo) */}
+      <HeroShowcase />
 
       {/* Featured apps — right under the hero, no scroll needed to reach it */}
       <div className="px-6 relative z-10">
