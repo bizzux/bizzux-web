@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
-import Nav from "@/components/Nav";
+import AdminNav from "@/components/AdminNav";
+import { useIsAdminHost, wwwHrefFor } from "@/lib/adminLinks";
 import AccountTabs from "@/components/AccountTabs";
 import { useMe } from "@/lib/useMe";
 import { roleLabel } from "@/lib/roleLabel";
@@ -35,6 +36,7 @@ function fmtDate(iso) {
 // at Bizzux's current size, reusing the existing team/apps/groups page shell.
 export default function SecurityPage() {
   const router = useRouter();
+  const onAdminHost = useIsAdminHost();
   const { user, me } = useMe();
   const isAdmin = me ? me.isAccountAdmin === true : null;
   const isSuper = me?.superAdmin === true;
@@ -88,7 +90,7 @@ export default function SecurityPage() {
   if (!user || isAdmin === null) {
     return (
       <div>
-        <Nav />
+        <AdminNav active="team-security" />
         <AccountTabs active="team-security" isAccountAdmin={!!isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
         <div className="admin-shell"><p className="muted">Loading…</p></div>
       </div>
@@ -97,11 +99,11 @@ export default function SecurityPage() {
   if (!isAdmin) {
     return (
       <div>
-        <Nav />
+        <AdminNav active="team-security" />
         <AccountTabs active="team-security" isAccountAdmin={false} isSuper={isSuper} roleLabel={myRoleLabel} />
         <div className="admin-shell">
           <p>You don&apos;t have access to this page.</p>
-          <Link href="/dashboard" className="btn-primary-sm">Back to dashboard</Link>
+          <a href={wwwHrefFor(onAdminHost, "/dashboard")} className="btn-primary-sm">Back to dashboard</a>
         </div>
       </div>
     );
@@ -109,7 +111,7 @@ export default function SecurityPage() {
 
   return (
     <div>
-      <Nav />
+      <AdminNav active="team-security" />
       <AccountTabs active="team-security" isAccountAdmin={isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
       <div className="admin-shell">
         <h1 className="dash-heading" style={{ fontSize: 20 }}>Security</h1>

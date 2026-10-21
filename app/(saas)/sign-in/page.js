@@ -11,6 +11,7 @@ import {
   getRedirectResult,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { safeNext } from "@/lib/safeNext";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import { IconEye, IconEyeOff } from "@/components/Icons";
@@ -111,7 +112,7 @@ export default function LoginPage() {
       // separate /api/me call if an older response didn't include it.
       const role = result && "platformRole" in result ? result.platformRole : undefined;
       const isAdmin = role !== undefined ? role === "OWNER" || role === "ADMIN" : await isPlatformAdmin();
-      router.push(isAdmin ? "/admin" : "/dashboard");
+      router.push(safeNext(new URLSearchParams(window.location.search).get("next")) || (isAdmin ? "/admin" : "/dashboard"));
     }
   }
 

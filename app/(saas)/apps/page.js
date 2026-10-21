@@ -81,7 +81,7 @@ const CATEGORIES = [
     // `sso`) just router.push()es straight there, no SSO hand-off needed
     // since it's this same app.
     apps: [
-      { key: "admin", name: "Admin Center", icon: "🛠️", desc: "Manage your team, their roles, and which Bizzux apps they can use.", live: true, featured: true, internal: true, adminOnly: true, url: "/team", ctaLabel: "Open" },
+      { key: "admin", name: "Admin Center", icon: "🛠️", desc: "Manage your team, their roles, and which Bizzux apps they can use.", live: true, featured: true, internal: true, adminOnly: true, url: process.env.NEXT_PUBLIC_ADMIN_CENTER === "1" ? "/open-admin?to=/users" : "/team", ctaLabel: "Open" },
     ],
   },
 ];

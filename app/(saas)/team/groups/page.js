@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
-import Nav from "@/components/Nav";
+import AdminNav from "@/components/AdminNav";
+import { useIsAdminHost, wwwHrefFor } from "@/lib/adminLinks";
 import AccountTabs from "@/components/AccountTabs";
 import { useMe } from "@/lib/useMe";
 import { APPS } from "@/lib/appCatalog";
@@ -29,6 +30,7 @@ async function api(path, method, body) {
 // — a one-time bulk action, not a live permission-inheritance system).
 export default function GroupsPage() {
   const router = useRouter();
+  const onAdminHost = useIsAdminHost();
   const { user, me } = useMe();
   const isAdmin = me ? me.isAccountAdmin === true : null;
   const [groups, setGroups] = useState(null);
@@ -86,7 +88,7 @@ export default function GroupsPage() {
   if (!user || isAdmin === null) {
     return (
       <div>
-        <Nav />
+        <AdminNav active="team-groups" />
         <AccountTabs active="team-groups" isAccountAdmin={!!isAdmin} />
         <div className="admin-shell"><p className="muted">Loading…</p></div>
       </div>
@@ -95,11 +97,11 @@ export default function GroupsPage() {
   if (!isAdmin) {
     return (
       <div>
-        <Nav />
+        <AdminNav active="team-groups" />
         <AccountTabs active="team-groups" isAccountAdmin={false} />
         <div className="admin-shell">
           <p>You don&apos;t have access to this page.</p>
-          <Link href="/dashboard" className="btn-primary-sm">Back to dashboard</Link>
+          <a href={wwwHrefFor(onAdminHost, "/dashboard")} className="btn-primary-sm">Back to dashboard</a>
         </div>
       </div>
     );
@@ -107,7 +109,7 @@ export default function GroupsPage() {
 
   return (
     <div>
-      <Nav />
+      <AdminNav active="team-groups" />
       <AccountTabs active="team-groups" isAccountAdmin={!!isAdmin} />
 
       <div className="admin-shell">

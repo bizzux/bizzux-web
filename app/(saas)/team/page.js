@@ -6,7 +6,8 @@ import { auth } from "@/lib/firebase";
 import { PROFILES, ORGANIZATION_ROLES, ACCOUNT_ADMIN_PROFILES } from "@/lib/roles";
 import { APPS, appName } from "@/lib/appCatalog";
 import Link from "next/link";
-import Nav from "@/components/Nav";
+import AdminNav from "@/components/AdminNav";
+import { useIsAdminHost, wwwHrefFor } from "@/lib/adminLinks";
 import AccountTabs from "@/components/AccountTabs";
 import { useMe } from "@/lib/useMe";
 import { roleLabel } from "@/lib/roleLabel";
@@ -30,6 +31,7 @@ async function api(path, method, body) {
 
 export default function TeamPage() {
   const router = useRouter();
+  const onAdminHost = useIsAdminHost();
   // useMe() (lib/useMe.js) shares this /api/me lookup with Nav instead of
   // each firing its own duplicate request, and starts a remount from the
   // last known answer instead of a blank "checking…" state.
@@ -72,7 +74,7 @@ export default function TeamPage() {
   if (!user || isAdmin === null) {
     return (
       <div>
-        <Nav />
+        <AdminNav active="team" />
         <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
         <div className="admin-shell"><p className="muted">Loading…</p></div>
       </div>
@@ -81,11 +83,11 @@ export default function TeamPage() {
   if (!isAdmin) {
     return (
       <div>
-        <Nav />
+        <AdminNav active="team" />
         <AccountTabs active="team" isAccountAdmin={false} isSuper={isSuper} roleLabel={myRoleLabel} />
         <div className="admin-shell">
           <p>You don&apos;t have access to this page.</p>
-          <Link href="/dashboard" className="btn-primary-sm">Back to dashboard</Link>
+          <a href={wwwHrefFor(onAdminHost, "/dashboard")} className="btn-primary-sm">Back to dashboard</a>
         </div>
       </div>
     );
@@ -181,7 +183,7 @@ export default function TeamPage() {
 
   return (
     <div>
-      <Nav />
+      <AdminNav active="team" />
       <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
 
       <div className="admin-shell">

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useIsAdminHost } from "@/lib/adminLinks";
 
 // Secondary strip shown just below Nav, only on the Your Profile / Dashboard
 // / Team pages themselves — the Super Admin page has its own tab strip
@@ -15,8 +16,9 @@ const PROFILE_SECTION_KEYS = ["profile", "dashboard", "team", "team-apps", "team
 // type-check these props — doesn't need to change just because this
 // component stopped needing them.
 export default function AccountTabs({ active, isAccountAdmin = false, isSuper = false, roleLabel = "" }) {
+  const onAdminHost = useIsAdminHost();
   const inProfileSection = PROFILE_SECTION_KEYS.includes(active);
-  if (!inProfileSection) return null;
+  if (!inProfileSection || onAdminHost) return null; // the Admin Center host has its own header (AdminNav)
 
   // Your Profile is always first, so landing on the Profile nav link always
   // opens there first. "Team" itself isn't listed here — Nav's own "Admin

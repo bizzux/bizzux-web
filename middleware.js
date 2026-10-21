@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { decide } from "./lib/adminHost";
 
 // Cross-origin allow-list for the API. The split apps (notes.bizzux.com,
 // crm.bizzux.com, ...) call bizzux-web's /api/* with a Bearer token; no other
@@ -15,7 +16,24 @@ function allowedOrigin(origin) {
   return null;
 }
 
+// Pages: Admin Center host routing (lib/adminHost.js). Does nothing on www/preview hosts unless ADMIN_REDIRECT_LEGACY=1 moves /team to the admin host.
+function pageRouting(req) {
+  const cfg = {
+    adminOrigin: process.env.ADMIN_CENTER_ORIGIN || undefined,
+    wwwOrigin: process.env.WWW_ORIGIN || undefined,
+    redirectLegacy: process.env.ADMIN_REDIRECT_LEGACY === "1",
+  };
+  Object.keys(cfg).forEach((k) => cfg[k] === undefined && delete cfg[k]);
+  const { pathname, search } = req.nextUrl;
+  const d = decide({ host: req.headers.get("host"), pathname, search }, cfg);
+  if (d.type === "rewrite") return NextResponse.rewrite(new URL(d.path, req.url));
+  if (d.type === "redirect") return NextResponse.redirect(new URL(d.url, req.url), d.status);
+  if (d.type === "notfound") return new NextResponse("Not found", { status: 404 });
+  return NextResponse.next();
+}
+
 export function middleware(req) {
+  if (!req.nextUrl.pathname.startsWith("/api/")) return pageRouting(req);
   const origin = allowedOrigin(req.headers.get("origin"));
 
   if (req.method === "OPTIONS") {
@@ -36,4 +54,4 @@ export function middleware(req) {
   return res;
 }
 
-export const config = { matcher: "/api/:path*" };
+export const config = { matcher: ["/api/:path*", "/((?!api|_next/static|_next/image).*)"] };

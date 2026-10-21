@@ -161,7 +161,7 @@ export default function Nav() {
   // Admins never see this row at all (see the `!isSuper &&` guard below),
   // so there's no overlap with their own Super Admin button.
   const navLinks = me?.isAccountAdmin
-    ? [links[0], { href: "/team", label: "Admin Center" }, ...links.slice(1)]
+    ? [links[0], { href: process.env.NEXT_PUBLIC_ADMIN_CENTER === "1" ? "/open-admin?to=/users" : "/team", label: "Admin Center" }, ...links.slice(1)]
     : links;
   // Same "who am I" wording used on Profile/Dashboard/Team's AccountTabs
   // badge (see lib/roleLabel.js) — repeated here so it's visible on every
