@@ -30,6 +30,37 @@ async function api(path, method, body) {
   return data;
 }
 
+const LOGIN_LABEL = { google: "Google", email: "Email & password", username: "Bizzux username", "attendance-username": "Attendance username" };
+
+// Merge the legacy team list (row actions need its ids) with the canonical IAM directory (login type, last sign-in, app access). People who exist
+// only in the directory (for example Attendance username logins) are shown read-only.
+function mergeRows(members, directory, f) {
+  const dir = new Map((directory?.users || []).map((u) => [u.uid, u]));
+  const seen = new Set();
+  const rows = (members || []).map((m) => {
+    const d = m.uid ? dir.get(m.uid) : null;
+    if (d) seen.add(d.uid);
+    return {
+      ...m, loginKind: d?.loginKind || (m.username ? "username" : m.email ? "email" : ""), lastSignIn: d?.lastSignIn || null,
+      appIds: d?.apps || null, appAccess: d ? d.apps.map(appName) : m.appAccess,
+    };
+  });
+  (directory?.users || []).filter((u) => !seen.has(u.uid)).forEach((u) => rows.push({
+    id: "dir_" + u.uid, uid: u.uid, dirOnly: true, firstName: u.name || u.username, lastName: "", email: u.email, username: u.username,
+    role: "", profile: u.profile, orgRole: u.orgRole, appAccess: u.apps.map(appName), appIds: u.apps, loginKind: u.loginKind, lastSignIn: u.lastSignIn,
+    status: u.disabled ? "disabled" : u.pendingActivation ? "invited" : "active",
+  }));
+  const q = f.q.trim().toLowerCase();
+  return rows.filter((r) => {
+    if (q && ![r.firstName, r.lastName, r.email, r.username].some((x) => String(x || "").toLowerCase().includes(q))) return false;
+    if (f.login && r.loginKind !== f.login) return false;
+    if (f.status && r.status !== f.status) return false;
+    if (f.app === "none") return !(r.appAccess || []).length;
+    if (f.app && !(r.appIds || []).includes(f.app)) return false;
+    return true;
+  });
+}
+
 export default function TeamPage() {
   const router = useRouter();
   const onAdminHost = useIsAdminHost();
@@ -42,6 +73,8 @@ export default function TeamPage() {
   const myRoleLabel = isSuper ? "Platform " + (me?.platformRole === "OWNER" ? "Owner" : "Admin") : roleLabel(me);
   const [members, setMembers] = useState(null);
   const [organizationName, setOrganizationName] = useState(null);
+  const [directory, setDirectory] = useState(null); // canonical rows from the shared IAM service (/api/iam/directory), null until loaded
+  const [filters, setFilters] = useState({ q: "", login: "", status: "", app: "" });
   const [showAdd, setShowAdd] = useState(false);
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showUsernameAdd, setShowUsernameAdd] = useState(false);
@@ -60,6 +93,8 @@ export default function TeamPage() {
       const d = await api("/api/team", "GET");
       setMembers(d.members || []);
       setOrganizationName(d.organizationName || null);
+      // The shared IAM directory adds login type, last sign-in and canonical app access. If it is unavailable the page still works from /api/team.
+      api("/api/iam/directory", "GET").then(setDirectory).catch(() => setDirectory({ users: [], enabledApps: [], unavailable: true }));
     } catch (e) {
       setErr(e.message);
       setMembers([]);
@@ -73,7 +108,9 @@ export default function TeamPage() {
   }, [user, me]);
 
   if (!user || isAdmin === null) {
-    return (
+    const rows = mergeRows(members, directory, filters);
+
+  return (
       <div>
         <AdminNav active="team" />
         <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
@@ -196,10 +233,10 @@ export default function TeamPage() {
             <p className="dash-sub" style={{ marginBottom: 0 }}>Invite teammates and manage who has access to your Bizzux apps.</p>
           </div>
           <div className="row" style={{ gap: 8 }}>
-            <button className="btn-outline-dark" onClick={() => setShowBulkAdd(true)}>Bulk add users</button>
-            <button className="btn-outline-dark" onClick={() => setShowUsernameAdd(true)}>+ Username user</button>
+            <button className="btn-outline-dark" onClick={() => setShowBulkAdd(true)}>Bulk import</button>
             <button className="btn-outline-dark" onClick={() => setShowLink(true)}>Link existing user</button>
-            <button className="btn-primary-sm" onClick={() => setShowAdd(true)}>+ New User</button>
+            <button className="btn-outline-dark" onClick={() => setShowAdd(true)}>Invite user</button>
+            <button className="btn-primary-sm" onClick={() => setShowUsernameAdd(true)}>Create user</button>
           </div>
         </div>
 
@@ -216,21 +253,43 @@ export default function TeamPage() {
           </div>
         )}
 
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <input className="input" style={{ maxWidth: 240 }} placeholder="Search name, email or username" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} />
+            <select className="input" style={{ maxWidth: 180 }} value={filters.login} onChange={(e) => setFilters({ ...filters, login: e.target.value })}>
+              <option value="">All sign-in types</option>
+              {Object.entries(LOGIN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <select className="input" style={{ maxWidth: 160 }} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+              <option value="">Any status</option><option value="active">Active</option><option value="invited">Invited / not activated</option><option value="disabled">Disabled</option>
+            </select>
+            <select className="input" style={{ maxWidth: 190 }} value={filters.app} onChange={(e) => setFilters({ ...filters, app: e.target.value })}>
+              <option value="">Any app access</option><option value="none">No app access</option>
+              {(directory?.enabledApps || []).map((a) => <option key={a} value={a}>{appName(a)}</option>)}
+            </select>
+            {(filters.q || filters.login || filters.status || filters.app) && <button className="link-btn" onClick={() => setFilters({ q: "", login: "", status: "", app: "" })}>Clear</button>}
+          </div>
+        </div>
+
         <div className="card">
           {members === null && <p className="muted">Loading…</p>}
           {members && members.length === 0 && <p className="muted">No teammates yet.</p>}
-          {members && members.length > 0 && (
+          {members && rows.length === 0 && members.length > 0 && <p className="muted">No users match these filters.</p>}
+          {members && rows.length > 0 && (
             <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th><th>Email</th><th>Role</th><th>Profile</th><th>Org role</th><th>App access</th><th>Status</th><th></th>
+                  <th>Name</th><th>Sign-in</th><th>Role</th><th>Profile</th><th>Org role</th><th>App access</th><th>Status</th><th>Last sign-in</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {members.map((m) => (
+                {rows.map((m) => (
                   <tr key={m.id}>
                     <td>{[m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A"}</td>
-                    <td>{m.email || (m.username ? "@" + m.username : "")}</td>
+                    <td>
+                      <div>{m.email || (m.username ? "@" + m.username : "")}</div>
+                      <div className="muted" style={{ fontSize: 11.5 }}>{LOGIN_LABEL[m.loginKind] || ""}</div>
+                    </td>
                     <td>{m.role || "N/A"}</td>
                     <td>{PROFILES.find((p) => p.value === m.profile)?.label || m.profile}</td>
                     <td>
@@ -263,8 +322,10 @@ export default function TeamPage() {
                         {m.status === "active" ? "Active" : m.status === "disabled" ? "Disabled" : "Invited"}
                       </span>
                     </td>
+                    <td className="muted" style={{ fontSize: 12 }}>{m.lastSignIn ? new Date(m.lastSignIn).toLocaleDateString() : "—"}</td>
                     <td>
-                      {!m.isOwner && (
+                      {m.dirOnly && <span className="muted" style={{ fontSize: 11.5 }}>Managed in Attendance</span>}
+                      {!m.isOwner && !m.dirOnly && (
                         <TeamRowMenu
                           items={[
                             { label: "Manage roles & app access", onClick: () => setManagingMember(m) },
