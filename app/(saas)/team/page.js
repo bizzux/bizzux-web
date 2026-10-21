@@ -9,6 +9,7 @@ import Link from "next/link";
 import AdminNav from "@/components/AdminNav";
 import { useIsAdminHost, wwwHrefFor } from "@/lib/adminLinks";
 import AccountTabs from "@/components/AccountTabs";
+import JoinRequestsPanel from "@/components/JoinRequestsPanel";
 import { useMe } from "@/lib/useMe";
 import { roleLabel } from "@/lib/roleLabel";
 
@@ -187,6 +188,7 @@ export default function TeamPage() {
       <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
 
       <div className="admin-shell">
+        <JoinRequestsPanel />
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
           <div>
             <h1 className="dash-heading" style={{ fontSize: 20 }}>Users</h1>

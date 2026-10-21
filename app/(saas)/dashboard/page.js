@@ -525,7 +525,7 @@ function QuickSetupModal({ app, pendingInvite, staleInvite, onAcceptInvite, onCl
         )}
         <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: 10, margin: "8px 0 4px", fontSize: 12.5 }}>
           Work for a company that already uses Bizzux? Don't create a workspace. This email isn't linked to your company yet. Ask your admin to
-          invite <strong>{auth.currentUser?.email || "this email"}</strong> (or sign in with the email they invited), then choose "Join an existing company".
+          invite <strong>{auth.currentUser?.email || "this email"}</strong> (or sign in with the email they invited), then choose "Join an existing company". Have a company code from your admin? <a href="/join-company" style={{ color: "var(--blue)", fontWeight: 600 }}>Ask to join with the code</a>.
         </div>
         <div style={{ display: "grid", gap: 8, margin: "10px 0 14px" }}>
           <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14, cursor: "pointer" }}>
