@@ -18,7 +18,7 @@ const PROFILE_SECTION_KEYS = ["profile", "dashboard", "team", "team-apps", "team
 export default function AccountTabs({ active, isAccountAdmin = false, isSuper = false, roleLabel = "" }) {
   const onAdminHost = useIsAdminHost();
   const inProfileSection = PROFILE_SECTION_KEYS.includes(active);
-  if (!inProfileSection || onAdminHost) return null; // the Admin Center host has its own header (AdminNav)
+  if (!inProfileSection || onAdminHost || String(active).startsWith("team")) return null; // /team pages use the Admin Center frame instead // the Admin Center host has its own header (AdminNav)
 
   // Your Profile is always first, so landing on the Profile nav link always
   // opens there first. "Team" itself isn't listed here — Nav's own "Admin

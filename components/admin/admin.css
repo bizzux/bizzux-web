@@ -1,0 +1,50 @@
+/* Admin Center shell: Microsoft-365-style density and layout in the Bizzux palette (navy bar, teal/blue accent). */
+.adm-shell { --adm-navy:#0b1220; --adm-accent:#2159d4; --adm-teal:#12a695; --adm-side:#f3f4f6; --adm-line:#e5e7eb; --adm-text:#1f2937; --adm-muted:#6b7280;
+  display:flex; flex-direction:column; min-height:100vh; background:#fff; color:var(--adm-text); font-size:13px; }
+.adm-top { height:48px; background:var(--adm-navy); color:#fff; display:flex; align-items:center; gap:14px; padding:0 14px; position:sticky; top:0; z-index:40; }
+.adm-brand { display:flex; align-items:center; gap:10px; color:#fff; text-decoration:none; font-weight:600; font-size:14px; }
+.adm-brand span { border-left:1px solid rgba(255,255,255,.25); padding-left:10px; }
+.adm-spacer { flex:1; }
+.adm-org { font-size:12px; color:#cbd5e1; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.adm-toplink { white-space:nowrap; color:#cbd5e1; font-size:12.5px; background:none; border:0; cursor:pointer; padding:4px 6px; border-radius:4px; text-decoration:none; }
+.adm-toplink:hover, .adm-toplink:focus-visible { color:#fff; background:rgba(255,255,255,.1); outline:none; }
+.adm-short { display:none; }
+.adm-avatar { width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,var(--adm-teal),var(--adm-accent)); display:grid; place-items:center; font-weight:700; font-size:12px; }
+.adm-burger { display:none; background:none; border:0; color:#fff; cursor:pointer; padding:6px; border-radius:4px; }
+.adm-body { display:flex; flex:1; min-height:0; position:relative; }
+.adm-aside { width:244px; background:var(--adm-side); border-right:1px solid var(--adm-line); padding:6px 0 16px; flex:none; transition:width .15s; overflow-y:auto; }
+.adm-shell.rail .adm-aside { width:52px; }
+.adm-railbtn { display:flex; align-items:center; justify-content:center; width:36px; height:36px; margin:2px 8px 6px; background:none; border:0; border-radius:4px; cursor:pointer; color:#374151; }
+.adm-railbtn:hover, .adm-railbtn:focus-visible { background:#e5e7eb; outline:none; }
+.adm-tree, .adm-kids { list-style:none; margin:0; padding:0; }
+.adm-item { display:flex; align-items:center; gap:12px; width:100%; min-height:36px; padding:0 14px; color:#1f2937; text-decoration:none; background:none; border:0; text-align:left; cursor:pointer; font:inherit; font-size:13.5px; position:relative; }
+.adm-item:hover { background:#e5e7eb; }
+.adm-item:focus-visible { outline:2px solid var(--adm-accent); outline-offset:-2px; }
+.adm-item.on { background:#fff; font-weight:600; }
+.adm-item.on::before { content:""; position:absolute; left:0; top:6px; bottom:6px; width:3px; border-radius:2px; background:linear-gradient(180deg,var(--adm-teal),var(--adm-accent)); }
+.adm-group.has-on { font-weight:600; }
+.adm-chev { margin-left:auto; color:#6b7280; display:flex; }
+.adm-child { padding-left:44px; min-height:32px; font-size:13px; }
+.adm-shell.rail .adm-lbl, .adm-shell.rail .adm-chev { display:none; }
+.adm-shell.rail .adm-item { justify-content:center; padding:0; }
+.adm-main { flex:1; min-width:0; padding:10px 24px 40px; }
+.adm-crumbs { font-size:12px; color:var(--adm-muted); padding:6px 0 2px; }
+.adm-sep { margin:0 6px; color:#cbd5e1; }
+.adm-crumbs [aria-current="page"] { color:#374151; }
+.adm-backdrop { display:none; }
+/* The frame replaces the older page-level header and the marketing footer inside the Admin Center. */
+.adm-shell .admin-shell { max-width:none; padding-left:0; padding-right:0; }
+div:has(> .bzx-app .adm-shell) > footer { display:none; }
+@media (max-width: 767px) {
+  .adm-burger { display:inline-flex; }
+  .adm-org, .adm-brand span, .adm-long { display:none; }
+  .adm-short { display:inline; }
+  .adm-top { gap:8px; padding:0 8px; }
+  .adm-aside { position:fixed; top:48px; bottom:0; left:0; z-index:50; width:260px; transform:translateX(-100%); transition:transform .18s; box-shadow:2px 0 12px rgba(0,0,0,.18); }
+  .adm-shell.mobile-open .adm-aside { transform:none; }
+  .adm-shell.rail .adm-aside { width:260px; }
+  .adm-shell.rail .adm-lbl, .adm-shell.rail .adm-chev { display:inline; }
+  .adm-railbtn { display:none; }
+  .adm-backdrop { display:block; position:fixed; inset:48px 0 0 0; background:rgba(15,23,42,.35); z-index:45; }
+  .adm-main { padding:8px 14px 32px; }
+}
