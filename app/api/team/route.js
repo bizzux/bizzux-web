@@ -9,6 +9,7 @@ import { upsertOrganizationMembership, setOrganizationMembershipStatus, roleFrom
 import { upsertAppAssignment, ensureAppSubscriptionActive } from "@/lib/appAccess";
 import { APPS, APP_IDS } from "@/lib/appCatalog";
 import { setOrganizationRole } from "@/lib/iam/identityService";
+import { removeMember } from "@/lib/iam/membershipLifecycle";
 import { validatePassword } from "@/lib/passwordPolicy";
 import { CORS_HEADERS_WRITE, corsPreflightWrite } from "@/lib/cors";
 import { existingAccountInviteEmailHtml, newAccountInviteEmailHtml } from "@/lib/emailTemplates";
@@ -588,29 +589,8 @@ async function handlePOST(req) {
     }
 
     if (body.action === "remove") {
-      const id = String(body.id || "");
-      if (!id || id === acct.accountId) throw { status: 400, message: "Can't remove the account owner" };
-      const memberRef = adminDb().doc(`customers/${acct.accountId}/team/${id}`);
-      const snap = await memberRef.get();
-      if (snap.exists && snap.data().uid) {
-        await adminDb()
-          .doc("memberships/" + snap.data().uid)
-          .delete()
-          .catch(() => {});
-        // Best-effort — the membership doc above is what actually revokes
-        // access (resolveAccount() 404s without it), so a failure here
-        // (e.g. the auth user was already gone) shouldn't block removal.
-        await adminAuth().deleteUser(snap.data().uid).catch(() => {});
-        await setOrganizationMembershipStatus(acct.accountId, snap.data().uid, "removed").catch(() => {});
-      }
-      await memberRef.delete();
-
-      await logAuditEvent({
-        action: "team.remove", actor: acct, targetType: "organization", targetId: acct.accountId,
-        details: { email: snap.exists ? snap.data().email : null },
-      });
-
-      return NextResponse.json({ ok: true });
+      // Removes the person from THIS company only. The central identity and their other companies are untouched; they can be restored for 60 days.
+      return NextResponse.json(await removeMember({ actor: acct, organizationId: acct.accountId, teamDocId: String(body.id || "") }));
     }
 
     throw { status: 400, message: "Unknown action" };
