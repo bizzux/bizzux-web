@@ -27,6 +27,17 @@ export default function JoinRequestsPanel() {
       <h2 style={{ fontSize: 15, margin: "0 0 8px" }}>Join requests {data.requests.length > 0 && <span className="badge">{data.requests.length} waiting</span>}</h2>
       {err && <p className="error">{err}</p>}
       {data.companyCode && <p className="muted" style={{ fontSize: 13, margin: "0 0 6px" }}>Your company code: <strong>{data.companyCode}</strong>. People without an invite can use it at bizzux.com/join-company; you approve each one.</p>}
+      {data.companyCode && (
+        <p className="muted" style={{ fontSize: 13, margin: "0 0 6px" }}>
+          Join link: <code>{typeof window !== "undefined" ? window.location.origin : ""}/join-company?code={data.companyCode}</code>{" "}
+          <button className="link-btn" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/join-company?code=${data.companyCode}`)}>Copy</button>
+        </p>
+      )}
+      {data.isOwner && (
+        <label style={{ display: "block", fontSize: 13, margin: "0 0 8px" }}>
+          <input type="checkbox" checked={!!data.discoverable} onChange={(e) => act({ action: "discoverable", value: e.target.checked })} /> Let people find this company by name when they search (they still need your approval)
+        </label>
+      )}
       {data.requests.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No one is waiting. Share your company code so people can ask to join.</p>}
       {data.requests.map((r) => (
         <div key={r.id} style={{ borderTop: "1px solid #eef2f7", padding: "10px 0", display: "grid", gap: 6 }}>

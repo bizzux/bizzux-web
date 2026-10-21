@@ -15,6 +15,20 @@ export default function JoinCompanyPage() {
   const [result, setResult] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState(null);
+  // A shared join link (/join-company?code=BZ...) pre-fills the code.
+  useEffect(() => { try { const c = new URLSearchParams(window.location.search).get("code"); if (c) setCode(c.slice(0, 16)); } catch { /* no query */ } }, []);
+  async function search(e) {
+    e.preventDefault(); setErr(""); setFound(null);
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const r = await fetch("/api/join-requests?search=" + encodeURIComponent(q), { headers: { Authorization: "Bearer " + token } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Search failed");
+      setFound(d.results);
+    } catch (x) { setErr(x.message); }
+  }
   useEffect(() => { if (user === null) router.push("/sign-in"); }, [user, router]);
 
   async function submit(e) {
@@ -39,6 +53,12 @@ export default function JoinCompanyPage() {
           {err && <p className="error">{err}</p>}
           {result && <p className="muted">{result}</p>}
           <button className="btn-primary" disabled={busy || !code.trim()}>{busy ? "Sending…" : "Send request"}</button>
+        </form>
+        <form onSubmit={search} className="card" style={{ display: "grid", gap: 10, padding: 16, marginTop: 14 }}>
+          <label>No code? Search by company name<input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="At least 3 letters" /></label>
+          <button className="btn-outline-dark" disabled={q.trim().length < 3}>Search</button>
+          {found && found.length === 0 && <p className="muted">No company found. Some companies are not listed; ask your admin for the code or link.</p>}
+          {found && found.map((f) => <button type="button" key={f.code} className="btn-outline-dark" onClick={() => setCode(f.code)}>{f.name}</button>)}
         </form>
       </div>
     </div>

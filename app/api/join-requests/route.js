@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { requireUser, resolveAccount } from "@/lib/firebaseAdmin";
-import { requestToJoin, listPending, myRequests, decide, setApproverPermission } from "@/lib/joinRequests";
+import { requestToJoin, listPending, myRequests, decide, setApproverPermission, searchJoinable, setDiscoverable } from "@/lib/joinRequests";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // GET            -> pending requests for the caller's active company (only if they may decide them), plus their own request statuses
 // POST request   -> ask to join by company code (always the same answer, so codes cannot be probed)
+// GET ?search=name -> opt-in companies by name (name + code only)
+// POST discoverable -> Owner switch for being found by name
 // POST approve / reject / grant -> decisions; every rule is enforced server-side in lib/joinRequests.js
 export async function GET(req) {
   try {
     const c = await requireUser(req);
+    const search = new URL(req.url).searchParams.get("search");
+    if (search !== null) return NextResponse.json(await searchJoinable({ actor: c, q: search }));
     const mine = await myRequests(c.uid);
     let pending = { requests: [], canApprove: false, assignable: [] };
     try { pending = await listPending({ ...(await resolveAccount(c.uid)), uid: c.uid }); } catch { /* no company yet: nothing to approve */ }
@@ -28,6 +32,7 @@ export async function POST(req) {
     const acct = { ...(await resolveAccount(c.uid)), uid: c.uid };
     const actor = { ...c, accountId: acct.accountId };
     if (b.action === "approve" || b.action === "reject") return NextResponse.json(await decide({ actor, acct, id: b.id, decision: b.action, profile: b.profile, apps: b.apps, note: b.note }));
+    if (b.action === "discoverable") return NextResponse.json(await setDiscoverable({ actor, acct, discoverable: b.value === true }));
     if (b.action === "grant" || b.action === "revoke") return NextResponse.json(await setApproverPermission({ actor, acct, userId: String(b.userId || ""), permission: b.permission, grant: b.action === "grant" }));
     throw { status: 400, message: "Unknown action" };
   } catch (e) {

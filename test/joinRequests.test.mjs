@@ -118,3 +118,22 @@ test("granting members.approve: owner only, Admins only", async () => {
   assert.equal((await call(O, { action: "revoke", userId: adminNoGrant.uid, permission: "members.approve" })).status, 200);
   assert.equal((await list(adminNoGrant)).canApprove, false);
 });
+
+const search = async (w, q) => route.GET(new Request("http://x/api/join-requests?search=" + encodeURIComponent(q), { headers: w ? { Authorization: "Bearer " + w.token } : {} }));
+
+test("search by name: opt-in only, name + code only, 3+ letters, owner-only switch, request still needs approval", async () => {
+  const s = await person("seeker");
+  assert.equal((await search(null, "org")).status, 401);
+  assert.deepEqual((await (await search(s, "Org")).json()).results, [], "not listed until the Owner opts in");
+  assert.equal((await call(adminGrant, { action: "discoverable", value: true })).status, 403, "an approver admin cannot switch it");
+  assert.equal((await call(O, { action: "discoverable", value: true })).status, 200);
+  assert.deepEqual((await (await search(s, "ab")).json()).results, [], "fewer than 3 letters returns nothing");
+  const hit = (await (await search(s, "org o")).json()).results;
+  assert.deepEqual(hit, [{ name: "Org O", code }], "only name and code are exposed");
+  assert.deepEqual((await (await search(s, "Org P")).json()).results, [], "other company stays unlisted");
+  assert.equal((await call(s, { action: "request", code: hit[0].code })).status, 200);
+  assert.equal((await reqDoc(O.uid, s.uid)).data().status, "pending", "found does not mean joined");
+  assert.equal((await db.doc(`organizationMemberships/${O.uid}_${s.uid}`).get()).exists, false);
+  assert.equal((await call(O, { action: "discoverable", value: false })).status, 200);
+  assert.deepEqual((await (await search(s, "Org")).json()).results, [], "switching it off hides the company again");
+});
