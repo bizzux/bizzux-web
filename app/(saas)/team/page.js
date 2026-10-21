@@ -42,7 +42,7 @@ function mergeRows(members, directory, f) {
     const d = m.uid ? dir.get(m.uid) : m.isOwner ? ownerDir : null; // the legacy owner row has no uid: it is the directory's OWNER
     if (d) seen.add(d.uid);
     return {
-      ...m, loginKind: d?.loginKind || (m.username ? "username" : m.email ? "email" : ""), lastSignIn: d?.lastSignIn || null,
+      ...m, firstName: m.firstName || d?.name || "", loginKind: d?.loginKind || (m.username ? "username" : m.email ? "email" : ""), lastSignIn: d?.lastSignIn || null,
       appIds: d?.apps || null, appAccess: d ? d.apps.map(appName) : m.appAccess,
     };
   });
