@@ -8,6 +8,7 @@ import { getOrganizationAppSubscriptions, upsertAppAssignment } from "@/lib/appA
 import { APP_IDS } from "@/lib/appCatalog";
 import { createUsernameUser, usernameForUid, setUsernamePassword, generateRecoveryCodes, tempExpiry } from "@/lib/usernameAuth";
 import { linkUserToOrganization, createLinkRequest } from "@/lib/linkRequests";
+import { cleanExpiry, cleanEmploymentType } from "@/lib/accountExpiry";
 import { validatePassword } from "@/lib/passwordPolicy";
 
 export const runtime = "nodejs";
@@ -108,14 +109,18 @@ export async function POST(req) {
       const denied = apps.filter((a) => !enabled.has(a));
       if (denied.length) throw { status: 400, message: "Not enabled for this company: " + denied.join(", ") };
 
+      const expiry = cleanExpiry(body.accountExpiresAt);
+      if (!expiry.ok) throw { status: 400, message: expiry.message };
+      const employmentType = cleanEmploymentType(body.employmentType);
       const { uid, username } = await createUsernameUser({
+        accountExpiresAt: expiry.value, employmentType,
         username: body.username, password, displayName: fullName, organizationId,
         mustChangePassword: body.mustChangePassword !== false, createdBy: c.uid,
       });
 
       const memberRef = await adminDb().collection("customers/" + organizationId + "/team").add({
         firstName: fullName, lastName: "", email: "", username, role: profile, profile,
-        employeeId: String(body.employeeId || "").slice(0, 40),
+        employeeId: String(body.employeeId || "").slice(0, 40), employmentType, accountExpiresAt: expiry.value,
         department: String(body.department || "").slice(0, 80),
         branch: String(body.branch || "").slice(0, 80),
         designation: String(body.designation || "").slice(0, 80),
@@ -183,6 +188,15 @@ export async function POST(req) {
       const recoveryCodes = await generateRecoveryCodes(uid);
       await logAuditEvent({ action: "user.regenerate_recovery_codes", actor: c, targetType: "user", targetId: uid, details: { orgId } });
       return NextResponse.json({ ok: true, recoveryCodes });
+    }
+
+    if (body.action === "setExpiry") {
+      const expiry = cleanExpiry(body.accountExpiresAt);
+      if (!expiry.ok) throw { status: 400, message: expiry.message };
+      await target.ref.update({ accountExpiresAt: expiry.value });
+      if (expiry.value && Date.parse(expiry.value + "T23:59:59.999Z") < Date.now()) await adminAuth().revokeRefreshTokens(uid);
+      await logAuditEvent({ action: "user.set_expiry", actor: c, targetType: "user", targetId: uid, details: { orgId, accountExpiresAt: expiry.value } });
+      return NextResponse.json({ ok: true });
     }
 
     if (body.action === "unlock") {

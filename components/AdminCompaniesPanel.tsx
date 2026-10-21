@@ -280,7 +280,7 @@ function CompanyDetails({ id, onBack, onSecret }: { id: string; onBack: () => vo
 }
 
 function AddUser({ orgId, enabled, onDone }: { orgId: string; enabled: string[]; onDone: (r?: any) => void }) {
-  const [f, setF] = useState<any>({ fullName: "", username: "", profile: "Staff/Shopkeeper", employeeId: "", department: "", branch: "", designation: "", mobile: "", apps: [] });
+  const [f, setF] = useState<any>({ fullName: "", username: "", profile: "Staff/Shopkeeper", employeeId: "", department: "", branch: "", designation: "", mobile: "", employmentType: "Employee", accountExpiresAt: "", apps: [] });
   const [err, setErr] = useState("");
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
   return (
@@ -293,6 +293,8 @@ function AddUser({ orgId, enabled, onDone }: { orgId: string; enabled: string[];
       <Field label="Department"><input className={input} value={f.department} onChange={(e) => set("department", e.target.value)} /></Field>
       <Field label="Branch"><input className={input} value={f.branch} onChange={(e) => set("branch", e.target.value)} /></Field>
       <Field label="Designation"><input className={input} value={f.designation} onChange={(e) => set("designation", e.target.value)} /></Field>
+      <Field label="Employment type"><select className={input} value={f.employmentType} onChange={(e) => set("employmentType", e.target.value)}>{["Employee", "Contractor", "Other"].map((t) => <option key={t}>{t}</option>)}</select></Field>
+      <Field label="Access ends on (optional)"><input type="date" className={input} value={f.accountExpiresAt} onChange={(e) => set("accountExpiresAt", e.target.value)} /></Field>
       <div className="sm:col-span-4"><AppChecks value={f.apps} only={enabled} onChange={(v) => set("apps", v)} /></div>
       {err && <p className="text-sm text-red-600 sm:col-span-4">{err}</p>}
       <div className="sm:col-span-4 flex gap-2"><button className={btnPrimary}>Create user</button><button type="button" className={btn} onClick={() => onDone()}>Cancel</button></div>
