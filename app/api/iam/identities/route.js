@@ -1,9 +1,19 @@
 import { NextResponse } from "next/server";
 import { requireOrgManager } from "@/lib/firebaseAdmin";
-import { createUsernameIdentity, requestLinkToOrganization, setUserApps } from "@/lib/iam/identityService";
+import { createUsernameIdentity, requestLinkToOrganization, setUserApps, usernameAvailability } from "@/lib/iam/identityService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// GET ?checkUsername=name -> { ok, problem }: is this Bizzux username valid and free in the ONE platform-wide namespace? Admins only.
+export async function GET(req) {
+  try {
+    await requireOrgManager(req);
+    return NextResponse.json(await usernameAvailability(new URL(req.url).searchParams.get("checkUsername")));
+  } catch (e) {
+    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+  }
+}
 
 // The shared IAM entry point used by the Admin Center AND by other apps (Attendance Add Person) with the caller's Bearer token.
 //   POST { kind: "username", fullName, username, password?, profile?, apps?, ... }  -> new username login (temporary password returned ONCE)
