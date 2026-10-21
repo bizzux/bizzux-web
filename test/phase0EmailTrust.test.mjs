@@ -119,3 +119,18 @@ test("organization isolation: an untrusted-provider email never matches an invit
   assert.equal((await resReal.json()).invite?.token, "tok2-" + RUN);
   await assert.rejects(fa.resolveAccount(ms.uid), (e) => e.status === 404, "the untrusted sign-in resolves to no company at all");
 });
+
+test("lapsed-invite hint (stale) is shown only to a trusted address, never leaked to an untrusted provider", async () => {
+  const victim = `stale-${RUN}@victim.test`;
+  await db.doc("customers/orgStale" + RUN).set({ organizationName: "Stale Co", status: "active" });
+  await db.doc("invites/tokS-" + RUN).set({ email: victim, used: false, accountId: "orgStale" + RUN, invitedAt: new Date(), expiresAt: new Date(Date.now() - 3600_000) });
+  const ms = await viaIdp("microsoft.com", victim, true);
+  const body = await (await pending.GET(new Request("http://localhost/x", { headers: { Authorization: "Bearer " + ms.token } }))).json();
+  assert.deepEqual([body.invite, body.stale], [null, null], "untrusted provider learns nothing, not even the company name");
+  const own = `stale2-${RUN}@x.test`;
+  await db.doc("invites/tokS2-" + RUN).set({ email: own, used: false, accountId: "orgStale" + RUN, invitedAt: new Date(), expiresAt: new Date(Date.now() - 3600_000) });
+  const g = await viaIdp("google.com", own, true);
+  const mine = await (await pending.GET(new Request("http://localhost/x", { headers: { Authorization: "Bearer " + g.token } }))).json();
+  assert.equal(mine.invite, null);
+  assert.deepEqual(mine.stale, { orgName: "Stale Co", reason: "expired" });
+});

@@ -16,29 +16,44 @@ export const dynamic = "force-dynamic";
 // lowercased — see app/api/team/route.js's invite-creation lowercasing and
 // requireUser()'s in lib/firebaseAdmin.js) rather than needing the token,
 // which the invitee doesn't have unless they've opened the email.
+//
+// When nothing is valid it also reports WHY the person ended up with no
+// company (`stale`): their latest invite expired, or was already used but
+// they no longer belong to that company. Without that, an invited employee
+// whose link lapsed saw only "create a workspace" and had no clue to ask
+// their admin to resend it.
 export async function GET(req) {
   try {
     const c = await requireUser(req);
-    const snap = await adminDb()
-      .collection("invites")
-      .where("email", "==", c.trustedEmail || "0000")
-      .where("used", "==", false)
-      .get();
+    // Invites are matched by address, which is an authorisation decision: only an address proven by Google or a verified email/password login (lib/trustedEmail.js).
+    if (!c.trustedEmail) return NextResponse.json({ invite: null, stale: null });
+    const snap = await adminDb().collection("invites").where("email", "==", c.trustedEmail).get();
 
     const now = Date.now();
-    const valid = snap.docs
+    const all = snap.docs
       .map((d) => ({ token: d.id, ...d.data() }))
-      .filter((inv) => !inv.expiresAt || inv.expiresAt.toMillis() > now)
       .sort((a, b) => (b.invitedAt?.toMillis?.() || 0) - (a.invitedAt?.toMillis?.() || 0));
+    const valid = all.filter((inv) => !inv.used && (!inv.expiresAt || inv.expiresAt.toMillis() > now));
 
-    if (valid.length === 0) return NextResponse.json({ invite: null });
+    const orgNameOf = async (accountId) => {
+      const org = (await adminDb().doc("customers/" + accountId).get()).data();
+      return org?.organizationName || org?.companyName || "a Bizzux organization";
+    };
 
-    const inv = valid[0];
-    const orgSnap = await adminDb().doc("customers/" + inv.accountId).get();
-    const org = orgSnap.data();
-    const orgName = org?.organizationName || org?.companyName || "a Bizzux organization";
+    if (valid.length > 0) {
+      const inv = valid[0];
+      return NextResponse.json({ invite: { token: inv.token, orgName: await orgNameOf(inv.accountId) }, stale: null });
+    }
 
-    return NextResponse.json({ invite: { token: inv.token, orgName } });
+    if (all.length > 0) {
+      const latest = all[0];
+      return NextResponse.json({
+        invite: null,
+        stale: { orgName: await orgNameOf(latest.accountId), reason: latest.used ? "used" : "expired" },
+      });
+    }
+
+    return NextResponse.json({ invite: null, stale: null });
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
