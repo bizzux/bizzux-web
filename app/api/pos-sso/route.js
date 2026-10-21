@@ -45,7 +45,7 @@ export async function GET(req) {
     const asOrg = new URL(req.url).searchParams.get("asOrg");
     if (asOrg) {
       // Platform-Admin-only support tool — see app-sso's asOrg comment.
-      const platformRole = await resolvePlatformRole(c.uid, c.email);
+      const platformRole = await resolvePlatformRole(c.uid, c.trustedEmail);
       const staffRole = platformRole || (c.isSuper ? "OWNER" : null);
       if (!staffRole) throw { status: 403, message: "Platform admin access required" };
       const orgSnap = await adminDb().doc("customers/" + asOrg).get();
@@ -80,7 +80,7 @@ export async function GET(req) {
       const denial = await appDenialFor(customer, "pos");
       if (denial) {
         // Same Platform-Admin trial bypass shop-sso/app-sso already have.
-        const platformRole = await resolvePlatformRole(c.uid, c.email);
+        const platformRole = await resolvePlatformRole(c.uid, c.trustedEmail);
         if (platformRole !== "OWNER" && platformRole !== "ADMIN") throw denial;
         role = "super";
       } else {

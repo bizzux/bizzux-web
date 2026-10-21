@@ -25,7 +25,7 @@ export async function POST(req) {
     // /api/me round trip.
     const [twoFactor, platformRole, ownerSnap] = await Promise.all([
       getTwoFactorSettings(c.uid),
-      resolvePlatformRole(c.uid, c.email).catch(() => null),
+      resolvePlatformRole(c.uid, c.trustedEmail).catch(() => null),
       adminDb().doc("customers/" + c.uid).get(),
     ]);
     const twoFactorFields = {

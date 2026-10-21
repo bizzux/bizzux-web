@@ -57,7 +57,7 @@ export async function GET(req) {
       // organization and app (lib/supportAccess.js); the unrestricted
       // impersonation this used to allow is gone.
       const c = await requireUser(req);
-      const platformRole = await resolvePlatformRole(c.uid, c.email);
+      const platformRole = await resolvePlatformRole(c.uid, c.trustedEmail);
       const staffRole = platformRole || (c.isSuper ? "OWNER" : null);
       if (!staffRole) throw { status: 403, message: "Platform admin access required" };
       const orgSnap = await adminDb().doc("customers/" + asOrg).get();

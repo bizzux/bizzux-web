@@ -68,7 +68,7 @@ export async function GET(req) {
       // (see below) that isn't tied to a specific person's identity, so
       // impersonation here is simpler: just point orgId at the chosen
       // organization instead of resolving the caller's own.
-      const platformRole = await resolvePlatformRole(c.uid, c.email);
+      const platformRole = await resolvePlatformRole(c.uid, c.trustedEmail);
       const staffRole = platformRole || (c.isSuper ? "OWNER" : null);
       if (!staffRole) throw { status: 403, message: "Platform admin access required" };
       const orgSnap = await adminDb().doc("customers/" + asOrg).get();
@@ -134,7 +134,7 @@ export async function GET(req) {
         // platformAdmins before rejecting. Only reached once the cheap
         // trial check has already failed, so this extra Firestore read
         // never lands on the common case (an in-trial or paying customer).
-        const platformRole = await resolvePlatformRole(c.uid, c.email);
+        const platformRole = await resolvePlatformRole(c.uid, c.trustedEmail);
         if (platformRole !== "OWNER" && platformRole !== "ADMIN") throw denial;
         role = "super";
       } else {

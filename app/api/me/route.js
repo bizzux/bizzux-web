@@ -93,7 +93,7 @@ export async function GET(req) {
     }
     // Real platformAdmins-backed role (Platform Owner / Platform Admin),
     // not just the raw env-var isSuper check — see lib/firebaseAdmin.js.
-    const platformRole = await resolvePlatformRole(c.uid, c.email);
+    const platformRole = await resolvePlatformRole(c.uid, c.trustedEmail);
     const isSuper = c.isSuper || platformRole === "OWNER" || platformRole === "ADMIN";
     // canManageOrgs mirrors requireOrgManager's gate (a platform admin, or
     // Global Admin / Admin on their own account) — used to show/hide the

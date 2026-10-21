@@ -61,7 +61,7 @@ export async function POST(req) {
         throw { status: 409, message: "This login already owns an organization. Creating a second one isn't supported yet — sign up with a different email for a separate organization." };
       }
 
-      const platformRole = await resolvePlatformRole(c.uid, c.email);
+      const platformRole = await resolvePlatformRole(c.uid, c.trustedEmail);
       const orgType = c.isSuper || platformRole ? "INTERNAL" : "CUSTOMER";
 
       // No automatic free trial any more: the org starts "trial_pending" and

@@ -21,7 +21,7 @@ export async function GET(req) {
     const c = await requireUser(req);
     const snap = await adminDb()
       .collection("invites")
-      .where("email", "==", c.email)
+      .where("email", "==", c.trustedEmail || "0000")
       .where("used", "==", false)
       .get();
 
