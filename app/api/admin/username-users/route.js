@@ -7,7 +7,8 @@ import { upsertOrganizationMembership, roleFromProfile } from "@/lib/organizatio
 import { getOrganizationAppSubscriptions, upsertAppAssignment } from "@/lib/appAccess";
 import { APP_IDS } from "@/lib/appCatalog";
 import { createUsernameUser, usernameForUid, setUsernamePassword, generateRecoveryCodes, tempExpiry } from "@/lib/usernameAuth";
-import { linkUserToOrganization, createLinkRequest } from "@/lib/linkRequests";
+import { linkUserToOrganization } from "@/lib/linkRequests";
+import { createUsernameIdentity, requestLinkToOrganization, assertTenant } from "@/lib/iam/identityService";
 import { cleanExpiry, cleanEmploymentType } from "@/lib/accountExpiry";
 import { validatePassword } from "@/lib/passwordPolicy";
 
@@ -18,11 +19,6 @@ export const dynamic = "force-dynamic";
 // a Platform Admin for any organization, or by an organization's own
 // Admin/Global Admin for THEIR organization only — the tenant check below is
 // the isolation boundary and must run before anything else touches the org.
-
-function assertTenant(c, organizationId) {
-  if (c.isSuper) return;
-  if (c.accountId !== organizationId) throw { status: 403, message: "You can only manage users in your own company" };
-}
 
 async function loadTarget(c, uid) {
   const doc = await usernameForUid(uid);
@@ -81,76 +77,13 @@ export async function POST(req) {
     const body = await req.json();
 
     if (body.action === "create") {
-      const organizationId = String(body.organizationId || c.accountId || "").trim();
-      if (!organizationId) throw { status: 400, message: "Select a company" };
-      assertTenant(c, organizationId);
-      const org = await adminDb().doc("customers/" + organizationId).get();
-      if (!org.exists) throw { status: 404, message: "Company not found" };
-      if (["suspended", "closed"].includes(org.data().status)) throw { status: 400, message: "Company is not active" };
-
-      if (org.data().allowedUsers) {
-        const team = await adminDb().collection("customers/" + organizationId + "/team").count().get();
-        if (team.data().count + 1 >= org.data().allowedUsers) {
-          throw { status: 400, message: "User limit reached for this company's subscription" };
-        }
-      }
-
-      const fullName = String(body.fullName || "").trim().slice(0, 80);
-      if (!fullName) throw { status: 400, message: "Full name is required" };
-      const profile = PROFILE_VALUES.includes(body.profile) ? body.profile : DEFAULT_PROFILE;
-      const password = String(body.password || "").trim() || generateTempPassword();
-      const problem = await validatePassword(organizationId, password);
-      if (problem) throw { status: 400, message: problem };
-
-      // Only apps the company is actually entitled to can be assigned.
-      const subs = await getOrganizationAppSubscriptions(organizationId);
-      const enabled = new Set(subs.filter((s) => s.status === "ACTIVE").map((s) => s.appId));
-      const apps = (Array.isArray(body.apps) ? body.apps : []).filter((a) => APP_IDS.includes(a));
-      const denied = apps.filter((a) => !enabled.has(a));
-      if (denied.length) throw { status: 400, message: "Not enabled for this company: " + denied.join(", ") };
-
-      const expiry = cleanExpiry(body.accountExpiresAt);
-      if (!expiry.ok) throw { status: 400, message: expiry.message };
-      const employmentType = cleanEmploymentType(body.employmentType);
-      const { uid, username } = await createUsernameUser({
-        accountExpiresAt: expiry.value, employmentType,
-        username: body.username, password, displayName: fullName, organizationId,
-        mustChangePassword: body.mustChangePassword !== false, createdBy: c.uid,
-      });
-
-      const memberRef = await adminDb().collection("customers/" + organizationId + "/team").add({
-        firstName: fullName, lastName: "", email: "", username, role: profile, profile,
-        employeeId: String(body.employeeId || "").slice(0, 40), employmentType, accountExpiresAt: expiry.value,
-        department: String(body.department || "").slice(0, 80),
-        branch: String(body.branch || "").slice(0, 80),
-        designation: String(body.designation || "").slice(0, 80),
-        mobile: String(body.mobile || "").slice(0, 20), mobileVerified: false,
-        status: "active", uid,
-        invitedBy: c.email || c.uid, invitedAt: FieldValue.serverTimestamp(), joinedAt: FieldValue.serverTimestamp(),
-      });
-      await adminDb().doc("memberships/" + uid).set({
-        accountId: organizationId, profile, role: profile, username,
-        joinedAt: FieldValue.serverTimestamp(), mustChangePassword: body.mustChangePassword !== false,
-      });
-      await upsertOrganizationMembership({
-        organizationId, userId: uid, role: roleFromProfile(profile, false), status: "active",
-      });
-      await Promise.all(apps.map((appId) => upsertAppAssignment({ organizationId, userId: uid, appId, role: "MEMBER", status: "ACTIVE" })));
-
-      await logAuditEvent({
-        action: "user.create_username", actor: c, targetType: "user", targetId: uid,
-        details: { organizationId, username, profile, apps },
-      });
-      // The password is returned once for secure hand-over and never stored in plaintext.
-      return NextResponse.json({ ok: true, uid, teamMemberId: memberRef.id, username, password });
+      const r = await createUsernameIdentity({ ...body, actor: c });
+      return NextResponse.json({ ok: true, ...r });
     }
 
     if (body.action === "requestLink") {
       // A company admin (for their own company) or a Platform Admin asks an existing username user to join. The person must accept.
-      const organizationId = String(body.organizationId || c.accountId || "").trim();
-      if (!organizationId) throw { status: 400, message: "Select a company" };
-      assertTenant(c, organizationId);
-      return NextResponse.json(await createLinkRequest({ actor: c, organizationId, username: body.username, profile: body.profile, apps: body.apps }));
+      return NextResponse.json(await requestLinkToOrganization({ actor: c, organizationId: body.organizationId, username: body.username, profile: body.profile, apps: body.apps }));
     }
 
     if (body.action === "linkUser") {
