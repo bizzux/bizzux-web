@@ -2,28 +2,12 @@ import { Container, Eyebrow, CTAButton } from "@/components/Section";
 import FeaturedAppsGrid from "@/components/FeaturedAppsGrid";
 import SuperAdminHomeRedirect from "@/components/SuperAdminHomeRedirect";
 import {
-  IconPOS, IconBox, IconWallet, IconDatabase,
+  IconPOS,
   IconLayers, IconSpark, IconCloud, IconShield, IconCheck,
-  IconArrowRight, IconChart, IconUsers,
+  IconArrowRight, IconUsers,
 } from "@/components/Icons";
-import { BRAND_TAGLINE } from "@/lib/brand";
 import CustomerMarquee from "@/components/CustomerMarquee";
 import { getCustomerLogos } from "@/lib/companyData";
-
-// Quick-jump pills under the hero CTAs — every one of these is a real
-// module inside the platform (see app/(saas)/apps), so they all just point
-// at /apps rather than a dead anchor; a signed-out visitor lands on the
-// apps overview and picks up the sign-up flow from there same as the main
-// CTA does.
-const heroQuickLinks = [
-  { icon: IconUsers, label: "CRM" },
-  { icon: IconPOS, label: "POS" },
-  { icon: IconBox, label: "Inventory" },
-  { icon: IconWallet, label: "Billing" },
-  { icon: IconSpark, label: "AI Apps" },
-  { icon: IconDatabase, label: "Files" },
-  { icon: IconChart, label: "Projects" },
-];
 
 const platformFeatures = [
   "Point of sale and payment tracking",
@@ -72,76 +56,100 @@ export default async function Home() {
   return (
     <>
       <SuperAdminHomeRedirect />
-      {/* Hero — light, two-column: pitch + real CTAs/nav pills on the left,
-          the owner photo (its own shop background baked in, fading to
-          transparent on its left edge) filling the right column directly —
-          no card/panel wrapper needed since the photo already blends into
-          the page. Kept short on purpose: Featured Apps needs to be the
-          next thing a visitor sees, not something they scroll to find. */}
-      <section className="relative overflow-hidden bg-white">
-        <Container className="relative !max-w-7xl pt-6 pb-4 md:pt-8 md:pb-4">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-center">
+      {/* Hero — "All your business apps in one place". Left: pitch, CTAs and
+          reassurance ticks. Right: the app-orbit illustration (hero-visual.webp,
+          photo + app tiles + handwritten notes; the price is deliberately NOT in
+          the image so it can't drift from the real plans — see lib/pricingDefaults.js
+          SUITE offer price) with a live price badge on top. Trust strip below. */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-white to-sky-50/60">
+        <Container className="relative !max-w-7xl pt-8 pb-6 md:pt-10">
+          <div className="grid lg:grid-cols-[1fr_1.15fr] gap-6 lg:gap-4 items-center">
             <div>
-              {/* The category line — answers "what is Bizzux?" before the
-                  headline does, so it's treated as a brand statement, not a
-                  small decorative eyebrow. */}
-              <div className="inline-flex items-center gap-2 mb-3 text-brand-tealDark font-extrabold text-sm md:text-base tracking-wide uppercase">
-                <span className="w-6 h-[3px] rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark" />
-                {BRAND_TAGLINE}
-              </div>
-              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight leading-tight text-ink">
-                Run Your Business. Build What&apos;s Next.{" "}
-                <span className="bg-gradient-to-r from-brand-tealDark to-brand-blueDark bg-clip-text text-transparent">
-                  All Under One Roof.
-                </span>
-              </h1>
-              <p className="mt-3 text-slate-600 max-w-lg text-sm md:text-base">
-                Manage CRM, sales, POS, inventory, billing, expenses, projects, files and more from one connected
-                platform. Bizzux brings AI-powered business apps together to help you work smarter and grow faster.
+              <p className="text-brand-tealDark italic text-lg mb-1" style={{ fontFamily: "cursive" }}>
+                One login ↓
               </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <CTAButton href="/apps">Explore Bizzux Platform</CTAButton>
-                <CTAButton href="/contact" variant="secondary">Book a Demo</CTAButton>
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05] text-ink">
+                All your business apps in{" "}
+                <span className="bg-yellow-200/80 rounded-md px-1 text-brand-blueDark">one place.</span>
+              </h1>
+              <p className="mt-4 text-2xl md:text-3xl font-semibold text-slate-800">
+                Simple. Smart.{" "}
+                <span className="underline decoration-brand-teal decoration-4 underline-offset-8">Affordable.</span>
+              </p>
+              <p className="mt-5 text-slate-600 max-w-md text-base">
+                Manage CRM, sales, POS, inventory, billing, projects, files and more — with Bizzux&apos;s powerful
+                all-in-one business platform.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <a
+                  href="/sign-in?mode=signup"
+                  className="inline-flex items-center gap-2 justify-center rounded-full h-12 px-8 text-base font-semibold bg-gradient-to-r from-brand-tealDark to-brand-blueDark hover:opacity-90 transition-opacity shadow-md"
+                  style={{ color: "#ffffff" }}
+                >
+                  Start Free Trial <IconArrowRight className="w-4 h-4" />
+                </a>
+                <a
+                  href="/contact"
+                  className="inline-flex items-center justify-center rounded-full h-12 px-8 text-base font-semibold border border-slate-300 bg-white text-ink hover:border-brand-blue hover:text-brand-blue transition-colors"
+                >
+                  Book a Demo
+                </a>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {heroQuickLinks.map((l) => (
-                  <a
-                    key={l.label}
-                    href="/apps"
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-3 py-1 text-xs md:text-sm text-slate-700 hover:border-brand-teal hover:text-brand-blue transition-colors"
-                  >
-                    <l.icon className="w-3.5 h-3.5" />
-                    {l.label}
-                  </a>
+              <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
+                {["No credit card required", "Easy setup", "Cancel anytime"].map((t) => (
+                  <li key={t} className="inline-flex items-center gap-1.5">
+                    <IconCheck className="w-4 h-4 text-emerald-500" />
+                    {t}
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
 
-            <div className="relative hidden lg:block">
-              <div className="relative overflow-hidden aspect-[4/3] flex items-end justify-end">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/images/hero-owner.png"
-                  alt="A Bizzux shop owner, smiling, with a POS tablet on her counter"
-                  className="absolute inset-0 w-full h-full object-cover"
-                  style={{ objectPosition: "right top" }}
-                />
-              </div>
-
-              <div className="absolute top-3 right-2 bg-white rounded-2xl shadow-lg shadow-slate-900/10 border border-slate-100 px-4 py-3 flex items-center gap-3 max-w-[200px]">
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white flex items-center justify-center shrink-0">
-                  <IconChart className="w-4.5 h-4.5" />
+            <div className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/images/hero-visual.webp"
+                alt="A smiling Bizzux customer surrounded by the Bizzux apps: CRM, POS, Billing, Inventory, Sales, Projects, Files, HR, Notes, AI Apps and Dashboard"
+                width={1062}
+                height={702}
+                className="w-full h-auto"
+                style={{
+                  WebkitMaskImage: "linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%)",
+                  maskImage: "linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%)",
+                }}
+              />
+              <div className="absolute top-0 right-0 -rotate-3 text-right select-none">
+                <div
+                  className="inline-block bg-yellow-200 rounded-lg px-3 py-1 text-2xl md:text-4xl font-extrabold italic text-ink"
+                  style={{ fontFamily: "cursive" }}
+                >
+                  ₹999 / user / month
                 </div>
-                <span className="text-sm font-semibold leading-snug text-ink">Grow Smarter with Bizzux</span>
-              </div>
-
-              <div
-                className="absolute bottom-4 left-2 text-brand-blue text-sm font-medium italic -rotate-6 select-none"
-                style={{ fontFamily: "cursive" }}
-              >
-                More time for what you love
+                <div
+                  className="mt-1 text-lg md:text-2xl font-bold italic text-ink border-b-4 border-brand-teal inline-block"
+                  style={{ fontFamily: "cursive" }}
+                >
+                  for all apps
+                </div>
               </div>
             </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl bg-white border border-slate-100 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 lg:divide-x divide-slate-100">
+            {[
+              { icon: IconSpark, t: "20+ Integrated Apps", d: "Everything your business needs" },
+              { icon: IconCloud, t: "Works on Web & Mobile", d: "Access anywhere, anytime" },
+              { icon: IconUsers, t: "Trusted by Growing Businesses", d: "From startups to established teams" },
+              { icon: IconShield, t: "Secure & Reliable", d: "Your data is always protected" },
+            ].map((x) => (
+              <div key={x.t} className="flex items-center gap-4 px-6 py-4">
+                <x.icon className="w-8 h-8 text-brand-blue shrink-0" />
+                <div>
+                  <div className="font-semibold text-ink text-sm">{x.t}</div>
+                  <div className="text-xs text-slate-500">{x.d}</div>
+                </div>
+              </div>
+            ))}
           </div>
         </Container>
       </section>
