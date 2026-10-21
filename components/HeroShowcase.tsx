@@ -111,7 +111,7 @@ const TILES = [
 ];
 
 const N = TILES.length;
-const CX = 50, CY = 57, RX = 46, RY = 26; // orbit ellipse, % of the stage
+const CX = 50, CY = 56, RX = 48, RY = 32; // orbit ellipse, % of the stage
 
 // Position of tile i at orbit phase t (radians). d: 0 = far side, 1 = near side.
 function place(i: number, t: number) {
@@ -194,14 +194,14 @@ export default function HeroShowcase() {
       <div className="hx-blob hx-b2" />
 
       <div className="relative mx-auto max-w-7xl px-6 pt-8 md:pt-10 pb-6">
-        <div className="grid lg:grid-cols-[1fr_1.1fr] gap-8 lg:gap-2 items-center">
+        <div className="grid lg:grid-cols-[0.85fr_1.35fr] gap-8 lg:gap-0 items-center">
           {/* ---------- left: pitch ---------- */}
           <div>
             <div className="hx-up flex items-center gap-3 text-xs md:text-sm font-bold tracking-wide uppercase text-brand-blueDark" style={{ animationDelay: "0ms" }}>
               AI-Powered Business Management Suite
               <span className="hidden sm:block h-px w-16 bg-slate-300" />
             </div>
-            <h1 className="hx-up mt-4 text-5xl md:text-6xl xl:text-7xl font-extrabold tracking-tight leading-[1.02]" style={{ animationDelay: "90ms", color: "#0b2545" }}>
+            <h1 className="hx-up mt-4 text-5xl md:text-6xl xl:text-6xl font-extrabold tracking-tight leading-[1.02]" style={{ animationDelay: "90ms", color: "#0b2545" }}>
               Run Your Business.
               <br />
               All Apps{" "}
@@ -247,7 +247,7 @@ export default function HeroShowcase() {
               onPointerMove={onMove}
               onPointerEnter={() => { hovering.current = true; }}
               onPointerLeave={onLeave}
-              className="hx-stage relative mx-auto aspect-square w-full max-w-[640px]"
+              className="hx-stage relative mx-auto aspect-[1/0.95] w-full max-w-[820px]"
             >
               <div className="hx-glow" />
               <div className="hx-grid" />
@@ -299,7 +299,6 @@ export default function HeroShowcase() {
                 className="hx-girl"
               />
 
-              <div className="hx-bubble">All Your Business Apps<br />in One Place</div>
               <div className={`hx-note hx-n1 ${hand.className}`}>One Login<br />for Everything</div>
               <div className={`hx-note hx-n2 ${hand.className}`}>Powered by AI<br />Work Smarter</div>
               <span className="hx-spark hx-s1" /><span className="hx-spark hx-s2" /><span className="hx-spark hx-s3" />
@@ -308,7 +307,7 @@ export default function HeroShowcase() {
         </div>
 
         {/* ---------- trust strip ---------- */}
-        <div className="hx-up mt-4 rounded-2xl bg-white/90 backdrop-blur border border-slate-100 shadow-md grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 lg:divide-x divide-slate-100" style={{ animationDelay: "480ms" }}>
+        <div className="hx-up relative z-10 mt-4 rounded-2xl bg-white/90 backdrop-blur border border-slate-100 shadow-md grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 lg:divide-x divide-slate-100" style={{ animationDelay: "480ms" }}>
           {STATS.map((x) => (
             <div key={x.t} className="hx-stat flex items-center gap-4 px-6 py-4">
               <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke={x.c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden><path d={x.p} /></svg>
@@ -401,14 +400,14 @@ const CSS = `
 .a-spark2{animation:a-twk 1.6s ease-in-out infinite}
 @keyframes a-twk{50%{transform:scale(.4);opacity:.3}}
 
-.hx-girl{position:absolute;left:50%;bottom:1%;width:76%;height:auto;z-index:3;transform:translate(calc(-50% + var(--mx)*7px),calc(var(--my)*5px));transition:transform .25s ease-out;filter:drop-shadow(0 22px 24px rgba(15,60,110,.22));animation:hx-breathe 6s ease-in-out infinite;pointer-events:none}
+.hx-girl{position:absolute;left:60%;bottom:-15%;width:112%;max-width:none;height:auto;z-index:3;transform:translate(calc(-50% + var(--mx)*7px),calc(var(--my)*5px));transition:transform .25s ease-out;filter:drop-shadow(0 22px 24px rgba(15,60,110,.22));animation:hx-breathe 6s ease-in-out infinite;pointer-events:none}
 @keyframes hx-breathe{50%{margin-bottom:6px}}
 .hx-bubble{position:absolute;left:50%;top:-1%;transform:translateX(-50%);background:#dcfce7;color:#15803d;font-weight:700;text-align:center;border-radius:16px;padding:8px 16px;font-size:clamp(12px,3cqw,17px);line-height:1.25;box-shadow:0 8px 20px -10px rgba(21,128,61,.5);animation:hx-bob 3.8s ease-in-out infinite;z-index:8}
 .hx-bubble:after{content:'';position:absolute;left:50%;bottom:-7px;margin-left:-8px;border:8px solid transparent;border-top-color:#dcfce7;border-bottom:0}
 @keyframes hx-bob{50%{transform:translateX(-50%) translateY(-7px)}}
 .hx-note{position:absolute;color:#1e1b4b;font-weight:700;line-height:1.05;font-size:clamp(17px,4.6cqw,30px);z-index:8;animation:hx-sway 5s ease-in-out infinite}
-.hx-n1{top:9%;right:-1%;transform:rotate(-8deg);text-align:right}
-.hx-n2{bottom:6%;right:-2%;transform:rotate(-12deg);text-align:left;animation-delay:-2s}
+.hx-n1{top:4%;right:0%;transform:rotate(-8deg);text-align:right}
+.hx-n2{bottom:12%;right:-2%;transform:rotate(-12deg);text-align:left;animation-delay:-2s}
 @keyframes hx-sway{50%{translate:0 -6px}}
 .hx-spark{position:absolute;width:10px;height:10px;border-radius:2px;background:#fbbf24;transform:rotate(45deg);animation:hx-twinkle 2.6s ease-in-out infinite;z-index:8}
 .hx-s1{top:22%;left:6%}.hx-s2{top:60%;right:8%;background:#2dd4bf;animation-delay:-1s}.hx-s3{bottom:12%;left:22%;background:#60a5fa;animation-delay:-1.8s}
