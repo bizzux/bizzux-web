@@ -37,8 +37,9 @@ const LOGIN_LABEL = { google: "Google", email: "Email & password", username: "Bi
 function mergeRows(members, directory, f) {
   const dir = new Map((directory?.users || []).map((u) => [u.uid, u]));
   const seen = new Set();
+  const ownerDir = (directory?.users || []).find((u) => u.orgRole === "OWNER");
   const rows = (members || []).map((m) => {
-    const d = m.uid ? dir.get(m.uid) : null;
+    const d = m.uid ? dir.get(m.uid) : m.isOwner ? ownerDir : null; // the legacy owner row has no uid: it is the directory's OWNER
     if (d) seen.add(d.uid);
     return {
       ...m, loginKind: d?.loginKind || (m.username ? "username" : m.email ? "email" : ""), lastSignIn: d?.lastSignIn || null,
@@ -107,10 +108,10 @@ export default function TeamPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, me]);
 
-  if (!user || isAdmin === null) {
-    const rows = mergeRows(members, directory, filters);
+  const rows = mergeRows(members, directory, filters);
 
-  return (
+  if (!user || isAdmin === null) {
+    return (
       <div>
         <AdminNav active="team" />
         <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
@@ -293,8 +294,10 @@ export default function TeamPage() {
                     <td>{m.role || "N/A"}</td>
                     <td>{PROFILES.find((p) => p.value === m.profile)?.label || m.profile}</td>
                     <td>
-                      {m.isOwner ? (
+                      {m.isOwner || m.orgRole === "OWNER" ? (
                         "OWNER"
+                      ) : m.dirOnly ? (
+                        m.orgRole
                       ) : (
                         <select
                           className="input" style={{ fontSize: 12.5, padding: "3px 6px" }}
@@ -324,7 +327,7 @@ export default function TeamPage() {
                     </td>
                     <td className="muted" style={{ fontSize: 12 }}>{m.lastSignIn ? new Date(m.lastSignIn).toLocaleDateString() : "—"}</td>
                     <td>
-                      {m.dirOnly && <span className="muted" style={{ fontSize: 11.5 }}>Managed in Attendance</span>}
+                      {m.dirOnly && <span className="muted" style={{ fontSize: 11.5 }}>Read-only here: no team record</span>}
                       {!m.isOwner && !m.dirOnly && (
                         <TeamRowMenu
                           items={[

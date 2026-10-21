@@ -8,8 +8,9 @@ export const dynamic = "force-dynamic";
 // GET ?checkUsername=name -> { ok, problem }: is this Bizzux username valid and free in the ONE platform-wide namespace? Admins only.
 export async function GET(req) {
   try {
-    await requireOrgManager(req);
-    return NextResponse.json(await usernameAvailability(new URL(req.url).searchParams.get("checkUsername")));
+    const c = await requireOrgManager(req);
+    const q = new URL(req.url).searchParams;
+    return NextResponse.json(await usernameAvailability(q.get("checkUsername"), { organizationId: c.accountId, idempotencyKey: q.get("idempotencyKey") || "" }));
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
