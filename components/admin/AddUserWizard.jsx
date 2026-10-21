@@ -18,7 +18,7 @@ const METHODS = [
 ];
 const EMPLOYMENT = ["", "Full-time", "Part-time", "Contractor", "Intern"];
 const blank = (method) => ({
-  method, first: "", last: "", display: "", displayTouched: false, username: "", usernameTouched: false, autoPw: true, password: "", showPw: false, mustChange: true,
+  method, first: "", last: "", display: "", displayTouched: false, username: "", usernameTouched: false, autoPw: false, password: "", showPw: false, mustChange: true,
   email: "", linkUsername: "", apps: [], noApps: false, orgRole: "MEMBER", profile: "Staff/Shopkeeper", appRoles: {},
   contact: { jobTitle: "", department: "", employmentType: "", office: "", officePhone: "", mobilePhone: "", streetAddress: "", city: "", state: "", zip: "", country: "" },
   employeeId: "", branch: "", accountExpiresAt: "",
