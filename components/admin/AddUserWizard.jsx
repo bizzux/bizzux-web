@@ -125,7 +125,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
           department: c.department, designation: c.jobTitle, mobile: c.mobilePhone, employmentType: c.employmentType === "Contractor" ? "Contractor" : "Employee",
           accountExpiresAt: f.accountExpiresAt, contactInfo: c,
         });
-        setResult({ kind: "username", username: r.username, password: r.password, apps, orgRole: f.orgRole, appRoles: f.appRoles, reused: !!r.reused });
+        setResult({ kind: "username", username: r.username, name: f.display.trim(), password: r.password, apps, orgRole: f.orgRole, appRoles: f.appRoles, reused: !!r.reused });
       } else if (f.method === "member") {
         const person = (directory?.users || []).find((u) => u.uid === f.memberUid);
         const union = [...new Set([...(person?.apps || []), ...apps])];

@@ -10,18 +10,29 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const PORTAL = () => (process.env.NEXT_PUBLIC_BIZZUX_WEB || "https://www.bizzux.com").replace(/\/+$/, "");
 
+// One fetch is shared by every component on the page that asks for the menu (the header and, for example, an Add employee button); it is reused for 20 s.
+const SHARED = { menu: null, at: 0, inflight: null };
+const EMPTY = { person: {}, organization: null, apps: [], admin: { show: false }, addEmployee: { central: false } };
+
 export function useBizzuxMenu({ app, getToken, enabled = true }) {
-  const [menu, setMenu] = useState(null);
-  const load = useCallback(async () => {
+  const [menu, setMenu] = useState(SHARED.menu);
+  const load = useCallback(async (force) => {
+    if (!force && SHARED.menu && Date.now() - SHARED.at < 20_000) { setMenu(SHARED.menu); return; }
     try {
-      const token = await getToken();
-      const r = await fetch(`${PORTAL()}/api/shell/menu?app=${encodeURIComponent(app)}`, { headers: { Authorization: "Bearer " + token } });
-      if (!r.ok) throw new Error("menu");
-      setMenu(await r.json());
-    } catch { setMenu((m) => m || { person: {}, organization: null, apps: [], admin: { show: false }, addEmployee: { central: false } }); }
+      if (!SHARED.inflight) {
+        SHARED.inflight = (async () => {
+          const token = await getToken();
+          const r = await fetch(`${PORTAL()}/api/shell/menu?app=${encodeURIComponent(app)}`, { headers: { Authorization: "Bearer " + token } });
+          if (!r.ok) throw new Error("menu");
+          SHARED.menu = await r.json(); SHARED.at = Date.now();
+        })().finally(() => { SHARED.inflight = null; });
+      }
+      await SHARED.inflight;
+      setMenu(SHARED.menu);
+    } catch { setMenu((m) => m || EMPTY); }
   }, [app, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (enabled) load(); }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
-  return { menu, reload: load };
+  useEffect(() => { if (enabled) load(false); }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { menu, reload: () => load(true) };
 }
 
 // Opens the Admin Center. The one-time code is posted as a form so it never appears in any address. `intent` / `returnTo` / `to` are validated by the
