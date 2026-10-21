@@ -135,3 +135,74 @@ test("declined link request changes nothing", async () => {
   assert.equal((await answer(ben, req.id, false)).status, 200);
   assert.equal((await db.doc(`organizationMemberships/${B.uid}_${ben.uid}`).get()).exists, false);
 });
+
+// ---- retry / idempotency (scenarios G, H) ----
+const teamRows = async (org, uid) => (await db.collection(`customers/${org}/team`).where("uid", "==", uid).get()).size;
+test("G: a create that failed downstream is retried with the same key: same identity, nothing duplicated, nothing deleted", async () => {
+  const key = "req_" + RUN + "_aaaa";
+  const first = await (await create(adminA, { kind: "username", fullName: "Retry Ravi", username: un("ravi"), apps: ["bizzux-crm"], idempotencyKey: key })).json();
+  // (the caller now "fails" to save its own record and asks again)
+  const r2 = await create(adminA, { kind: "username", fullName: "Retry Ravi", username: un("ravi"), apps: ["bizzux-crm"], idempotencyKey: key });
+  assert.equal(r2.status, 200); const second = await r2.json();
+  assert.deepEqual([second.uid, second.reused], [first.uid, true]);
+  assert.notEqual(second.password, first.password, "a fresh temporary password; the old one is dead");
+  assert.equal((await db.collection("usernames").where("uid", "==", first.uid).get()).size, 1);
+  assert.equal(await teamRows(A.uid, first.uid), 1, "no second team row, so no seat inflation");
+  assert.equal((await db.collection("organizationMemberships").where("userId", "==", first.uid).get()).size, 1);
+  assert.equal((await db.collection("appAssignments").where("userId", "==", first.uid).get()).size, 1);
+  assert.equal((await fa.adminAuth().getUser(first.uid)).uid, first.uid, "the identity was never deleted");
+  const r3 = await create(adminA, { kind: "username", fullName: "Retry Ravi", username: un("ravi"), idempotencyKey: "req_" + RUN + "_bbbb" });
+  assert.equal(r3.status, 409, "a different key never adopts an existing name");
+  const r4 = await create(B, { kind: "username", fullName: "Intruder", username: un("ravi"), idempotencyKey: key });
+  assert.equal(r4.status, 409, "another company can't adopt it even with the same key");
+  await db.doc("usernames/" + un("ravi")).set({ lastLoginAt: new Date() }, { merge: true });
+  assert.equal((await create(adminA, { kind: "username", fullName: "x", username: un("ravi"), idempotencyKey: key })).status, 409, "once the person has signed in it is never re-issued");
+});
+
+test("H: repeated link requests and acceptances create one request, one membership, one seat", async () => {
+  const mk = await (await create(adminA, { kind: "username", fullName: "Hari", username: un("hari") })).json();
+  const hari = await withToken(mk.uid);
+  await create(B, { kind: "link", username: un("hari") }); await create(B, { kind: "link", username: un("hari") });
+  assert.equal((await db.collection("linkRequests").where("targetUid", "==", mk.uid).get()).size, 1);
+  const [rq] = await myLinks(hari);
+  assert.equal((await answer(hari, rq.id, true)).status, 200);
+  assert.ok((await answer(hari, rq.id, true)).status >= 400, "second acceptance refused");
+  assert.equal(await teamRows(B.uid, mk.uid), 1);
+  assert.equal((await db.collection("organizationMemberships").where("userId", "==", mk.uid).where("organizationId", "==", B.uid).get()).size, 1);
+  await create(B, { kind: "link", username: un("hari") });
+  assert.equal((await db.collection("linkRequests").where("targetUid", "==", mk.uid).where("status", "==", "pending").get()).size, 0, "already a member: no new request");
+});
+
+// ---- employee binding after acceptance (scenarios C, D) ----
+test("C/D: accepting a link binds the chosen employee, tenant-scoped, once, audited; history is untouched", async () => {
+  const emp = (org, id, extra = {}) => db.doc(`customers/${org}/attEmployees/${id}`).set({ name: id, status: "active", userId: null, history: "keep", ...extra });
+  const mk = await (await create(adminA, { kind: "username", fullName: "Bind Bina", username: un("bina") })).json();
+  const bina = await withToken(mk.uid);
+  await emp(B.uid, "empB1"); await emp(A.uid, "empA1"); await emp(B.uid, "empB2", { userId: "someoneElse" }); await emp(B.uid, "empB3", { loginEmail: "x@y.test" });
+  assert.equal((await create(B, { kind: "link", username: un("bina"), bindEmployeeId: "empA1" })).status, 404, "an employee of ANOTHER company can't be named");
+  assert.equal((await create(B, { kind: "link", username: un("bina"), bindEmployeeId: "empB2" })).status, 409, "already bound");
+  assert.equal((await create(B, { kind: "link", username: un("bina"), bindEmployeeId: "empB3" })).status, 409, "email login");
+  assert.equal((await create(manager, { kind: "link", username: un("bina"), bindEmployeeId: "empB1" })).status, 403);
+  assert.equal((await create(B, { kind: "link", username: un("bina"), bindEmployeeId: "empB1", apps: ["bizzux-crm"] })).status, 200);
+  assert.equal((await db.doc(`customers/${B.uid}/attEmployees/empB1`).get()).data().userId, null, "nothing is bound before the person accepts");
+  const [rq] = await myLinks(bina);
+  const res = await (await answer(bina, rq.id, true)).json();
+  assert.deepEqual(res.binding, { bound: true });
+  const e = (await db.doc(`customers/${B.uid}/attEmployees/empB1`).get()).data();
+  assert.deepEqual([e.userId, e.loginKind, e.loginUsername, e.history], [mk.uid, "username", un("bina"), "keep"]);
+  assert.equal((await db.doc(`customers/${A.uid}/attEmployees/empA1`).get()).data().userId, null, "the other company's record was never touched");
+  const { bindEmployeeToIdentity } = await import("../lib/iam/employeeBinding.js");
+  assert.deepEqual(await bindEmployeeToIdentity({ organizationId: B.uid, employeeId: "empB1", uid: mk.uid, username: un("bina") }), { bound: true, already: true }, "idempotent");
+  assert.equal((await bindEmployeeToIdentity({ organizationId: B.uid, employeeId: "empB1", uid: "other" })).reason, "bound_to_other", "never moves a bound record");
+});
+
+test("D: an employee bound after the fact keeps their attendance history (the record is updated in place, not recreated)", async () => {
+  await db.doc(`customers/${B.uid}/attEmployees/hist1`).set({ name: "Old Timer", status: "active", userId: null });
+  await db.doc(`customers/${B.uid}/attEmployees/hist1/records/2026-01-05`).set({ in: "09:00" });
+  const mk = await (await create(adminA, { kind: "username", fullName: "Old Timer", username: un("oldt") })).json();
+  const w = await withToken(mk.uid);
+  await create(B, { kind: "link", username: un("oldt"), bindEmployeeId: "hist1" });
+  await answer(w, (await myLinks(w))[0].id, true);
+  assert.equal((await db.doc(`customers/${B.uid}/attEmployees/hist1/records/2026-01-05`).get()).data().in, "09:00");
+  assert.equal((await db.doc(`customers/${B.uid}/attEmployees/hist1`).get()).data().userId, mk.uid);
+});

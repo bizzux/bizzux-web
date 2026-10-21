@@ -26,7 +26,7 @@ export async function POST(req) {
     const b = await req.json();
     const organizationId = b.organizationId;
     if (b.kind === "username") return NextResponse.json({ ok: true, ...(await createUsernameIdentity({ ...b, organizationId, actor: c })) });
-    if (b.kind === "link") return NextResponse.json(await requestLinkToOrganization({ actor: c, organizationId, username: b.username, profile: b.profile, apps: b.apps }));
+    if (b.kind === "link") return NextResponse.json(await requestLinkToOrganization({ actor: c, organizationId, username: b.username, profile: b.profile, apps: b.apps, bindEmployeeId: b.bindEmployeeId }));
     if (b.kind === "apps") return NextResponse.json(await setUserApps({ actor: c, organizationId, uid: String(b.uid || ""), apps: b.apps }));
     throw { status: 400, message: "Unknown kind" };
   } catch (e) {
