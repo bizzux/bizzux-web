@@ -7,6 +7,7 @@ import Drawer from "./Drawer";
 import { APPS } from "@/lib/appCatalog";
 import { PROFILES } from "@/lib/roles";
 import { passwordStrength } from "@/lib/adminPassword";
+import { slugName, stripLoginSuffix, toLoginId, LOGIN_SUFFIX } from "@/lib/loginId";
 
 const STEPS = ["Basics", "Apps & licences", "Optional settings", "Review and finish"];
 const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,31}$/;
@@ -70,7 +71,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
   const onName = (patch) => setF((c) => {
     const n = { ...c, ...patch };
     if (!n.displayTouched) n.display = [n.first, n.last].filter(Boolean).join(" ");
-    if (!n.usernameTouched && n.method === "username") n.username = slug([n.first, n.last].filter(Boolean).join(" ")).slice(0, 32);
+    if (!n.usernameTouched && n.method === "username") n.username = slugName(n.first, n.last);
     return n;
   });
 
@@ -79,11 +80,11 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
     if (!open || f.method !== "username") return undefined;
     const u = f.username.trim().toLowerCase();
     if (!u) { setUCheck({ state: "idle", message: "" }); return undefined; }
-    if (!USERNAME_RE.test(u)) { setUCheck({ state: "bad", message: "3 to 32 letters, numbers, dots, dashes or underscores. No spaces or @." }); return undefined; }
+    if (!USERNAME_RE.test(u)) { setUCheck({ state: "bad", message: "3 to 32 letters, numbers, dots, dashes or underscores. No spaces." }); return undefined; }
     setUCheck({ state: "checking", message: "Checking…" });
     const t = setTimeout(() => {
       api("/api/iam/identities?checkUsername=" + encodeURIComponent(u), "GET")
-        .then((d) => setUCheck(d.ok ? { state: "ok", message: "“" + u + "” is available" } : { state: "bad", message: d.problem }))
+        .then((d) => setUCheck(d.ok ? { state: "ok", message: toLoginId(u) + " is available" } : { state: "bad", message: d.problem, suggestion: d.suggestion || "" }))
         .catch(() => setUCheck({ state: "idle", message: "" }));
     }, 400);
     return () => clearTimeout(t);
@@ -107,7 +108,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
     } else if (f.method === "invite") {
       if (!f.first.trim()) p.first = "First name is required.";
       if (!EMAIL_RE.test(f.email.trim())) p.email = "Enter a valid email address.";
-    } else if (!USERNAME_RE.test(f.linkUsername.trim().toLowerCase())) p.linkUsername = "Enter their exact Bizzux username.";
+    } else if (!USERNAME_RE.test(stripLoginSuffix(f.linkUsername))) p.linkUsername = "Enter their exact Bizzux username.";
     return p;
   }, [f, uCheck, strength.ok]);
   const stepProblems = [basics, {}, {}, {}][step] || {};
@@ -154,7 +155,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
         });
         setResult({ kind: "invite", email: f.email.trim().toLowerCase(), apps, detail: r });
       } else {
-        await api("/api/iam/identities", "POST", { kind: "link", username: f.linkUsername.trim().toLowerCase(), profile: f.profile, apps });
+        await api("/api/iam/identities", "POST", { kind: "link", username: stripLoginSuffix(f.linkUsername), profile: f.profile, apps });
         setResult({ kind: "link", username: f.linkUsername.trim().toLowerCase(), apps });
       }
       onCreated?.();
@@ -226,9 +227,13 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
             {f.method !== "member" && <Field label="Display name" required error={show("display")} wide><input className="input" value={f.display} onChange={(e) => set({ display: e.target.value, displayTouched: true })} /></Field>}
             {f.method === "username" && (
               <>
-                <Field label="Username" required error={show("username") || (uCheck.state === "bad" ? uCheck.message : undefined)} wide
-                  hint={uCheck.state === "ok" ? undefined : "Unique across Bizzux. Suggested from the name."}>
-                  <input className="input" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={f.username} onChange={(e) => set({ username: e.target.value.toLowerCase(), usernameTouched: true })} aria-invalid={uCheck.state === "bad"} />
+                <Field label="Bizzux ID" required error={show("username") || (uCheck.state === "bad" ? uCheck.message : undefined)} wide
+                  hint={uCheck.state === "ok" ? undefined : "Made from the name: first.last. Unique across Bizzux. You can change the part before the @."}>
+                  <div className="adm-idbox">
+                    <input className="input" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={f.username} onChange={(e) => set({ username: stripLoginSuffix(e.target.value), usernameTouched: true })} aria-invalid={uCheck.state === "bad"} aria-label="Bizzux ID, the part before the at sign" />
+                    <span className="adm-idsuffix" aria-hidden="true">{LOGIN_SUFFIX}</span>
+                  </div>
+                  {uCheck.state === "bad" && uCheck.suggestion && <button type="button" className="adm-link" onClick={() => set({ username: uCheck.suggestion, usernameTouched: true })}>Use {toLoginId(uCheck.suggestion)}</button>}
                   {uCheck.state === "ok" && <div className="adm-ok" role="status">✓ {uCheck.message}</div>}
                   {uCheck.state === "checking" && <div className="adm-hint" role="status">Checking…</div>}
                 </Field>
@@ -331,7 +336,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
             <p className="muted">Check everything. Select Edit to change a section; your entries are kept.</p>
             <dl className="adm-review">
               <Row label="Display name" value={f.method === "member" ? ((directory?.users || []).find((u) => u.uid === f.memberUid)?.name || "") : f.display} onEdit={() => goTo(0)} />
-              <Row label="Username / email" value={f.method === "username" ? f.username : f.method === "invite" ? f.email : f.method === "member" ? ((directory?.users || []).find((u) => u.uid === f.memberUid)?.username || (directory?.users || []).find((u) => u.uid === f.memberUid)?.email || "") : f.linkUsername} onEdit={() => goTo(0)} />
+              <Row label="Bizzux ID / email" value={f.method === "username" ? toLoginId(f.username.trim().toLowerCase()) : f.method === "invite" ? f.email : f.method === "member" ? ((directory?.users || []).find((u) => u.uid === f.memberUid)?.username || (directory?.users || []).find((u) => u.uid === f.memberUid)?.email || "") : f.linkUsername} onEdit={() => goTo(0)} />
               <Row label="Sign-in" value={METHODS.find((m) => m.id === f.method).title} onEdit={() => goTo(0)} />
               {f.method === "username" && <Row label="Password" value={(f.autoPw ? "Generated automatically" : "Set by you") + (f.mustChange ? ", must be changed at first sign-in" : "")} onEdit={() => goTo(0)} />}
               <Row label="Applications" value={f.noApps || !f.apps.length ? "None (identity only)" : f.apps.map((id) => appName(id) + (f.appRoles[id] === "ADMIN" ? " (Admin)" : "")).join(", ")} onEdit={() => goTo(1)} />
@@ -386,8 +391,8 @@ function Done({ r, context, onManage, onClose, onAnother }) {
       {r.kind === "username" && (
         <div className="adm-cred" role="group" aria-label="Sign-in details, shown once">
           <b>Save these now. They are shown only once.</b>
-          <div>Username: <code>{r.username}</code></div>
-          <div>Password: <code>{r.password}</code> <button type="button" className="adm-link" onClick={() => copy(`Username: ${r.username}\nPassword: ${r.password}`)}>{copied ? "Copied" : "Copy"}</button></div>
+          <div>Bizzux ID: <code>{toLoginId(r.username)}</code></div>
+          <div>Password: <code>{r.password}</code> <button type="button" className="adm-link" onClick={() => copy(`Bizzux ID: ${toLoginId(r.username)}\nPassword: ${r.password}`)}>{copied ? "Copied" : "Copy"}</button></div>
           <p className="muted" style={{ marginBottom: 0 }}>Give these to the person in a secure way. They sign in with the username and set their own password.{r.reused ? " A new password was issued for the same user." : ""}{r.photoError ? " The profile photo could not be saved: " + r.photoError : ""}</p>
         </div>
       )}

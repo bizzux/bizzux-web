@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { adminApi } from "@/lib/adminClient";
 import { useAdminGate, GateMessage } from "@/components/admin/AdminGate";
 import { CommandBar, Cmd, CmdSep } from "@/components/admin/CommandBar";
+import { toLoginId } from "@/lib/loginId";
 
 // Deleted users: people removed from THIS company. Their Bizzux login and other companies are untouched; they can be restored for 60 days, after
 // which they are no longer recoverable from here. Restoring brings back the membership only: app access is granted again by an administrator.
@@ -61,7 +62,7 @@ export default function DeletedUsersPage() {
                 <tr key={r.id}>
                   <td>{r.recoverable ? <input type="checkbox" aria-label={"Select " + (r.name || r.username)} checked={sel.has(r.id)} onChange={() => toggle(r.id)} /> : null}</td>
                   <td>{r.name || "N/A"}</td>
-                  <td>{r.email || (r.username ? "@" + r.username : "")}</td>
+                  <td>{r.username && !r.email ? toLoginId(r.username) : r.email}</td>
                   <td className="muted">{r.removedAtMs ? new Date(r.removedAtMs).toLocaleDateString() : "—"}</td>
                   <td>{r.recoverable ? r.daysLeft + (r.daysLeft === 1 ? " day" : " days") : <span className="muted">Expired</span>}</td>
                   <td>{r.recoverable ? <button type="button" className="adm-link" disabled={busy} onClick={() => restore([r])}>Restore</button> : null}</td>

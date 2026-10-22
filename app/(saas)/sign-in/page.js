@@ -17,6 +17,7 @@ import Nav from "@/components/Nav";
 import { IconEye, IconEyeOff } from "@/components/Icons";
 import { COUNTRIES, DEFAULT_COUNTRY_ISO2, findCountry, phoneLengthLabel, phoneLengthShortLabel, isValidPhoneLength } from "@/lib/countryCodes";
 import { BRAND_TAGLINE } from "@/lib/brand";
+import { isBizzuxId } from "@/lib/loginId";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -227,8 +228,8 @@ export default function LoginPage() {
         }
         router.push("/dashboard");
       } else {
-        if (!email.includes("@")) {
-          // Admin-provisioned username login (no email on the account).
+        if (!email.includes("@") || isBizzuxId(email)) {
+          // Admin-provisioned username login (no email on the account): a short username or a Bizzux ID ("first.last@bizzux"); the server maps both to the same login.
           const r = await fetch("/api/auth/username-login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -353,8 +354,8 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label className="label">{mode === "signin" ? "Email or username" : "Email"}</label>
-            <input className="input" type={mode === "signin" ? "text" : "email"} autoCapitalize="none" placeholder={mode === "signin" ? "Enter your email or username" : "Enter your email"} value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={mode === "signin"} />
+            <label className="label">{mode === "signin" ? "Email or Bizzux ID" : "Email"}</label>
+            <input className="input" type={mode === "signin" ? "text" : "email"} autoCapitalize="none" placeholder={mode === "signin" ? "Email, or first.last@bizzux" : "Enter your email"} value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={mode === "signin"} />
             {fieldErrors.email && <p className="field-error">{fieldErrors.email}</p>}
           </div>
 

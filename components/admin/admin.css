@@ -155,3 +155,8 @@ th.adm-sortable button:focus-visible { outline:2px solid var(--adm-accent); outl
 
 /* menu icons keep one size and never shrink, so labels line up */
 .adm-menuitem svg, .adm-menuitem .adm-ic { width:16px; height:16px; flex:none; }
+
+/* Bizzux ID input: the part before the @ is editable, the suffix is fixed */
+.adm-idbox { display:flex; align-items:stretch; }
+.adm-idbox .input { border-top-right-radius:0; border-bottom-right-radius:0; flex:1; min-width:0; }
+.adm-idsuffix { display:flex; align-items:center; padding:0 12px; border:1px solid var(--adm-line); border-left:0; border-radius:0 6px 6px 0; background:#f3f5f8; color:#5b6573; font-size:14px; user-select:none; }

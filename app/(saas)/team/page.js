@@ -20,6 +20,7 @@ import AddUserWizard from "@/components/admin/AddUserWizard";
 import ResetPasswordDrawer from "@/components/admin/ResetPasswordDrawer";
 import UserDetailsDrawer from "@/components/admin/UserDetailsDrawer";
 import { roleLabel } from "@/lib/roleLabel";
+import { toLoginId } from "@/lib/loginId";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -202,7 +203,7 @@ export default function TeamPage() {
   const cellFor = (k, m) => {
     switch (k) {
       case "name": return m.uid ? <button type="button" className="adm-namebtn" onClick={() => setDetail(m)} title="Open details">{[m.firstName, m.lastName].filter(Boolean).join(" ") || m.username || m.email || "N/A"}</button> : ([m.firstName, m.lastName].filter(Boolean).join(" ") || "N/A");
-      case "signin": return (<><div>{m.email || (m.username ? "@" + m.username : "")}</div><div className="muted" style={{ fontSize: 11.5 }}>{LOGIN_LABEL[m.loginKind] || ""}</div></>);
+      case "signin": return (<><div>{m.username && (m.loginKind === "username" || !m.email) ? toLoginId(m.username) : m.email}</div><div className="muted" style={{ fontSize: 11.5 }}>{LOGIN_LABEL[m.loginKind] || ""}</div></>);
       case "method": return LOGIN_LABEL[m.loginKind] || dash;
       case "orgRole": return (
         <>

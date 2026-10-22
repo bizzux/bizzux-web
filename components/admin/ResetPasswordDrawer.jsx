@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Drawer from "./Drawer";
 import { passwordStrength } from "@/lib/adminPassword";
+import { toLoginId } from "@/lib/loginId";
 
 const LOGIN = { google: "Google", email: "Email and password", username: "Bizzux username", "attendance-username": "Attendance username" };
 
@@ -28,7 +29,7 @@ export default function ResetPasswordDrawer({ open, user, api, onClose, onDone, 
     catch (e) { setErr(e.message); }
     setBusy(false);
   }
-  const copy = async () => { try { await navigator.clipboard.writeText(`Username: ${res.username}\nPassword: ${res.password}`); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } };
+  const copy = async () => { try { await navigator.clipboard.writeText(`Bizzux ID: ${toLoginId(res.username)}\nPassword: ${res.password}`); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } };
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.username || user.email;
   return (
     <Drawer open={open} title="Reset password" onClose={onClose} size="narrow"
@@ -40,12 +41,12 @@ export default function ResetPasswordDrawer({ open, user, api, onClose, onDone, 
       )}>
       <dl className="adm-rv" style={{ gridTemplateColumns: "110px 1fr" }}>
         <dt>Person</dt><dd>{name}</dd>
-        <dt>Sign-in</dt><dd>{user.email || (user.username ? "@" + user.username : "")}<div className="muted" style={{ fontSize: 12 }}>{LOGIN[user.loginKind] || ""}</div></dd>
+        <dt>Sign-in</dt><dd>{user.username && !user.email ? toLoginId(user.username) : user.email}<div className="muted" style={{ fontSize: 12 }}>{LOGIN[user.loginKind] || ""}</div></dd>
       </dl>
       {res ? (
         <div className="adm-cred" role="group" aria-label="New sign-in details, shown once">
           <b>Save this now. It is shown only once.</b>
-          <div>Username: <code>{res.username}</code></div>
+          <div>Bizzux ID: <code>{toLoginId(res.username)}</code></div>
           <div>Password: <code>{res.password}</code> <button type="button" className="adm-link" onClick={copy}>{copied ? "Copied" : "Copy"}</button></div>
           <p className="muted" style={{ marginBottom: 0 }}>{res.mustChange ? "They must choose their own password when they sign in. " : ""}They have been signed out everywhere. Give these details to them in a secure way.</p>
         </div>

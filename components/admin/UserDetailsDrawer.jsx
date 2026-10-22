@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Drawer from "./Drawer";
 import { APPS } from "@/lib/appCatalog";
+import { toLoginId } from "@/lib/loginId";
 
 const TABS = ["Overview", "Account", "Organizations", "Apps & licences", "Roles", "Activity"];
 const LOGIN = { google: "Google", email: "Email and password", username: "Bizzux username", "attendance-username": "Attendance username", unknown: "Unknown" };
@@ -46,8 +47,8 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
             {tab === 0 && (
               <dl className="adm-rv" style={{ gridTemplateColumns: "170px 1fr" }}>
                 <dt>Display name</dt><dd>{d.name || "—"}</dd>
-                <dt>Username</dt><dd>{d.username ? "@" + d.username : "—"}</dd>
-                <dt>Email</dt><dd>{d.email || "—"}</dd>
+                <dt>Bizzux ID</dt><dd>{d.username ? toLoginId(d.username) : "—"}</dd>
+                <dt>Contact email</dt><dd>{d.email || "—"}</dd>
                 <dt>Sign-in method</dt><dd>{LOGIN[d.loginKind]}</dd>
                 <dt>Status</dt><dd>{d.disabled ? "Disabled" : d.account.pendingActivation ? "Waiting for first sign-in" : "Active"}</dd>
                 <dt>Created</dt><dd>{day(d.created)}</dd>
