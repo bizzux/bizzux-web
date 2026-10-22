@@ -8,16 +8,16 @@ import { toLoginId } from "@/lib/loginId";
 const LOGIN = { google: "Google", email: "Email and password", username: "Bizzux username", "attendance-username": "Attendance username" };
 
 export default function ResetPasswordDrawer({ open, user, api, onClose, onDone, onSendEmail }) {
-  const [custom, setCustom] = useState(false);
+  const [custom, setCustom] = useState(true); // like Microsoft 365: type a password by default; "Automatically create" is a tick away
   const [pw, setPw] = useState("");
   const [show, setShow] = useState(false);
-  const [must, setMust] = useState(true);
+  const [must, setMust] = useState(false);
   const [sure, setSure] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [res, setRes] = useState(null);
   const [copied, setCopied] = useState(false);
-  useEffect(() => { if (open) { setCustom(false); setPw(""); setShow(false); setMust(true); setSure(false); setBusy(false); setErr(""); setRes(null); setCopied(false); } }, [open, user?.uid]);
+  useEffect(() => { if (open) { setCustom(true); setPw(""); setShow(false); setMust(false); setSure(false); setBusy(false); setErr(""); setRes(null); setCopied(false); } }, [open, user?.uid]);
   if (!user) return null;
   const strength = passwordStrength(pw);
   const username = user.loginKind === "username";

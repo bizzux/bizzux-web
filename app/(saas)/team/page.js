@@ -493,7 +493,7 @@ export default function TeamPage() {
                             ...(m.status === "invited" ? [{ label: "Resend invite email", onClick: () => resend(m.id) }] : []),
                             ...(m.status !== "invited" ? [{ label: "Send password-reset email", onClick: () => resetPasswordEmail(m) }] : []),
                             ...(m.username ? [
-                              { label: "Reset username password", onClick: () => usernameAction(m, "resetPassword") },
+                              { label: "Reset password", onClick: () => setResetFor(m) },
                               { label: "Unlock sign-in", onClick: () => usernameAction(m, "unlock") },
                               { label: "New recovery codes", onClick: () => usernameAction(m, "regenerateRecoveryCodes") },
                             ] : [
@@ -520,6 +520,7 @@ export default function TeamPage() {
       <UserDetailsDrawer open={!!detail} uid={detail?.uid} row={detail} api={api} canAssignAdmin={canAssignAdmin} onClose={() => setDetail(null)}
         onResetPassword={(r) => { setDetail(null); setResetFor(r); }}
         onManageAccess={(r) => { if (r.dirOnly) { setErr("This person has no team record here, so roles and app access are changed from the Add or Link flows."); return; } setDetail(null); setManagingMember(r); }}
+        onDisable={(r) => { setDetail(null); toggleDisabled(r); }} onDelete={(r) => { setDetail(null); remove(r.id); }}
         onRoleChange={(r, role) => changeOrgRole(r, role)} onUnlock={(r) => usernameAction(r, "unlock")} onRecoveryCodes={(r) => usernameAction(r, "regenerateRecoveryCodes")} />
       <ResetPasswordDrawer open={!!resetFor} user={resetFor} api={api} onClose={() => setResetFor(null)} onDone={() => load()} onSendEmail={(r) => resetPasswordEmail(r)} />
 

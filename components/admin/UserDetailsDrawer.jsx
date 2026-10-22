@@ -17,7 +17,7 @@ const appName = (id) => APPS.find((a) => a.id === id)?.name || id;
 const when = (ms) => (ms ? new Date(ms).toLocaleString() : "");
 const day = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
 
-export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPassword, onManageAccess, onRoleChange, onUnlock, onRecoveryCodes, canAssignAdmin, row }) {
+export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPassword, onManageAccess, onRoleChange, onUnlock, onRecoveryCodes, onDisable, onDelete, canAssignAdmin, row }) {
   const [tab, setTab] = useState(0);
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
@@ -38,6 +38,8 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
             {d.account.canResetPassword && <button type="button" className="adm-cmdbtn" onClick={() => onResetPassword(row)}>Reset password</button>}
             <button type="button" className="adm-cmdbtn" onClick={() => onManageAccess(row)}>Manage roles &amp; app access</button>
             {d.account.locked && <button type="button" className="adm-cmdbtn" onClick={() => onUnlock(row)}>Unlock sign-in</button>}
+            {!row?.dirOnly && onDisable && <button type="button" className="adm-cmdbtn" onClick={() => onDisable(row)}>{row?.status === "disabled" ? "Unblock sign-in" : "Block sign-in"}</button>}
+            {!row?.dirOnly && onDelete && <button type="button" className="adm-cmdbtn" style={{ color: "#b3261e" }} onClick={() => onDelete(row)}>Delete user</button>}
             {d.loginKind === "username" && d.account.homeCompany && <button type="button" className="adm-cmdbtn" onClick={() => onRecoveryCodes(row)}>New recovery codes</button>}
           </div>
           <div role="tablist" aria-label="User details" className="adm-tabs">
