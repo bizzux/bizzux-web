@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
+import { passwordStrength } from "@/lib/adminPassword";
 import { PROFILES, ORGANIZATION_ROLES, ACCOUNT_ADMIN_PROFILES } from "@/lib/roles";
 import { APPS, appName } from "@/lib/appCatalog";
 import Link from "next/link";
@@ -654,121 +655,187 @@ function genPassword() {
   return out;
 }
 
-const EMPTY_ROW = { firstName: "", lastName: "", email: "", profile: "" };
+const slugName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").slice(0, 32);
+const newRow = () => ({ first: "", last: "", username: "", usernameTouched: false, password: "", email: "", profile: "Staff/Shopkeeper" });
+const rowUsed = (r) => !!(r.first.trim() || r.last.trim() || r.username.trim() || r.email.trim() || r.password);
+const randomId = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
 
-// Bulk add — like M365's "Add multiple users", scoped down: email-invite
-// only (no per-row passwords to manage), one shared App access selection
-// applied to everyone in the batch rather than per row. Reuses the exact
-// same /api/team "invite" action as the single-user form, once per row, so
-// there's no separate bulk endpoint to keep in sync with it.
+// Add multiple users — one shared choice of apps for the whole batch. Two ways to sign in, like the single "Add user" form: a Bizzux username and a
+// password per person (leave the password blank to have one made for you), or an email invitation. Every row goes through the same central service as
+// the single form (/api/iam/identities for usernames, /api/team invite for email), so tenant checks, seat limits, licences and the audit trail are the same.
+// A row that is half filled is reported on screen; it is never skipped silently.
 function BulkAddModal({ onClose, onDone }) {
-  const [rows, setRows] = useState([{ ...EMPTY_ROW }, { ...EMPTY_ROW }, { ...EMPTY_ROW }]);
-  const [appAccess, setAppAccess] = useState(() =>
-    Object.fromEntries(APPS.map((a) => [a.id, { granted: false, admin: false }]))
-  );
+  const [mode, setMode] = useState("username"); // "username" | "email"
+  const [rows, setRows] = useState([newRow(), newRow(), newRow()]);
+  const [mustChange, setMustChange] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [appAccess, setAppAccess] = useState(() => Object.fromEntries(APPS.map((a) => [a.id, { granted: false, admin: false }])));
   const [busy, setBusy] = useState(false);
-  const [results, setResults] = useState(null); // [{ email, ok, error }]
+  const [problems, setProblems] = useState({}); // row index -> message
+  const [results, setResults] = useState(null);
+  const [copied, setCopied] = useState(false);
 
-  function updateRow(i, field, value) {
-    setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
+  const setRow = (i, patch) => setRows((cur) => cur.map((r, idx) => {
+    if (idx !== i) return r;
+    const n = { ...r, ...patch };
+    if (("first" in patch || "last" in patch) && !n.usernameTouched) n.username = slugName([n.first, n.last].filter(Boolean).join(" "));
+    return n;
+  }));
+  const addRow = () => setRows((cur) => [...cur, newRow()]);
+  const removeRow = (i) => setRows((cur) => cur.filter((_, idx) => idx !== i));
+  const toggleApp = (id, field, value) => setAppAccess((cur) => ({ ...cur, [id]: { ...cur[id], [field]: value, ...(field === "admin" && value ? { granted: true } : {}) } }));
+  const toggleAll = (checked) => setAppAccess((cur) => Object.fromEntries(APPS.map((a) => [a.id, { granted: checked, admin: checked ? cur[a.id].admin : false }])));
+  const allGranted = APPS.every((a) => appAccess[a.id].granted);
+
+  function check() {
+    const p = {};
+    const seen = new Set();
+    rows.forEach((r, i) => {
+      if (!rowUsed(r)) return;
+      if (!r.first.trim()) p[i] = "First name is required.";
+      else if (mode === "email" && !EMAIL_RE.test(r.email.trim())) p[i] = "Enter a valid email address.";
+      else if (mode === "username") {
+        const u = r.username.trim().toLowerCase();
+        if (!/^[a-z0-9._-]{3,32}$/.test(u)) p[i] = "Username: 3-32 letters, numbers, dots, dashes or underscores.";
+        else if (seen.has(u)) p[i] = "This username is used twice in the list.";
+        else if (r.password && passwordStrength(r.password).level < 2) p[i] = "Choose a stronger password (at least 8 characters with a mix), or leave it blank.";
+        seen.add(u);
+      }
+    });
+    return p;
   }
-  function addRow() {
-    setRows((cur) => [...cur, { ...EMPTY_ROW }]);
-  }
-  function removeRow(i) {
-    setRows((cur) => cur.filter((_, idx) => idx !== i));
-  }
-  function toggleApp(appId, field, value) {
-    setAppAccess((cur) => ({ ...cur, [appId]: { ...cur[appId], [field]: value, ...(field === "admin" && value ? { granted: true } : {}) } }));
-  }
-  function toggleAllApps(checked) {
-    setAppAccess((cur) => Object.fromEntries(APPS.map((a) => [a.id, { granted: checked, admin: checked ? cur[a.id].admin : false }])));
-  }
-  const allAppsGranted = APPS.every((a) => appAccess[a.id].granted);
 
   async function submit() {
-    const valid = rows.filter((r) => r.firstName.trim() && EMAIL_RE.test(r.email.trim()) && r.profile);
-    if (valid.length === 0) return;
+    const used = rows.map((r, i) => ({ r, i })).filter(({ r }) => rowUsed(r));
+    const p = check();
+    setProblems(p);
+    if (!used.length) { setProblems({ 0: "Fill in at least one person." }); return; }
+    if (Object.keys(p).length) return;
     setBusy(true);
-    const apps = Object.entries(appAccess)
-      .filter(([, v]) => v.granted)
-      .map(([appId, v]) => ({ appId, role: v.admin ? "ADMIN" : "MEMBER" }));
-
-    const outcomes = [];
-    for (const r of valid) {
+    const ids = APPS.filter((a) => appAccess[a.id].granted).map((a) => a.id);
+    const appRoles = Object.fromEntries(APPS.filter((a) => appAccess[a.id].granted && appAccess[a.id].admin).map((a) => [a.id, "ADMIN"]));
+    const out = [];
+    for (const { r } of used) {
+      const name = [r.first.trim(), r.last.trim()].filter(Boolean).join(" ");
       try {
-        await api("/api/team", "POST", {
-          action: "invite", firstName: r.firstName, lastName: r.lastName, email: r.email,
-          profile: r.profile, apps, loginMethod: "email",
-        });
-        outcomes.push({ email: r.email, ok: true });
+        if (mode === "username") {
+          const d = await api("/api/iam/identities", "POST", { kind: "username", idempotencyKey: randomId(), fullName: name, username: r.username.trim().toLowerCase(), password: r.password, mustChangePassword: mustChange, profile: r.profile, apps: ids, appRoles });
+          out.push({ name, username: d.username, password: d.password, ok: true });
+        } else {
+          await api("/api/team", "POST", { action: "invite", firstName: r.first.trim(), lastName: r.last.trim(), email: r.email.trim(), profile: r.profile, apps: ids.map((appId) => ({ appId, role: appRoles[appId] === "ADMIN" ? "ADMIN" : "MEMBER" })), loginMethod: "email" });
+          out.push({ name, email: r.email.trim(), ok: true });
+        }
       } catch (e) {
-        outcomes.push({ email: r.email, ok: false, error: e.message });
+        out.push({ name, username: r.username.trim().toLowerCase(), email: r.email.trim(), ok: false, error: e.message || "Failed" });
       }
     }
-    setResults(outcomes);
+    setResults(out);
     setBusy(false);
   }
 
-  const allDone = results && results.every((r) => r.ok);
+  const doneRows = (results || []).filter((x) => x.ok && x.password);
+  const copyAll = async () => {
+    try { await navigator.clipboard.writeText(doneRows.map((x) => `${x.name}\nUsername: ${x.username}\nPassword: ${x.password}`).join("\n\n")); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ }
+  };
+  const downloadCsv = () => {
+    const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+    const csv = ["Name,Username,Password", ...doneRows.map((x) => [x.name, x.username, x.password].map(q).join(","))].join("\r\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "new-users.csv"; a.click();
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
-        <h2 style={{ marginBottom: 4 }}>Bulk add users</h2>
-        <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>
-          Each person gets an email invite. Rows with no first name, a valid email, and a role are skipped.
-        </p>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 820, maxHeight: "92vh", overflowY: "auto" }}>
+        <h2 style={{ marginBottom: 4 }}>Add multiple users</h2>
 
         {results ? (
           <>
-            {results.map((r) => (
-              <div key={r.email} className="row" style={{ justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-                <span style={{ fontSize: 13.5 }}>{r.email}</span>
-                <span className={"status-pill " + (r.ok ? "active" : "expired")}>{r.ok ? "Invited" : r.error}</span>
-              </div>
-            ))}
-            <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
-              <button className="btn-primary" onClick={onDone}>Close</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ overflowX: "auto", marginBottom: 14 }}>
+            <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+              {results.filter((x) => x.ok).length} of {results.length} added.{doneRows.length ? " Save the passwords now. They are shown only once." : ""}
+            </p>
+            <div style={{ overflowX: "auto" }}>
               <table className="table">
-                <thead>
-                  <tr>
-                    <th>First name</th><th>Last name</th><th>Email</th><th>Role</th><th></th>
-                  </tr>
-                </thead>
+                <thead><tr><th>Name</th><th>{mode === "username" ? "Username" : "Email"}</th>{mode === "username" && <th>Password</th>}<th>Result</th></tr></thead>
                 <tbody>
-                  {rows.map((r, i) => (
+                  {results.map((x, i) => (
                     <tr key={i}>
-                      <td><input className="input" style={{ fontSize: 13 }} value={r.firstName} onChange={(e) => updateRow(i, "firstName", e.target.value)} /></td>
-                      <td><input className="input" style={{ fontSize: 13 }} value={r.lastName} onChange={(e) => updateRow(i, "lastName", e.target.value)} /></td>
-                      <td><input className="input" type="email" style={{ fontSize: 13 }} value={r.email} onChange={(e) => updateRow(i, "email", e.target.value)} /></td>
-                      <td>
-                        <select className="input" style={{ fontSize: 13 }} value={r.profile} onChange={(e) => updateRow(i, "profile", e.target.value)}>
-                          <option value="">Select</option>
-                          {PROFILES.map((p) => (
-                            <option key={p.value} value={p.value}>{p.label}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        {rows.length > 1 && <button type="button" className="link-btn danger" onClick={() => removeRow(i)}>✕</button>}
-                      </td>
+                      <td>{x.name}</td>
+                      <td>{mode === "username" ? x.username : x.email}</td>
+                      {mode === "username" && <td>{x.ok ? <code>{x.password}</code> : ""}</td>}
+                      <td><span className={"status-pill " + (x.ok ? "active" : "expired")}>{x.ok ? (mode === "email" ? "Invited" : "Added") : x.error}</span></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <button type="button" className="link-btn" style={{ marginBottom: 16 }} onClick={addRow}>+ Add row</button>
+            <div className="row" style={{ justifyContent: "space-between", marginTop: 16 }}>
+              <div className="row" style={{ gap: 8 }}>
+                {doneRows.length > 0 && <button type="button" className="btn-outline-dark" onClick={copyAll}>{copied ? "Copied" : "Copy all"}</button>}
+                {doneRows.length > 0 && <button type="button" className="btn-outline-dark" onClick={downloadCsv}>Download CSV</button>}
+              </div>
+              <button className="btn-primary" onClick={onDone}>Close</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <fieldset className="adm-methods" style={{ marginBottom: 12 }}>
+              <legend className="adm-lab">How will they sign in?</legend>
+              <label className={"adm-radio" + (mode === "username" ? " on" : "")}>
+                <input type="radio" name="bulkmode" checked={mode === "username"} onChange={() => { setMode("username"); setProblems({}); }} />
+                <span><b>Bizzux username and password</b><span className="adm-hint">For people with no email. Leave a password blank and one is made for you.</span></span>
+              </label>
+              <label className={"adm-radio" + (mode === "email" ? " on" : "")}>
+                <input type="radio" name="bulkmode" checked={mode === "email"} onChange={() => { setMode("email"); setProblems({}); }} />
+                <span><b>Invite by email</b><span className="adm-hint">Each person gets an email invitation and signs in with their own account.</span></span>
+              </label>
+            </fieldset>
+
+            <div style={{ overflowX: "auto", marginBottom: 10 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>First name</th><th>Last name</th>
+                    {mode === "username" ? <><th>Username</th><th>Password <button type="button" className="adm-link" onClick={() => setShowPw((v) => !v)}>{showPw ? "Hide" : "Show"}</button></th></> : <th>Email</th>}
+                    <th>Role</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <Fragment key={i}>
+                      <tr>
+                        <td><input className="input" style={{ fontSize: 13 }} value={r.first} onChange={(e) => setRow(i, { first: e.target.value })} /></td>
+                        <td><input className="input" style={{ fontSize: 13 }} value={r.last} onChange={(e) => setRow(i, { last: e.target.value })} /></td>
+                        {mode === "username" ? (
+                          <>
+                            <td><input className="input" style={{ fontSize: 13 }} autoCapitalize="none" spellCheck={false} value={r.username} onChange={(e) => setRow(i, { username: e.target.value.toLowerCase(), usernameTouched: true })} /></td>
+                            <td><input className="input" style={{ fontSize: 13 }} type={showPw ? "text" : "password"} autoComplete="new-password" placeholder="Auto" value={r.password} onChange={(e) => setRow(i, { password: e.target.value })} /></td>
+                          </>
+                        ) : (
+                          <td><input className="input" type="email" style={{ fontSize: 13 }} value={r.email} onChange={(e) => setRow(i, { email: e.target.value })} /></td>
+                        )}
+                        <td>
+                          <select className="input" style={{ fontSize: 13 }} value={r.profile} onChange={(e) => setRow(i, { profile: e.target.value })}>
+                            {PROFILES.map((pr) => <option key={pr.value} value={pr.value}>{pr.label}</option>)}
+                          </select>
+                        </td>
+                        <td>{rows.length > 1 && <button type="button" className="link-btn danger" aria-label="Remove row" onClick={() => removeRow(i)}>✕</button>}</td>
+                      </tr>
+                      {problems[i] && <tr><td colSpan={6} style={{ color: "#b3261e", fontSize: 12.5, paddingTop: 0 }} role="alert">{problems[i]}</td></tr>}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" className="link-btn" style={{ marginBottom: 14 }} onClick={addRow}>+ Add row</button>
+
+            {mode === "username" && (
+              <label className="adm-check" style={{ marginBottom: 14 }}><input type="checkbox" checked={mustChange} onChange={(e) => setMustChange(e.target.checked)} /> Require these users to change their password when they first sign in</label>
+            )}
 
             <div style={{ marginBottom: 16 }}>
               <label className="label">App access (applied to everyone added)</label>
               <label className="row" style={{ gap: 8, fontSize: 13, fontWeight: 600, padding: "4px 0 6px", cursor: "pointer" }}>
-                <input type="checkbox" checked={allAppsGranted} onChange={(e) => toggleAllApps(e.target.checked)} />
+                <input type="checkbox" checked={allGranted} onChange={(e) => toggleAll(e.target.checked)} />
                 Select all apps
               </label>
               {APPS.map((a) => {
