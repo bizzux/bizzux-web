@@ -248,6 +248,19 @@ export default function TeamPage() {
     setSelected(new Set());
     await load();
   }
+  // Leftover records (a membership with no team record): permanent delete of THIS company's records only; the person's login and other companies are untouched.
+  async function purgeRows(list) {
+    const rowsToPurge = list.filter((r) => r.dirOnly);
+    if (!rowsToPurge.length) { setErr("Select leftover records only."); return; }
+    const names = rowsToPurge.slice(0, 5).map((r) => r.firstName || r.username || r.email || r.uid).join(", ");
+    if (!window.confirm("Permanently delete " + rowsToPurge.length + " leftover " + (rowsToPurge.length === 1 ? "record" : "records") + " (" + names + (rowsToPurge.length > 5 ? ", …" : "") + ")?\n\nThese people have no company record. Only this company's membership and app access records are deleted. Their Bizzux login, other companies and any Attendance records are not touched. This cannot be undone.")) return;
+    setErr(""); setBulkMsg("Working…");
+    let ok = 0; const failed = [];
+    for (const r of rowsToPurge) { try { await api("/api/iam/identities", "POST", { kind: "purgeLeftover", uid: r.uid }); ok++; } catch (e) { failed.push((r.firstName || r.username || r.email || r.uid) + ": " + e.message); } }
+    setBulkMsg(ok + " deleted" + (failed.length ? ", " + failed.length + " failed (" + failed.slice(0, 3).join("; ") + ")" : ""));
+    setSelected(new Set());
+    await load();
+  }
   function exportCsv() {
     const blob = new Blob(["\ufeff" + toCsv(rows)], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -411,6 +424,7 @@ export default function TeamPage() {
           <CmdSep />
           <Cmd icon="key" onClick={resetForSelected} disabled={!one} title={one ? "" : "Select exactly one user"}>Reset password</Cmd>
           <Cmd icon="trash" onClick={removeSelected} disabled={!chosen.length} title={chosen.length ? "" : "Select one or more users"}>Remove from company</Cmd>
+          {chosen.length > 0 && chosen.every((r) => r.dirOnly) && <Cmd icon="trash" onClick={() => purgeRows(chosen)} title="Permanently delete leftover records that have no team record">Delete leftover records</Cmd>}
           <CmdSep />
           <Cmd icon="download" onClick={exportCsv} disabled={!rows.length} title="Exports the users matching the current filters">Export users</Cmd>
           <Cmd icon="refresh" onClick={() => { setBulkMsg(""); load(); }}>Refresh</Cmd>
@@ -485,7 +499,7 @@ export default function TeamPage() {
                     <td>{selectable(m) ? <input type="checkbox" aria-label={"Select " + (m.firstName || m.username || m.email)} checked={selected.has(m.id)} onChange={() => toggleOne(m.id)} /> : null}</td>
                     {colKeys.map((k) => <td key={k}>{cellFor(k, m)}</td>)}
                     <td>
-                      {m.dirOnly && <span className="muted" style={{ fontSize: 11.5 }}>Read-only here: no team record</span>}
+                      {m.dirOnly && (<><span className="muted" style={{ fontSize: 11.5 }}>No team record</span>{isAdmin && !m.isOwner && <TeamRowMenu items={[{ label: "Delete permanently…", onClick: () => purgeRows([m]) }]} />}</>)}
                       {!m.isOwner && !m.dirOnly && (
                         <TeamRowMenu
                           items={[

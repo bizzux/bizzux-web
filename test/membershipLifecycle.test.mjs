@@ -119,3 +119,29 @@ test("removed people do not count against the seat limit and can be re-added fre
   assert.equal((await remove(B, a.teamMemberId)).status, 200);
   assert.equal((await iam(B, { kind: "username", fullName: "Seat C", username: un("seatc") })).status, 200, "a freed seat is usable");
 });
+
+test("leftover records (a membership with NO team record) can be deleted permanently: only this company's records, never the identity, never an owner or a person who still has a team record", async () => {
+  const ghost = await person("ghost");
+  await db.doc(`organizationMemberships/${A.uid}_${ghost.uid}`).set({ organizationId: A.uid, userId: ghost.uid, role: "MEMBER", status: "removed" });
+  await db.doc(`appAssignments/${A.uid}_${ghost.uid}_bizzux-crm`).set({ organizationId: A.uid, userId: ghost.uid, appId: "bizzux-crm", status: "INACTIVE" });
+  await db.doc(`organizationMemberships/${B.uid}_${ghost.uid}`).set({ organizationId: B.uid, userId: ghost.uid, role: "MEMBER", status: "active" }); // the same person in ANOTHER company
+  const res = await iam(A, { kind: "purgeLeftover", uid: ghost.uid });
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  assert.equal((await db.doc(`organizationMemberships/${A.uid}_${ghost.uid}`).get()).exists, false, "this company's membership deleted");
+  assert.equal((await db.doc(`appAssignments/${A.uid}_${ghost.uid}_bizzux-crm`).get()).exists, false, "its app assignment deleted");
+  assert.equal((await db.doc(`organizationMemberships/${B.uid}_${ghost.uid}`).get()).exists, true, "the other company's membership is untouched");
+  assert.equal((await fa.adminAuth().getUser(ghost.uid)).uid, ghost.uid, "the Firebase identity still exists");
+  assert.ok((await db.collection("auditLogs").where("action", "==", "team.purge_leftover").get()).size >= 1, "audit written before deleting");
+  assert.equal((await iam(A, { kind: "purgeLeftover", uid: ghost.uid })).status, 404, "a second delete finds nothing");
+});
+
+test("leftover delete refuses the owner, yourself, a person with a team record, and another company's admin", async () => {
+  assert.equal((await iam(A, { kind: "purgeLeftover", uid: A.uid })).status, 400, "owner");
+  assert.equal((await iam(adm, { kind: "purgeLeftover", uid: adm.uid })).status, 400, "yourself");
+  const u = await (await iam(A, { kind: "username", fullName: "Tina Team", username: un("tina"), apps: ["bizzux-crm"] })).json();
+  assert.equal((await iam(A, { kind: "purgeLeftover", uid: u.uid })).status, 409, "has a team record: use Remove from company");
+  const stranger = await person("stranger");
+  const refused = await iam(stranger, { kind: "purgeLeftover", uid: u.uid });
+  assert.notEqual(refused.status, 200, "someone with no role in this company is refused (status " + refused.status + ")");
+  assert.equal((await db.doc(`organizationMemberships/${A.uid}_${u.uid}`).get()).exists, true, "nothing was deleted");
+});

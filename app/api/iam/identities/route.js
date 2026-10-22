@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireOrgManager } from "@/lib/firebaseAdmin";
 import { createUsernameIdentity, requestLinkToOrganization, setUserApps, usernameAvailability, bindExistingMemberToEmployee, setOrganizationRole, reissueTemporaryPassword, resolveOrganizationId, validateNewUsernameIdentity }
  from "@/lib/iam/identityService";
-import { restoreMember, removeMember } from "@/lib/iam/membershipLifecycle";
+import { restoreMember, removeMember, purgeLeftover } from "@/lib/iam/membershipLifecycle";
 import { resetUsernamePassword } from "@/lib/iam/userAdmin";
 
 export const runtime = "nodejs";
@@ -38,6 +38,7 @@ export async function POST(req) {
     if (b.kind === "validate") return NextResponse.json(await validateNewUsernameIdentity({ ...b, organizationId, actor: c }));
     if (b.kind === "restore") return NextResponse.json(await restoreMember({ actor: c, organizationId: resolveOrganizationId(c, organizationId), id: String(b.id || "") }));
     if (b.kind === "remove") return NextResponse.json(await removeMember({ actor: c, organizationId: resolveOrganizationId(c, organizationId), teamDocId: String(b.id || "") }));
+    if (b.kind === "purgeLeftover") return NextResponse.json(await purgeLeftover({ actor: c, organizationId: resolveOrganizationId(c, organizationId), uid: String(b.uid || "") }));
     if (b.kind === "bindEmployee") return NextResponse.json(await bindExistingMemberToEmployee({ actor: c, organizationId, who: b.who, employeeId: b.employeeId }));
     throw { status: 400, message: "Unknown kind" };
   } catch (e) {
