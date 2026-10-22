@@ -1,29 +1,14 @@
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
+import HeroShowcase from "@/components/HeroShowcase";
 import FeaturedAppsGrid from "@/components/FeaturedAppsGrid";
 import SuperAdminHomeRedirect from "@/components/SuperAdminHomeRedirect";
 import {
-  IconPOS, IconBox, IconWallet, IconDatabase,
+  IconPOS,
   IconLayers, IconSpark, IconCloud, IconShield, IconCheck,
-  IconArrowRight, IconChart, IconUsers,
+  IconArrowRight, IconUsers,
 } from "@/components/Icons";
-import { BRAND_TAGLINE } from "@/lib/brand";
 import CustomerMarquee from "@/components/CustomerMarquee";
 import { getCustomerLogos } from "@/lib/companyData";
-
-// Quick-jump pills under the hero CTAs — every one of these is a real
-// module inside the platform (see app/(saas)/apps), so they all just point
-// at /apps rather than a dead anchor; a signed-out visitor lands on the
-// apps overview and picks up the sign-up flow from there same as the main
-// CTA does.
-const heroQuickLinks = [
-  { icon: IconUsers, label: "CRM" },
-  { icon: IconPOS, label: "POS" },
-  { icon: IconBox, label: "Inventory" },
-  { icon: IconWallet, label: "Billing" },
-  { icon: IconSpark, label: "AI Apps" },
-  { icon: IconDatabase, label: "Files" },
-  { icon: IconChart, label: "Projects" },
-];
 
 const platformFeatures = [
   "Point of sale and payment tracking",
@@ -72,79 +57,8 @@ export default async function Home() {
   return (
     <>
       <SuperAdminHomeRedirect />
-      {/* Hero — light, two-column: pitch + real CTAs/nav pills on the left,
-          the owner photo (its own shop background baked in, fading to
-          transparent on its left edge) filling the right column directly —
-          no card/panel wrapper needed since the photo already blends into
-          the page. Kept short on purpose: Featured Apps needs to be the
-          next thing a visitor sees, not something they scroll to find. */}
-      <section className="relative overflow-hidden bg-white">
-        <Container className="relative !max-w-7xl pt-6 pb-4 md:pt-8 md:pb-4">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-center">
-            <div>
-              {/* The category line — answers "what is Bizzux?" before the
-                  headline does, so it's treated as a brand statement, not a
-                  small decorative eyebrow. */}
-              <div className="inline-flex items-center gap-2 mb-3 text-brand-tealDark font-extrabold text-sm md:text-base tracking-wide uppercase">
-                <span className="w-6 h-[3px] rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark" />
-                {BRAND_TAGLINE}
-              </div>
-              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight leading-tight text-ink">
-                Run Your Business. Build What&apos;s Next.{" "}
-                <span className="bg-gradient-to-r from-brand-tealDark to-brand-blueDark bg-clip-text text-transparent">
-                  All Under One Roof.
-                </span>
-              </h1>
-              <p className="mt-3 text-slate-600 max-w-lg text-sm md:text-base">
-                Manage CRM, sales, POS, inventory, billing, expenses, projects, files and more from one connected
-                platform. Bizzux brings AI-powered business apps together to help you work smarter and grow faster.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <CTAButton href="/apps">Explore Bizzux Platform</CTAButton>
-                <CTAButton href="/contact" variant="secondary">Book a Demo</CTAButton>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {heroQuickLinks.map((l) => (
-                  <a
-                    key={l.label}
-                    href="/apps"
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-3 py-1 text-xs md:text-sm text-slate-700 hover:border-brand-teal hover:text-brand-blue transition-colors"
-                  >
-                    <l.icon className="w-3.5 h-3.5" />
-                    {l.label}
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative hidden lg:block">
-              <div className="relative overflow-hidden aspect-[4/3] flex items-end justify-end">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/images/hero-owner.png"
-                  alt="A Bizzux shop owner, smiling, with a POS tablet on her counter"
-                  className="absolute inset-0 w-full h-full object-cover"
-                  style={{ objectPosition: "right top" }}
-                />
-              </div>
-
-              <div className="absolute top-3 right-2 bg-white rounded-2xl shadow-lg shadow-slate-900/10 border border-slate-100 px-4 py-3 flex items-center gap-3 max-w-[200px]">
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-tealDark to-brand-blueDark text-white flex items-center justify-center shrink-0">
-                  <IconChart className="w-4.5 h-4.5" />
-                </div>
-                <span className="text-sm font-semibold leading-snug text-ink">Grow Smarter with Bizzux</span>
-              </div>
-
-              <div
-                className="absolute bottom-4 left-2 text-brand-blue text-sm font-medium italic -rotate-6 select-none"
-                style={{ fontFamily: "cursive" }}
-              >
-                More time for what you love
-              </div>
-            </div>
-          </div>
-        </Container>
-      </section>
+      {/* Hero — animated showcase (rotating app orbit around the photo) */}
+      <HeroShowcase />
 
       {/* Featured apps — right under the hero, no scroll needed to reach it */}
       <div className="px-6 relative z-10">
