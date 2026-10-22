@@ -393,7 +393,7 @@ function Done({ r, context, onManage, onClose, onAnother }) {
           <b>Save these now. They are shown only once.</b>
           <div>Bizzux ID: <code>{toLoginId(r.username)}</code></div>
           <div>Password: <code>{r.password}</code> <button type="button" className="adm-link" onClick={() => copy(`Bizzux ID: ${toLoginId(r.username)}\nPassword: ${r.password}`)}>{copied ? "Copied" : "Copy"}</button></div>
-          <p className="muted" style={{ marginBottom: 0 }}>Give these to the person in a secure way. They sign in with the username and set their own password.{r.reused ? " A new password was issued for the same user." : ""}{r.photoError ? " The profile photo could not be saved: " + r.photoError : ""}</p>
+          <p className="muted" style={{ marginBottom: 0 }}>Give these to the person in a secure way. They sign in with the Bizzux ID (or just the part before the @) and set their own password.{r.reused ? " A new password was issued for the same user." : ""}{r.photoError ? " The profile photo could not be saved: " + r.photoError : ""}</p>
         </div>
       )}
       {r.kind === "member" && <p>App access was updated for <b>{r.name}</b>. They keep their existing login.</p>}
