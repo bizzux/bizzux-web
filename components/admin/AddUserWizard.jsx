@@ -196,7 +196,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
             {f.method === "username" && (
               <div className="adm-photo">
                 <span className="adm-photo-img" aria-hidden="true">
-                  {f.photoPreview ? <img src={f.photoPreview} alt="" /> : <span>{(f.display || f.first || "?").trim().slice(0, 1).toUpperCase()}</span>}
+                  {f.photoPreview ? <img src={f.photoPreview} alt="" /> : <svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" aria-hidden="true"><circle cx="12" cy="8.5" r="4.2" /><path d="M3.5 21c0-4.7 3.8-7.5 8.5-7.5s8.5 2.8 8.5 7.5z" /></svg>}
                 </span>
                 <div>
                   <div className="adm-lab" style={{ marginBottom: 4 }}>Profile photo <span className="adm-hint" style={{ display: "inline" }}>(optional)</span></div>
