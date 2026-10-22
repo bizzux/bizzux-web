@@ -57,8 +57,8 @@ div:has(> .bzx-app .adm-shell) > footer { display:none; }
 .adm-cmdbtn.primary { color:var(--adm-accent); font-weight:600; }
 .adm-cmdsep { width:1px; height:20px; background:var(--adm-line); margin:0 6px; }
 .adm-menuwrap { position:relative; display:inline-block; }
-.adm-menu { position:absolute; z-index:30; top:34px; left:0; min-width:200px; margin:0; padding:4px 0; list-style:none; background:#fff; border:1px solid var(--adm-line); border-radius:6px; box-shadow:0 6px 20px rgba(15,23,42,.14); }
-.adm-menuitem { display:flex; align-items:center; gap:8px; width:100%; height:34px; padding:0 12px; border:0; background:none; font:inherit; font-size:13px; text-align:left; cursor:pointer; }
+.adm-menu { position:absolute; z-index:30; top:36px; left:0; min-width:260px; width:max-content; max-width:min(360px, 92vw); margin:0; padding:4px 0; list-style:none; background:#fff; border:1px solid var(--adm-line); border-radius:6px; box-shadow:0 6px 20px rgba(15,23,42,.14); }
+.adm-menuitem { display:flex; align-items:center; gap:10px; width:100%; min-height:38px; padding:6px 14px; white-space:nowrap; border:0; background:none; font:inherit; font-size:13px; text-align:left; cursor:pointer; }
 .adm-menuitem:hover, .adm-menuitem:focus-visible { background:#eef2f7; outline:none; }
 .adm-pager { display:flex; align-items:center; flex-wrap:wrap; gap:12px; justify-content:flex-end; padding:8px 4px 0; font-size:12.5px; color:#4b5563; }
 .adm-pager select { width:auto; padding:2px 6px; font-size:12.5px; }
@@ -152,3 +152,6 @@ th.adm-sortable button:focus-visible { outline:2px solid var(--adm-accent); outl
 .adm-photo { display:flex; align-items:center; gap:14px; margin:14px 0 4px; }
 .adm-photo-img { width:64px; height:64px; border-radius:50%; background:linear-gradient(135deg,var(--adm-teal),var(--adm-accent)); display:grid; place-items:center; overflow:hidden; font-weight:700; font-size:24px; color:#fff; flex:none; }
 .adm-photo-img img { width:100%; height:100%; object-fit:cover; display:block; }
+
+/* menu icons keep one size and never shrink, so labels line up */
+.adm-menuitem svg, .adm-menuitem .adm-ic { width:16px; height:16px; flex:none; }
