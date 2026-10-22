@@ -12,14 +12,28 @@ const STEPS = ["Basics", "Apps & licences", "Optional settings", "Review and fin
 const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const METHODS = [
-  { id: "username", title: "Bizzux username and password", hint: "For someone with no email. You hand over a temporary password; no email address is invented." },
+  { id: "username", title: "Bizzux username and password", hint: "For someone with no email. You hand over a password; no email address is invented." },
   { id: "member", title: "Existing member of your company", hint: "Pick someone who is already in your company and give them app access. No new login is created." },
   { id: "invite", title: "Invite by email (Google or email)", hint: "They get an invitation and sign in with their own Google or email account. An existing Bizzux account is attached, never duplicated." },
   { id: "link", title: "Link an existing Bizzux user", hint: "They already have a Bizzux username login (for example from another company). They must accept before they join." },
 ];
 const EMPLOYMENT = ["", "Full-time", "Part-time", "Contractor", "Intern"];
+// Centre-crop a chosen picture to a 320 x 320 JPEG in the browser, so the upload is small and every avatar has the same shape.
+async function squarePhoto(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error("Choose a JPG, PNG or WebP picture.");
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (!bmp) throw new Error("That picture could not be read.");
+  const side = Math.min(bmp.width, bmp.height), N = 320;
+  const cv = document.createElement("canvas"); cv.width = N; cv.height = N;
+  cv.getContext("2d").drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, N, N);
+  const blob = await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.85));
+  if (!blob) throw new Error("That picture could not be used.");
+  return { blob, url: URL.createObjectURL(blob) };
+}
+
 const blank = (method) => ({
   method, first: "", last: "", display: "", displayTouched: false, username: "", usernameTouched: false, autoPw: false, password: "", showPw: false, mustChange: false,
+  photoBlob: null, photoPreview: "", photoError: "",
   email: "", linkUsername: "", memberUid: "", apps: [], noApps: false, orgRole: "MEMBER", profile: "Staff/Shopkeeper", appRoles: {},
   contact: { jobTitle: "", department: "", employmentType: "", office: "", officePhone: "", mobilePhone: "", streetAddress: "", city: "", state: "", zip: "", country: "" },
   employeeId: "", branch: "", accountExpiresAt: "",
@@ -27,7 +41,7 @@ const blank = (method) => ({
 const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
 const appName = (id) => APPS.find((a) => a.id === id)?.name || id;
 
-export default function AddUserWizard({ open, method: initialMethod = "username", context = null, api, directory, canAssignAdmin, onClose, onCreated, onManage }) {
+export default function AddUserWizard({ open, method: initialMethod = "username", context = null, api, uploadPhoto, directory, canAssignAdmin, onClose, onCreated, onManage }) {
   const [f, setF] = useState(() => blank(initialMethod));
   const [step, setStep] = useState(0);
   const [tried, setTried] = useState(false);
@@ -87,7 +101,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
       if (!f.username.trim()) p.username = "Choose a username.";
       else if (uCheck.state === "bad") p.username = uCheck.message;
       else if (uCheck.state === "checking") p.username = "Wait for the username check to finish.";
-      if (!f.autoPw) { if (!f.password) p.password = "Enter a temporary password or choose automatic."; else if (!strength.ok) p.password = "Choose a stronger password (at least 8 characters with a mix of letters, numbers or symbols)."; }
+      if (!f.autoPw) { if (!f.password) p.password = "Enter a password or choose automatic."; else if (!strength.ok) p.password = "Choose a stronger password (at least 8 characters with a mix of letters, numbers or symbols)."; }
     } else if (f.method === "member") {
       if (!f.memberUid) p.memberUid = "Choose a person.";
     } else if (f.method === "invite") {
@@ -125,7 +139,9 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
           department: c.department, designation: c.jobTitle, mobile: c.mobilePhone, employmentType: c.employmentType === "Contractor" ? "Contractor" : "Employee",
           accountExpiresAt: f.accountExpiresAt, contactInfo: c,
         });
-        setResult({ kind: "username", username: r.username, name: f.display.trim(), password: r.password, apps, orgRole: f.orgRole, appRoles: f.appRoles, reused: !!r.reused });
+        let photoError = "";
+        if (f.photoBlob && r.uid && uploadPhoto) { try { await uploadPhoto(r.uid, f.photoBlob); } catch (e) { photoError = e.message || "upload failed"; } }
+        setResult({ kind: "username", username: r.username, name: f.display.trim(), password: r.password, apps, orgRole: f.orgRole, appRoles: f.appRoles, reused: !!r.reused, photoError });
       } else if (f.method === "member") {
         const person = (directory?.users || []).find((u) => u.uid === f.memberUid);
         const union = [...new Set([...(person?.apps || []), ...apps])];
@@ -177,6 +193,22 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
                 </label>
               ))}
             </fieldset>
+            {f.method === "username" && (
+              <div className="adm-photo">
+                <span className="adm-photo-img" aria-hidden="true">
+                  {f.photoPreview ? <img src={f.photoPreview} alt="" /> : <span>{(f.display || f.first || "?").trim().slice(0, 1).toUpperCase()}</span>}
+                </span>
+                <div>
+                  <div className="adm-lab" style={{ marginBottom: 4 }}>Profile photo <span className="adm-hint" style={{ display: "inline" }}>(optional)</span></div>
+                  <label className="btn-outline-dark" style={{ cursor: "pointer", padding: "6px 12px", fontSize: 13 }}>
+                    {f.photoPreview ? "Change photo" : "Upload photo"}
+                    <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={async (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (!file) return; try { const { blob, url } = await squarePhoto(file); set({ photoBlob: blob, photoPreview: url, photoError: "" }); } catch (err) { set({ photoError: err.message }); } }} />
+                  </label>
+                  {f.photoPreview && <button type="button" className="adm-link" style={{ marginLeft: 10 }} onClick={() => set({ photoBlob: null, photoPreview: "" })}>Remove</button>}
+                  {f.photoError && <div className="adm-err" role="alert">{f.photoError}</div>}
+                </div>
+              </div>
+            )}
             {f.method === "member" && (
               <Field label="Person" required error={show("memberUid")} wide hint="Everyone already in your company.">
                 <select className="input" data-autofocus value={f.memberUid} onChange={(e) => set({ memberUid: e.target.value })}>
@@ -202,7 +234,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
                 </Field>
                 <label className="adm-check"><input type="checkbox" checked={f.autoPw} onChange={(e) => set({ autoPw: e.target.checked, password: "" })} /> Automatically create a password</label>
                 {!f.autoPw && (
-                  <Field label="Temporary password" required error={show("password")} wide hint="At least 8 characters; your company's password policy is checked again when you finish.">
+                  <Field label="Password" required error={show("password")} wide hint="At least 8 characters; your company's password policy is checked again when you finish.">
                     <div className="adm-pw">
                       <input className="input" type={f.showPw ? "text" : "password"} autoComplete="new-password" value={f.password} onChange={(e) => set({ password: e.target.value })} aria-describedby="pwmeter" />
                       <button type="button" className="adm-link" onClick={() => set({ showPw: !f.showPw })}>{f.showPw ? "Hide" : "Show"}</button>
@@ -355,8 +387,8 @@ function Done({ r, context, onManage, onClose, onAnother }) {
         <div className="adm-cred" role="group" aria-label="Sign-in details, shown once">
           <b>Save these now. They are shown only once.</b>
           <div>Username: <code>{r.username}</code></div>
-          <div>Temporary password: <code>{r.password}</code> <button type="button" className="adm-link" onClick={() => copy(`Username: ${r.username}\nTemporary password: ${r.password}`)}>{copied ? "Copied" : "Copy"}</button></div>
-          <p className="muted" style={{ marginBottom: 0 }}>Give these to the person in a secure way. They sign in with the username and set their own password.{r.reused ? " A new temporary password was issued for the same user." : ""}</p>
+          <div>Password: <code>{r.password}</code> <button type="button" className="adm-link" onClick={() => copy(`Username: ${r.username}\nPassword: ${r.password}`)}>{copied ? "Copied" : "Copy"}</button></div>
+          <p className="muted" style={{ marginBottom: 0 }}>Give these to the person in a secure way. They sign in with the username and set their own password.{r.reused ? " A new password was issued for the same user." : ""}{r.photoError ? " The profile photo could not be saved: " + r.photoError : ""}</p>
         </div>
       )}
       {r.kind === "member" && <p>App access was updated for <b>{r.name}</b>. They keep their existing login.</p>}

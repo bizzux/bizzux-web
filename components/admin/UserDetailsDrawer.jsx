@@ -8,7 +8,7 @@ const TABS = ["Overview", "Account", "Organizations", "Apps & licences", "Roles"
 const LOGIN = { google: "Google", email: "Email and password", username: "Bizzux username", "attendance-username": "Attendance username", unknown: "Unknown" };
 const ORG_SOURCE = { owner: "Company owner", explicit: "Set by an administrator", "legacy-profile": "Derived from the business profile" };
 const ACTION = {
-  "user.create_username": "Account created", "user.create_username_retry": "Account creation retried", "user.reset_password": "Password reset", "user.reissue_temp_password": "Temporary password re-issued",
+  "user.create_username": "Account created", "user.create_username_retry": "Account creation retried", "user.reset_password": "Password reset", "user.reissue_temp_password": "Password re-issued",
   "user.set_apps": "App access changed", "org.set_role": "Organization role changed", "team.remove": "Removed from the company", "team.restore": "Restored to the company", "user.link_company": "Joined the company",
   "user.bind_employee": "Linked to an Attendance record", "user.reset_username_password": "Password reset", "user.regenerate_recovery_codes": "New recovery codes issued", "user.link_request": "Invited to join the company", "contact.create": "Contact added", "user.suspend": "Suspended", "user.activate": "Re-activated", "user.set_expiry": "Account expiry changed", "user.unlock_username": "Sign-in unlocked",
 };

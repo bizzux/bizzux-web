@@ -22,6 +22,16 @@ import { roleLabel } from "@/lib/roleLabel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Profile photo for a person in the company (multipart; the server checks the image and the tenant).
+async function uploadPhoto(uid, blob) {
+  const token = await auth.currentUser.getIdToken();
+  const f = new FormData(); f.set("uid", uid); f.set("photo", blob, "photo.jpg");
+  const res = await fetch("/api/iam/photo", { method: "POST", headers: { Authorization: "Bearer " + token }, body: f });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || "The photo could not be saved.");
+  return d;
+}
+
 async function api(path, method, body) {
   const token = await auth.currentUser.getIdToken();
   const res = await fetch(path, {
@@ -513,7 +523,7 @@ export default function TeamPage() {
 
       <ColumnChooser open={showCols} columns={colKeys} onClose={() => setShowCols(false)} onSave={saveCols} saving={savingCols} error={colErr} />
 
-      <AddUserWizard open={wizard.open} method={wizard.method} context={wizardCtx} api={api} directory={directory} canAssignAdmin={canAssignAdmin}
+      <AddUserWizard open={wizard.open} method={wizard.method} context={wizardCtx} api={api} uploadPhoto={uploadPhoto} directory={directory} canAssignAdmin={canAssignAdmin}
         onClose={() => setWizard((w) => ({ ...w, open: false }))} onCreated={() => load()}
         onManage={(q) => { setFilters({ q: String(q || ""), login: "", status: "", app: "", role: "" }); }} />
 
