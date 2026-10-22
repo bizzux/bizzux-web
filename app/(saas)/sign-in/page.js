@@ -280,18 +280,26 @@ export default function LoginPage() {
         </div>
       )}
       <Nav />
-      <div className="login-wrap">
+      <div className="login-wrap login-v2">
       <div className="login-shell">
       <div className="login-aside">
-        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.9, marginBottom: 10 }}>{BRAND_TAGLINE}</div>
-        <h2>Run your business smarter, every day.</h2>
-        <p>One account for POS, inventory, expenses and profit. Start free, no card required.</p>
+        <div className="lv2-eyebrow">{BRAND_TAGLINE}</div>
+        <h2>{mode === "signup" ? <>Start free.<br />Ready to grow <span className="lv2-accent">today?</span></> : <>Welcome back.<br />Ready to grow <span className="lv2-accent">today?</span></>}</h2>
+        <p>One account for all your business apps — POS, inventory, projects, finance, HR, attendance and more. {mode === "signup" ? "Create your account and get started in minutes." : "Sign in and pick up right where you left off."}</p>
         <ul>
-          <li>Sales, inventory and expenses in one place</li>
-          <li>Multi-branch visibility as you grow</li>
+          <li>All your business apps in one login</li>
+          <li>Role-based access for your team</li>
+          <li>Secure and reliable platform</li>
           <li>Free 14-day trial, cancel anytime</li>
-          <li>Invite your team with role-based access</li>
         </ul>
+        <div className="lv2-hero" aria-hidden="true">
+          <img src="/images/hero-girl.webp" alt="" className="lv2-girl" />
+          <div className="lv2-note">Welcome back!<br />Log in and<br />get to work<br />smarter.</div>
+          <span className="lv2-chip lv2-chip-sales"><i style={{ background: "#2159d4" }} />Sales</span>
+          <span className="lv2-chip lv2-chip-inv"><i style={{ background: "#f97316" }} />Inventory</span>
+          <span className="lv2-chip lv2-chip-crm"><i style={{ background: "#12a695" }} />CRM</span>
+          <span className="lv2-chip lv2-chip-proj"><i style={{ background: "#7c3aed" }} />Projects</span>
+        </div>
       </div>
       <div className="login-card">
         <Link href="/" style={{ display: "block", marginBottom: 16 }}>
@@ -345,7 +353,7 @@ export default function LoginPage() {
 
           <div>
             <label className="label">{mode === "signin" ? "Email or username" : "Email"}</label>
-            <input className="input" type={mode === "signin" ? "text" : "email"} autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={mode === "signin"} />
+            <input className="input" type={mode === "signin" ? "text" : "email"} autoCapitalize="none" placeholder={mode === "signin" ? "Enter your email or username" : "Enter your email"} value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={mode === "signin"} />
             {fieldErrors.email && <p className="field-error">{fieldErrors.email}</p>}
           </div>
 
@@ -354,6 +362,7 @@ export default function LoginPage() {
             <div className="password-field">
               <input
                 className="input" type={showPassword ? "text" : "password"}
+                placeholder={mode === "signin" ? "Enter your password" : "Create a password (8+ characters)"}
                 value={password} onChange={(e) => setPassword(e.target.value)}
               />
               <button
@@ -367,8 +376,8 @@ export default function LoginPage() {
               </button>
             </div>
             {fieldErrors.password && <p className="field-error">{fieldErrors.password}</p>}
-            {mode === "signin" && email.trim() && !email.includes("@") && (
-              <p style={{ fontSize: 12.5, marginTop: 6 }}><Link href="/recover-password" style={{ textDecoration: "underline" }}>Forgot your password? Use a recovery code</Link></p>
+            {mode === "signin" && (
+              <p className="lv2-forgot"><Link href="/recover-password">Forgot password?</Link></p>
             )}
           </div>
 
@@ -423,7 +432,7 @@ export default function LoginPage() {
           )}
 
           <button className="btn-primary" style={{ width: "100%" }} disabled={busy}>
-            {busy ? (mode === "signup" ? "Creating account…" : "Signing in…") : (mode === "signup" ? "Get started" : "Sign in")}
+            {busy ? (mode === "signup" ? "Creating account…" : "Signing in…") : (mode === "signup" ? "Get started" : "Sign in  →")}
           </button>
           {error && <p className="error">{error}</p>}
         </form>
