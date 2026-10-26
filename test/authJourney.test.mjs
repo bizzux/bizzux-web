@@ -98,7 +98,7 @@ test("2/3. controlled failure records a safe category; retry then success stays 
 
 test("nothing sensitive is stored; unknown values are collapsed", async () => {
   const j = "sj" + rnd() + "abcdef";
-  await send([{ ...ev(j, "AUTH_FAILED", 0, { errorCategory: "Wrong password 'hunter2' for bob@x.com", app: "evil-app", method: "magic" }), password: "hunter2", token: "secret-token" }], googleUser.token);
+  await send([{ ...ev(j, "AUTH_FAILED", 0, { errorCategory: "Wrong password 'hunter2' for bob@x.com", app: "Evil App!", method: "magic" }), password: "hunter2", token: "secret-token" }], googleUser.token);
   await send([{ ...ev(j, "BOGUS_EVENT", 1) }, { ...ev("x", "AUTH_FAILED", 1) }]); // unknown event / bad journey id -> dropped
   const snap = await db.collection(lib.COLLECTION).where("journeyId", "==", j).get();
   assert.equal(snap.size, 1);

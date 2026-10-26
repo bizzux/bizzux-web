@@ -6,7 +6,7 @@ import { auth } from "@/lib/firebase";
 // User → Login History → Authentication Journey. Admin-only; the API enforces
 // who may see what (Platform admins: all organizations, Organization admins:
 // their own organization only).
-const APP_LABEL = { "admin-center": "Admin Center", attendance: "Attendance", crm: "CRM", projects: "Projects", pos: "POS", other: "Other" };
+const APP_LABEL = { "admin-center": "Admin Center", attendance: "Attendance", crm: "CRM", projects: "Projects", pos: "POS", notes: "Notes", files: "Files", chat: "Chat", mail: "Mail", finance: "Finance", capture: "Capture", assistant: "Assistant", portal: "Portal", other: "Other" };
 const METHOD_LABEL = { google: "Google", password: "Email + password", "bizzux-id": "Bizzux ID", "sso-handoff": "App hand-off", "custom-token": "Custom token", other: "—" };
 const REASON_LABEL = {
   invalid_credentials: "Wrong email/ID or password", popup_blocked: "Pop-up blocked", popup_closed: "Sign-in window closed",
