@@ -71,7 +71,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
   const onName = (patch) => setF((c) => {
     const n = { ...c, ...patch };
     if (!n.displayTouched) n.display = [n.first, n.last].filter(Boolean).join(" ");
-    if (!n.usernameTouched && n.method === "username") n.username = slugName(n.first, n.last);
+    if (!n.usernameTouched && n.method === "username") n.username = slugName(n.first);
     return n;
   });
 
@@ -83,7 +83,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
     if (!USERNAME_RE.test(u)) { setUCheck({ state: "bad", message: "3 to 32 letters, numbers, dots, dashes or underscores. No spaces." }); return undefined; }
     setUCheck({ state: "checking", message: "Checking…" });
     const t = setTimeout(() => {
-      api("/api/iam/identities?checkUsername=" + encodeURIComponent(u), "GET")
+      api("/api/iam/identities?checkUsername=" + encodeURIComponent(u) + "&last=" + encodeURIComponent(f.last || ""), "GET")
         .then((d) => setUCheck(d.ok ? { state: "ok", message: toLoginId(u) + " is available" } : { state: "bad", message: d.problem, suggestion: d.suggestion || "" }))
         .catch(() => setUCheck({ state: "idle", message: "" }));
     }, 400);

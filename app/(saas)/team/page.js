@@ -1130,7 +1130,7 @@ function AddUserModal({ onClose, onAdded }) {
                   <label className="label">{loginMethod === "credentials" ? "Username (email format) *" : "Email *"}</label>
                   <input
                     className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                    placeholder={loginMethod === "credentials" ? "name@bizzux.login" : ""}
+                    placeholder={loginMethod === "credentials" ? "firstname@onbizzux.com" : ""}
                   />
                 </div>
                 {loginMethod === "email" ? (
