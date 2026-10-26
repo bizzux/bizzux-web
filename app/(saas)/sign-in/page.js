@@ -16,6 +16,11 @@ import Nav from "@/components/Nav";
 import { IconEye, IconEyeOff } from "@/components/Icons";
 import { COUNTRIES, DEFAULT_COUNTRY_ISO2, findCountry, phoneLengthLabel, phoneLengthShortLabel, isValidPhoneLength } from "@/lib/countryCodes";
 import { BRAND_TAGLINE } from "@/lib/brand";
+import { createJourneyTracker } from "@/lib/authJourneyClient";
+import { APP_VERSION } from "@/lib/version";
+
+// Login Journey Diagnostics (see lib/authJourney.js) — categories only, never credentials.
+const journey = createJourneyTracker({ app: "admin-center", buildVersion: APP_VERSION, getToken: () => auth.currentUser?.getIdToken() });
 
 export default function LoginPage() {
   const router = useRouter();
@@ -57,17 +62,22 @@ export default function LoginPage() {
         const result = await getRedirectResult(auth);
         if (result && !cancelled) {
           try { sessionStorage.removeItem("bzx:googleRedirect"); } catch {}
+          journey.track("OAUTH_CALLBACK_RECEIVED", { method: "google" });
+          journey.track("AUTH_SUCCEEDED", { method: "google" });
           setGoogleBusy(true);
           await afterAuth();
           return;
         }
         if (!cancelled && returning) {
           // Redirect came back without a result — release the form.
+          journey.track("OAUTH_CALLBACK_RECEIVED", { method: "google" });
+          journey.track("AUTH_FAILED", { method: "google", errorCategory: "redirect_failed" });
           try { sessionStorage.removeItem("bzx:googleRedirect"); } catch {}
           setGoogleBusy(false);
         }
       } catch (err) {
         try { sessionStorage.removeItem("bzx:googleRedirect"); } catch {}
+        journey.fail("AUTH_FAILED", err, { method: "google" });
         if (!cancelled) {
           setGoogleBusy(false);
           setError("That didn't go through. Mind giving it another try?");
@@ -100,6 +110,7 @@ export default function LoginPage() {
 
   async function afterAuth(extra) {
     const result = await claimAccount(extra);
+    journey.track("SESSION_INITIALIZED");
     if (result?.mustChangePassword) {
       router.push("/change-password");
     } else if (result?.twoFactorRequired && !result?.twoFactorEnabled) {
@@ -111,6 +122,7 @@ export default function LoginPage() {
       // separate /api/me call if an older response didn't include it.
       const role = result && "platformRole" in result ? result.platformRole : undefined;
       const isAdmin = role !== undefined ? role === "OWNER" || role === "ADMIN" : await isPlatformAdmin();
+      journey.track("APP_ACCESS_GRANTED");
       router.push(isAdmin ? "/admin" : "/dashboard");
     }
   }
@@ -132,15 +144,19 @@ export default function LoginPage() {
   async function handleGoogleSignIn() {
     setError("");
     setGoogleBusy(true);
+    journey.track("LOGIN_STARTED", { method: "google" });
+    journey.track("AUTH_PROVIDER_SELECTED", { method: "google" });
     // Navigates away to Google and back — no popup involved, so nothing
     // here runs until the redirect-result effect above picks it up on
     // return. Only the (rare) synchronous failure to even start the
     // redirect lands in this catch.
     try {
       try { sessionStorage.setItem("bzx:googleRedirect", "1"); } catch {}
+      journey.track("OAUTH_REDIRECT_STARTED", { method: "google" });
       await signInWithRedirect(auth, new GoogleAuthProvider());
     } catch (err) {
       try { sessionStorage.removeItem("bzx:googleRedirect"); } catch {}
+      journey.fail("AUTH_FAILED", err, { method: "google" });
       setError("That didn't go through. Mind giving it another try?");
       setGoogleBusy(false);
     }
@@ -198,6 +214,8 @@ export default function LoginPage() {
       setBusy(true);
     }
 
+    const loginMethod = email.includes("@") ? "password" : "bizzux-id";
+    if (mode !== "signup") journey.track("LOGIN_STARTED", { method: loginMethod, subject: email });
     try {
       if (mode === "signup") {
         await createUserWithEmailAndPassword(auth, email, password);
@@ -235,6 +253,7 @@ export default function LoginPage() {
           });
           const d = await r.json().catch(() => ({}));
           if (!r.ok) {
+            journey.fail("AUTH_FAILED", r.status === 429 ? "too-many-requests" : "invalid-credential", { method: loginMethod, subject: email });
             setError(d.error || "That didn't work. Double check your username and password and try again.");
             setBusy(false);
             return;
@@ -243,9 +262,11 @@ export default function LoginPage() {
         } else {
           await signInWithEmailAndPassword(auth, email, password);
         }
+        journey.track("AUTH_SUCCEEDED", { method: loginMethod });
         await afterAuth();
       }
     } catch (err) {
+      if (mode !== "signup") journey.fail(auth.currentUser ? "SESSION_FAILED" : "AUTH_FAILED", err, { method: loginMethod, subject: email });
       if (mode === "signup" && err?.code === "auth/email-already-in-use") {
         setError("Looks like you already have an account with this email. Try signing in instead.");
       } else if (err?.code === "auth/user-disabled") {

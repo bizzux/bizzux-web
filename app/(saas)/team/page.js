@@ -8,6 +8,7 @@ import { APPS, appName } from "@/lib/appCatalog";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import AccountTabs from "@/components/AccountTabs";
+import AuthJourneyPanel from "@/components/AuthJourneyPanel";
 import { useMe } from "@/lib/useMe";
 import { roleLabel } from "@/lib/roleLabel";
 
@@ -333,6 +334,13 @@ export default function TeamPage() {
           }}
         />
       )}
+
+      <div className="admin-shell" style={{ marginTop: 8 }}>
+        <details>
+          <summary style={{ cursor: "pointer", fontWeight: 600, marginBottom: 10 }}>Login history · Authentication journey</summary>
+          <AuthJourneyPanel />
+        </details>
+      </div>
     </div>
   );
 }
