@@ -10,6 +10,7 @@ import Link from "next/link";
 import AdminNav from "@/components/AdminNav";
 import { useIsAdminHost, wwwHrefFor } from "@/lib/adminLinks";
 import AccountTabs from "@/components/AccountTabs";
+import AuthJourneyPanel from "@/components/AuthJourneyPanel";
 import JoinRequestsPanel from "@/components/JoinRequestsPanel";
 import { useMe } from "@/lib/useMe";
 import { CommandBar, Cmd, CmdMenu, CmdSep, Pager } from "@/components/admin/CommandBar";
@@ -564,6 +565,13 @@ export default function TeamPage() {
           }}
         />
       )}
+
+      <div className="admin-shell" style={{ marginTop: 8 }}>
+        <details>
+          <summary style={{ cursor: "pointer", fontWeight: 600, marginBottom: 10 }}>Login history · Authentication journey</summary>
+          <AuthJourneyPanel />
+        </details>
+      </div>
     </div>
   );
 }

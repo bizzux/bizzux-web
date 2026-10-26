@@ -11,6 +11,7 @@ import AttendancePricingManager from "@/components/AttendancePricingManager";
 import AttendanceInsights from "@/components/AttendanceInsights";
 import AccessRoles from "@/components/AccessRoles";
 import BusinessHealthPanel from "@/components/BusinessHealthPanel";
+import AuthJourneyPanel from "@/components/AuthJourneyPanel";
 import { APP_CATALOG } from "@/lib/apps";
 import { IconTrash } from "@/components/Icons";
 import dynamic from "next/dynamic";
@@ -52,6 +53,7 @@ const SECTIONS = [
     items: [
       { id: "platformadmins", label: "Access & Roles" },
       { id: "auditlogs", label: "Audit Logs" },
+      { id: "authjourneys", label: "Login Journeys" },
       { id: "security", label: "Security Settings" },
     ],
   },
@@ -234,6 +236,7 @@ export default function SuperAdminPanel() {
       )}
       {tab === "platformadmins" && <AccessRoles isOwner={platformRole === "OWNER"} />}
       {tab === "auditlogs" && <AuditLogsPanel />}
+      {tab === "authjourneys" && <AuthJourneyPanel />}
       {tab === "security" && <SecuritySettingsPanel />}
       {tab === "storage" && <BlobCleanupPanel />}
       {tab === "deleteuser" && platformRole === "OWNER" && <UsersLifecycleTab />}
