@@ -6,7 +6,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // GET /api/iam/users/{uid}[?organizationId=] -> the details drawer for one member of the caller's company (404 for anyone else).
-// PATCH /api/iam/users/{uid}  { branch, employeeId, contactInfo: {...} } -> saves the descriptive profile (not identity, login, roles or access).
+// PATCH /api/iam/users/{uid}  { branch?, employeeId?, contactInfo?, firstName?, lastName?, displayName?, accountExpiresAt? } -> saves only the fields sent.
+// Never the login ID, email, password, roles or access (those have their own flows).
 export async function PATCH(req, { params }) {
   try {
     const c = await requireOrgManager(req);

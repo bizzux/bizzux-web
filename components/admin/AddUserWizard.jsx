@@ -137,7 +137,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
       if (f.method === "username") {
         const c = f.contact;
         const r = await api("/api/iam/identities", "POST", {
-          kind: "username", idempotencyKey: key.current, fullName: f.display.trim(), username: f.username.trim().toLowerCase(), password: f.autoPw ? "" : f.password,
+          kind: "username", idempotencyKey: key.current, fullName: f.display.trim(), firstName: f.first.trim(), lastName: f.last.trim(), username: f.username.trim().toLowerCase(), password: f.autoPw ? "" : f.password,
           mustChangePassword: f.mustChange, profile: f.profile, apps, appRoles: f.appRoles, orgRole: f.orgRole, employeeId: f.employeeId, branch: f.branch,
           department: c.department, designation: c.jobTitle, mobile: c.mobilePhone, employmentType: c.employmentType === "Contractor" ? "Contractor" : "Employee",
           accountExpiresAt: f.accountExpiresAt, contactInfo: c,

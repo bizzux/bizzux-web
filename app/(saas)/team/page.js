@@ -532,7 +532,7 @@ export default function TeamPage() {
         </div>
       </div>
 
-      <UserDetailsDrawer open={!!detail} uid={detail?.uid} row={detail} api={api} canAssignAdmin={canAssignAdmin} onClose={() => setDetail(null)}
+      <UserDetailsDrawer open={!!detail} uid={detail?.uid} row={detail} api={api} canAssignAdmin={canAssignAdmin} onChanged={() => load()} onClose={() => setDetail(null)}
         onResetPassword={(r) => { setDetail(null); setResetFor(r); }}
         onManageAccess={(r) => { if (r.dirOnly) { setErr("This person has no team record here, so roles and app access are changed from the Add or Link flows."); return; } setDetail(null); setManagingMember(r); }}
         onDisable={(r) => { setDetail(null); toggleDisabled(r); }} onDelete={(r) => { setDetail(null); remove(r.id); }}

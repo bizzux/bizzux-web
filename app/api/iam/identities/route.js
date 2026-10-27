@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOrgManager } from "@/lib/firebaseAdmin";
-import { createUsernameIdentity, requestLinkToOrganization, setUserApps, usernameAvailability, bindExistingMemberToEmployee, setOrganizationRole, reissueTemporaryPassword, resolveOrganizationId, validateNewUsernameIdentity }
+import { createUsernameIdentity, requestLinkToOrganization, setUserApps, usernameAvailability, bindExistingMemberToEmployee, setOrganizationRole, setBusinessProfile, reissueTemporaryPassword, resolveOrganizationId, validateNewUsernameIdentity }
  from "@/lib/iam/identityService";
 import { restoreMember, removeMember, purgeLeftover } from "@/lib/iam/membershipLifecycle";
 import { resetUsernamePassword } from "@/lib/iam/userAdmin";
@@ -33,6 +33,7 @@ export async function POST(req) {
     if (b.kind === "link") return NextResponse.json(await requestLinkToOrganization({ actor: c, organizationId, username: b.username, profile: b.profile, apps: b.apps, bindEmployeeId: b.bindEmployeeId }));
     if (b.kind === "apps") return NextResponse.json(await setUserApps({ actor: c, organizationId, uid: String(b.uid || ""), apps: b.apps }));
     if (b.kind === "orgRole") return NextResponse.json(await setOrganizationRole({ actor: c, organizationId, uid: String(b.uid || ""), role: b.role }));
+    if (b.kind === "profile") return NextResponse.json(await setBusinessProfile({ actor: c, organizationId, uid: String(b.uid || ""), profile: b.profile }));
     if (b.kind === "reissue") return NextResponse.json(await reissueTemporaryPassword({ actor: c, organizationId, uid: String(b.uid || "") }));
     if (b.kind === "resetPassword") return NextResponse.json(await resetUsernamePassword({ actor: c, organizationId, uid: String(b.uid || ""), password: b.password, mustChange: b.mustChange }));
     if (b.kind === "validate") return NextResponse.json(await validateNewUsernameIdentity({ ...b, organizationId, actor: c }));
