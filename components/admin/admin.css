@@ -98,6 +98,7 @@ div:has(> .bzx-app .adm-shell) > footer { display:none; }
 .adm-grouphead h3 { margin:0; font-size:14px; font-weight:600; color:#111827; }
 .adm-editlink { display:inline-flex; align-items:center; gap:5px; min-height:32px; padding:0 8px; border:0; background:none; border-radius:4px; font:inherit; font-size:13px; font-weight:600; color:var(--adm-accent); cursor:pointer; }
 .adm-editlink:hover { background:#f5f8ff; text-decoration:underline; }
+.adm-editlink:disabled { color:#9ca3af; cursor:not-allowed; } .adm-editlink:disabled:hover { background:none; text-decoration:none; }
 .adm-cmdsep { width:1px; height:20px; background:var(--adm-line); margin:0 6px; }
 .adm-menuwrap { position:relative; display:inline-block; }
 .adm-menu { position:absolute; z-index:30; top:36px; left:0; min-width:260px; width:max-content; max-width:min(360px, 92vw); margin:0; padding:4px 0; list-style:none; background:#fff; border:1px solid var(--adm-line); border-radius:6px; box-shadow:0 6px 20px rgba(15,23,42,.14); }

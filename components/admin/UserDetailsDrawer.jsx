@@ -7,6 +7,8 @@ import { toLoginId } from "@/lib/loginId";
 import { PROFILES } from "@/lib/roles";
 import Notice from "./Notice";
 import { useConfirm } from "./ConfirmDialog";
+import { ADMIN_PROFILES, ROLE_LABEL, adminChangeDialog } from "./roleChange";
+import { discard, effective, hasChanges, isPastExpiry, stageValue } from "@/lib/adminStaging";
 
 const TABS = ["Overview", "Account", "Organizations", "Apps & licences", "Roles", "Activity"];
 const LOGIN = { google: "Google", email: "Email and password", username: "Bizzux username", "attendance-username": "Attendance username", unknown: "Unknown" };
@@ -23,13 +25,47 @@ const FIELD_LABEL = {
   employmentType: "employment type", employeeId: "employee ID", branch: "branch", office: "office", officePhone: "office phone", mobilePhone: "mobile number",
   streetAddress: "street address", city: "city", state: "state or province", zip: "postal code", country: "country or region", faxNumber: "fax number",
 };
-const ROLE_LABEL = { OWNER: "Owner", ADMIN: "Admin", MEMBER: "Member", VIEWER: "Viewer" };
-const ADMIN_PROFILES = ["Global Admin", "Admin"]; // moving someone to or from these needs the same right as making an Admin
+const NO_RECORD = "This person has no team record in this company, so this can't be edited here.";
+const NOT_HOME = "Name and sign-in are managed by this person's own account or their home company, so they can't be changed here.";
 const Pencil = () => (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>);
-// A heading for one group in the Overview with its own "Edit" control (hidden when the person can't be edited).
-const GroupHead = ({ title, onEdit, label }) => (
-  <div className="adm-grouphead"><h3>{title}</h3>{onEdit && <button type="button" className="adm-editlink" aria-label={label} onClick={onEdit}><Pencil />Edit</button>}</div>
+// A heading for one section with its own "Edit" link. Every section shows one: when this person or section can't be edited by the viewer the link is
+// greyed out and `why` (its tooltip) says so, instead of the link silently being missing.
+const GroupHead = ({ title, onEdit, label, why }) => (
+  <div className="adm-grouphead"><h3>{title}</h3>
+    <button type="button" className="adm-editlink" aria-label={label} disabled={!onEdit} title={onEdit ? undefined : why} onClick={onEdit || undefined}><Pencil />Edit</button>
+  </div>
 );
+// The organization role and business profile pickers with Save / Cancel. ONE component for both places that edit them (the Roles tab and the Edit link
+// on the Organizations tab); the staged values and the save logic live in the drawer, so the two can never disagree. Picking only stages a value.
+function RoleEditor({ d, canEdit, canAssignAdmin, curRole, curProfile, nextRole, nextProfile, dirty, saving, closable, onRole, onProfile, onSave, onCancel }) {
+  if (d.organization.role === "OWNER") return null;
+  return (
+    <div>
+      <label className="adm-field">Change organization role
+        <select className="input" style={{ maxWidth: 220 }} value={nextRole} onChange={(e) => onRole(e.target.value)} disabled={saving || (!canAssignAdmin && curRole === "ADMIN")}>
+          <option value="ADMIN" disabled={!canAssignAdmin}>Admin</option><option value="MEMBER">Member</option><option value="VIEWER">Viewer</option>
+        </select>
+        {!canAssignAdmin && <span className="adm-hint">Only the Owner can make or remove an Admin.</span>}
+      </label>
+      {canEdit && (
+        <label className="adm-field" style={{ marginTop: 12 }}>Business profile
+          <select className="input" style={{ maxWidth: 260 }} value={nextProfile} onChange={(e) => onProfile(e.target.value)} disabled={saving || (!canAssignAdmin && ADMIN_PROFILES.includes(curProfile))}>
+            {!PROFILES.some((p) => p.value === curProfile) && <option value={curProfile} disabled>{curProfile || "Not set"}</option>}
+            {PROFILES.filter((p) => p.value !== "Global Admin" || p.value === curProfile).map((p) => (
+              <option key={p.value} value={p.value} disabled={p.value !== curProfile && ADMIN_PROFILES.includes(p.value) && !canAssignAdmin}>{p.label}</option>
+            ))}
+          </select>
+          <span className="adm-hint">Describes the job in the business apps. Separate from the organization role. App access is changed under Manage roles &amp; app access.</span>
+        </label>
+      )}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 16 }}>
+        <button type="button" className="btn-primary-sm" disabled={!dirty || saving} onClick={onSave}>{saving ? "Saving…" : "Save changes"}</button>
+        <button type="button" className="adm-btn-outline" disabled={saving || (!closable && !dirty)} onClick={onCancel}>Cancel</button>
+        {dirty && !saving && <span className="adm-hint" style={{ margin: 0 }}>Not saved yet</span>}
+      </div>
+    </div>
+  );
+}
 const appName = (id) => APPS.find((a) => a.id === id)?.name || id;
 const when = (ms) => (ms ? new Date(ms).toLocaleString() : "");
 const day = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
@@ -43,10 +79,13 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
   const [msg, setMsg] = useState("");
   const [stage, setStage] = useState({}); // Roles tab: the changes picked but not saved yet ({ orgRole?, profile? })
   const [savingRoles, setSavingRoles] = useState(false);
+  const [orgEditing, setOrgEditing] = useState(false); // the Organizations tab's role editor is open (the Roles tab always shows it)
+  const [exp, setExp] = useState(null); // Account tab: the expiry date being edited in place ("" = no expiry), null = not editing
+  const [savingExp, setSavingExp] = useState(false);
   const [askConfirm, confirmDialog] = useConfirm();
   useEffect(() => {
     if (!open || !uid) return undefined;
-    let live = true; setTab(0); setD(null); setErr(""); setMsg(""); setEdit(null); setStage({});
+    let live = true; setTab(0); setD(null); setErr(""); setMsg(""); setEdit(null); setStage({}); setOrgEditing(false); setExp(null);
     api("/api/iam/users/" + encodeURIComponent(uid), "GET").then((x) => live && setD(x)).catch((e) => live && setErr(e.message));
     return () => { live = false; };
   }, [open, uid]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -96,47 +135,58 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
   // Roles tab: picking a value only STAGES it; nothing is saved until "Save changes".
   const curRole = d?.organization?.role || "";
   const curProfile = d?.organization?.profile || "";
-  const nextRole = stage.orgRole ?? curRole;
-  const nextProfile = stage.profile ?? curProfile;
-  const rolesDirty = !!d && (nextRole !== curRole || nextProfile !== curProfile);
+  const nextRole = effective(stage, "orgRole", curRole);
+  const nextProfile = effective(stage, "profile", curProfile);
+  const rolesDirty = !!d && hasChanges(stage, { orgRole: curRole, profile: curProfile });
   const profileLabel = (v) => PROFILES.find((p) => p.value === v)?.label || v || "Not set";
   const saveRoles = async () => {
     const roleChanged = nextRole !== curRole;
     const profChanged = nextProfile !== curProfile;
     const person = title;
     // Anything that makes someone an Admin, or takes Admin away, is confirmed first, naming the person and the old and new values.
-    const toAdmin = (roleChanged && nextRole === "ADMIN") || (profChanged && ADMIN_PROFILES.includes(nextProfile));
-    const fromAdmin = (roleChanged && curRole === "ADMIN") || (profChanged && ADMIN_PROFILES.includes(curProfile));
-    if (toAdmin || fromAdmin) {
-      const ok = await askConfirm({
-        title: "Confirm Admin-level change", tone: "warning", confirmLabel: "Confirm change",
-        body: (
-          <>
-            <p>You are about to change access for <b>{person}</b>:</p>
-            <ul>
-              {roleChanged && <li>Organization role: <b>{ROLE_LABEL[curRole] || curRole}</b> → <b>{ROLE_LABEL[nextRole] || nextRole}</b></li>}
-              {profChanged && <li>Business profile: <b>{profileLabel(curProfile)}</b> → <b>{profileLabel(nextProfile)}</b></li>}
-            </ul>
-            <p>{toAdmin ? "Admins can manage users and app access in this company." : "This takes away their ability to manage users and app access."}</p>
-          </>
-        ),
-      });
-      if (!ok) return;
-    }
+    const adminAsk = adminChangeDialog({ person, curRole, nextRole, curProfile, nextProfile, profileLabel });
+    if (adminAsk && !(await askConfirm(adminAsk))) return;
     setSavingRoles(true); setErr(""); setMsg("");
     const saved = [];
     try {
       if (roleChanged) { await onRoleChange(row, nextRole); saved.push("organization role " + (ROLE_LABEL[curRole] || curRole) + " → " + (ROLE_LABEL[nextRole] || nextRole)); }
       if (profChanged) { await api("/api/iam/identities", "POST", { kind: "profile", uid, profile: nextProfile }); saved.push("business profile " + profileLabel(curProfile) + " → " + profileLabel(nextProfile)); }
-      setStage({});
+      setStage({}); setOrgEditing(false);
       await refresh();
       setMsg("Saved for " + person + ": " + saved.join(" and ") + ". The Organizations tab shows the new values.");
       onChanged?.();
     } catch (x) {
       // Keep what was picked but not saved; show what did save so nothing is misleading.
-      if (saved.length) { setStage((s) => ({ ...s, orgRole: undefined })); await refresh().catch(() => {}); onChanged?.(); }
+      if (saved.length) { setStage((s) => stageValue(s, "orgRole", undefined, curRole)); await refresh().catch(() => {}); onChanged?.(); }
       setErr((x?.message || "Could not save the change.") + (saved.length ? " Already saved: " + saved.join(" and ") + "." : " Nothing was changed."));
     } finally { setSavingRoles(false); }
+  };
+  const cancelRoles = () => { setStage(discard()); setOrgEditing(false); };
+  const roleEditor = (closable) => (
+    <RoleEditor d={d} canEdit={canEdit} canAssignAdmin={canAssignAdmin} curRole={curRole} curProfile={curProfile} nextRole={nextRole} nextProfile={nextProfile}
+      dirty={rolesDirty} saving={savingRoles} closable={closable} onSave={saveRoles} onCancel={cancelRoles}
+      onRole={(v) => setStage((s) => stageValue(s, "orgRole", v, curRole))} onProfile={(v) => setStage((s) => stageValue(s, "profile", v, curProfile))} />
+  );
+
+  // Account tab: the expiry date is edited in place and, like the Roles tab, nothing is saved until "Save changes".
+  const curExpiry = d?.account?.accountExpiresAt || "";
+  const expDirty = exp !== null && exp !== curExpiry;
+  const startExpiry = () => { setErr(""); setMsg(""); setTab(1); setExp(curExpiry); };
+  const saveExpiry = async () => {
+    const person = title;
+    // A date that has already passed locks the person out straight away, so say so before saving.
+    if (isPastExpiry(exp) && !(await askConfirm({
+      title: "Expiry date has already passed", tone: "danger", confirmLabel: "Set expiry",
+      body: <p><b>{person}</b> will no longer be able to sign in, because {exp} is in the past. Choose a later date, or Clear to remove the expiry.</p>,
+    }))) return;
+    setSavingExp(true); setErr(""); setMsg("");
+    try {
+      await api("/api/iam/users/" + encodeURIComponent(uid), "PATCH", { accountExpiresAt: exp });
+      setExp(null);
+      await refresh();
+      setMsg(exp ? "Account expiry for " + person + " is now " + exp + (curExpiry ? " (was " + curExpiry + ")." : ".") : "Account expiry removed for " + person + (curExpiry ? " (was " + curExpiry + ")." : "."));
+      onChanged?.();
+    } catch (x) { setErr((x?.message || "Could not save the expiry.") + " Nothing was changed."); } finally { setSavingExp(false); }
   };
   return (
     <>
@@ -195,7 +245,7 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
             )}
             {tab === 0 && !edit && (
               <>
-              <GroupHead title="Name and sign-in" onEdit={canEdit && canEditIdentity ? () => startEdit("identity") : null} label="Edit name" />
+              <GroupHead title="Name and sign-in" onEdit={canEdit && canEditIdentity ? () => startEdit("identity") : null} label="Edit name" why={canEdit ? NOT_HOME : NO_RECORD} />
               <dl className="adm-rv" style={{ gridTemplateColumns: "170px 1fr" }}>
                 <dt>Display name</dt><dd>{d.name || "—"}</dd>
                 <dt>Bizzux ID</dt><dd>{d.username ? toLoginId(d.username) : "—"}</dd>
@@ -207,11 +257,11 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
               </dl>
               {canEditIdentity && (
                 <>
-                  <GroupHead title="Account expiry" onEdit={canEdit ? () => startEdit("expiry") : null} label="Edit account expiry" />
+                  <GroupHead title="Account expiry" onEdit={canEdit ? () => startEdit("expiry") : null} label="Edit account expiry" why={NO_RECORD} />
                   <dl className="adm-rv" style={{ gridTemplateColumns: "170px 1fr" }}><dt>Account expires on</dt><dd>{d.account.accountExpiresAt || "No expiry"}</dd></dl>
                 </>
               )}
-              <GroupHead title="Job and profile" onEdit={canEdit ? () => startEdit("job") : null} label="Edit job and profile" />
+              <GroupHead title="Job and profile" onEdit={canEdit ? () => startEdit("job") : null} label="Edit job and profile" why={NO_RECORD} />
               <dl className="adm-rv" style={{ gridTemplateColumns: "170px 1fr" }}>
                 <dt>Job title</dt><dd>{d.profileInfo.jobTitle || "—"}</dd>
                 <dt>Department</dt><dd>{d.profileInfo.department || "—"}</dd>
@@ -225,22 +275,53 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
               </>
             )}
             {tab === 1 && (
-              <dl className="adm-rv" style={{ gridTemplateColumns: "190px 1fr" }}>
-                <dt>Sign-in method</dt><dd>{LOGIN[d.loginKind]}</dd>
-                <dt>Managed by</dt><dd>{d.loginKind === "username" ? (d.account.homeCompany ? "This company" : "Another company (its administrators manage the password)") : "The person's own " + (d.loginKind === "google" ? "Google" : "email") + " account"}</dd>
-                <dt>Account expires</dt><dd>{d.account.accountExpiresAt || "No expiry"}</dd>
-                <dt>Sign-in locked</dt><dd>{d.account.locked ? "Yes, after too many wrong passwords" : "No"}</dd>
-                <dt>Recovery codes</dt><dd>{d.loginKind === "username" ? (d.account.hasRecoveryCodes ? "Issued" : "Not issued yet") : "Not applicable"}</dd>
-                <dt>MFA</dt><dd className="muted">Not shown here (managed under Security)</dd>
-              </dl>
+              <>
+                <GroupHead title="Sign-in and security" onEdit={null} label="Edit sign-in and security" why="Sign-in method and security are not edited here. Use Reset password, Unlock sign-in or New recovery codes in the actions above." />
+                <dl className="adm-rv" style={{ gridTemplateColumns: "190px 1fr" }}>
+                  <dt>Sign-in method</dt><dd>{LOGIN[d.loginKind]}</dd>
+                  <dt>Managed by</dt><dd>{d.loginKind === "username" ? (d.account.homeCompany ? "This company" : "Another company (its administrators manage the password)") : "The person's own " + (d.loginKind === "google" ? "Google" : "email") + " account"}</dd>
+                  <dt>Sign-in locked</dt><dd>{d.account.locked ? "Yes, after too many wrong passwords" : "No"}</dd>
+                  <dt>Recovery codes</dt><dd>{d.loginKind === "username" ? (d.account.hasRecoveryCodes ? "Issued" : "Not issued yet") : "Not applicable"}</dd>
+                  <dt>MFA</dt><dd className="muted">Not shown here (managed under Security)</dd>
+                </dl>
+                <GroupHead title="Account expiry" onEdit={canEdit && canEditIdentity && exp === null ? startExpiry : null} label="Edit account expiry"
+                  why={exp !== null ? "You are already editing the expiry." : canEdit ? "Account expiry is managed by this person's own account or their home company, so it can't be changed here." : NO_RECORD} />
+                {exp === null ? (
+                  <dl className="adm-rv" style={{ gridTemplateColumns: "190px 1fr" }}><dt>Account expires</dt><dd>{d.account.accountExpiresAt || "No expiry"}</dd></dl>
+                ) : (
+                  <div>
+                    <label className="adm-field">Account expires on
+                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input className="input" type="date" autoFocus style={{ maxWidth: 220 }} value={exp} disabled={savingExp} onChange={(e) => setExp(e.target.value)} />
+                        {exp && <button type="button" className="adm-link" disabled={savingExp} onClick={() => setExp("")}>Clear</button>}
+                      </span>
+                      <span className="adm-hint">{exp ? "They can sign in until the end of that day." : "No expiry: the account stays valid until it is blocked or removed."}</span>
+                    </label>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 16 }}>
+                      <button type="button" className="btn-primary-sm" disabled={!expDirty || savingExp} onClick={saveExpiry}>{savingExp ? "Saving…" : "Save changes"}</button>
+                      <button type="button" className="adm-btn-outline" disabled={savingExp} onClick={() => setExp(null)}>Cancel</button>
+                      {expDirty && !savingExp && <span className="adm-hint" style={{ margin: 0 }}>Not saved yet</span>}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             {tab === 2 && (
-              <dl className="adm-rv" style={{ gridTemplateColumns: "190px 1fr" }}>
-                <dt>This company</dt><dd>{d.organization.status === "active" ? "Active member" : d.organization.status}</dd>
-                <dt>Organization role</dt><dd>{d.organization.role}</dd>
-                <dt>Business profile</dt><dd>{d.organization.profile || "—"}</dd>
-                <dt>Other companies</dt><dd>{d.organization.otherOrganizations ? `Also belongs to ${d.organization.otherOrganizations} other ${d.organization.otherOrganizations === 1 ? "company" : "companies"} (not shown to you)` : "None"}</dd>
-              </dl>
+              <>
+                <GroupHead title="Membership" onEdit={null} label="Edit membership" why="Membership is changed with Block sign-in or Delete user in the actions above." />
+                <dl className="adm-rv" style={{ gridTemplateColumns: "190px 1fr" }}>
+                  <dt>This company</dt><dd>{d.organization.status === "active" ? "Active member" : d.organization.status}</dd>
+                  <dt>Other companies</dt><dd>{d.organization.otherOrganizations ? `Also belongs to ${d.organization.otherOrganizations} other ${d.organization.otherOrganizations === 1 ? "company" : "companies"} (not shown to you)` : "None"}</dd>
+                </dl>
+                <GroupHead title="Role and profile" onEdit={d.organization.role !== "OWNER" && !orgEditing && !rolesDirty ? () => { setErr(""); setMsg(""); setOrgEditing(true); } : null} label="Edit organization role and business profile"
+                  why={d.organization.role === "OWNER" ? "The company Owner's role can't be changed here." : "You are already editing the role and profile."} />
+                {orgEditing || rolesDirty ? roleEditor(true) : (
+                  <dl className="adm-rv" style={{ gridTemplateColumns: "190px 1fr" }}>
+                    <dt>Organization role</dt><dd>{d.organization.role}</dd>
+                    <dt>Business profile</dt><dd>{d.organization.profile || "—"}</dd>
+                  </dl>
+                )}
+              </>
             )}
             {tab === 3 && (
               <table className="table"><thead><tr><th>Application</th><th>Access</th><th>App role</th><th>Source</th></tr></thead>
@@ -252,34 +333,7 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
               <div>
                 <p className="muted" style={{ marginTop: 0 }}>The organization role controls what they can do in the company (users, roles, app assignment). It grants no application permission.</p>
                 <p><b>Current:</b> {d.organization.role} <span className="muted">({ORG_SOURCE[d.organization.roleSource] || d.organization.roleSource})</span></p>
-                {d.organization.role !== "OWNER" && (
-                  <label className="adm-field">Change organization role
-                    <select className="input" style={{ maxWidth: 220 }} value={nextRole} onChange={(e) => setStage((s) => ({ ...s, orgRole: e.target.value === curRole ? undefined : e.target.value }))}
-                      disabled={savingRoles || (!canAssignAdmin && curRole === "ADMIN")}>
-                      <option value="ADMIN" disabled={!canAssignAdmin}>Admin</option><option value="MEMBER">Member</option><option value="VIEWER">Viewer</option>
-                    </select>
-                    {!canAssignAdmin && <span className="adm-hint">Only the Owner can make or remove an Admin.</span>}
-                  </label>
-                )}
-                {d.organization.role !== "OWNER" && canEdit && (
-                  <label className="adm-field" style={{ marginTop: 12 }}>Business profile
-                    <select className="input" style={{ maxWidth: 260 }} value={nextProfile} onChange={(e) => setStage((s) => ({ ...s, profile: e.target.value === curProfile ? undefined : e.target.value }))}
-                      disabled={savingRoles || (!canAssignAdmin && ADMIN_PROFILES.includes(curProfile))}>
-                      {!PROFILES.some((p) => p.value === curProfile) && <option value={curProfile} disabled>{curProfile || "Not set"}</option>}
-                      {PROFILES.filter((p) => p.value !== "Global Admin" || p.value === curProfile).map((p) => (
-                        <option key={p.value} value={p.value} disabled={p.value !== curProfile && ADMIN_PROFILES.includes(p.value) && !canAssignAdmin}>{p.label}</option>
-                      ))}
-                    </select>
-                    <span className="adm-hint">Describes the job in the business apps. Separate from the organization role. App access is changed under Manage roles &amp; app access.</span>
-                  </label>
-                )}
-                {d.organization.role !== "OWNER" && (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 16 }}>
-                    <button type="button" className="btn-primary-sm" disabled={!rolesDirty || savingRoles} onClick={saveRoles}>{savingRoles ? "Saving…" : "Save changes"}</button>
-                    <button type="button" className="adm-btn-outline" disabled={!rolesDirty || savingRoles} onClick={() => setStage({})}>Cancel</button>
-                    {rolesDirty && !savingRoles && <span className="adm-hint" style={{ margin: 0 }}>Not saved yet</span>}
-                  </div>
-                )}
+                {roleEditor(false)}
               </div>
             )}
             {tab === 5 && (d.activity.length === 0 ? <p className="muted">No recorded activity yet.</p> : (

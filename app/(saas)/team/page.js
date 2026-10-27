@@ -22,6 +22,8 @@ import ResetPasswordDrawer from "@/components/admin/ResetPasswordDrawer";
 import UserDetailsDrawer from "@/components/admin/UserDetailsDrawer";
 import Notice from "@/components/admin/Notice";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { ROLE_LABEL, adminChangeDialog } from "@/components/admin/roleChange";
+import { stageValue } from "@/lib/adminStaging";
 import { roleLabel } from "@/lib/roleLabel";
 import { toLoginId } from "@/lib/loginId";
 
@@ -152,6 +154,7 @@ export default function TeamPage() {
   const [err, setErr] = useState("");
   const [note, setNote] = useState(""); // a success message for the page (shown at the top, like err)
   const [askConfirm, confirmDialog] = useConfirm(); // the in-app dialog that replaces the browser's confirm()
+  const [rolePick, setRolePick] = useState({}); // organization roles picked in the table but not saved yet: { [memberId]: role }
   const [busyId, setBusyId] = useState(null);
   const [credentials, setCredentials] = useState(null); // { email, password } shown once after a credentials-based add or a password reset
   const [managingMember, setManagingMember] = useState(null); // the member row for "Manage roles & app access", or null
@@ -227,10 +230,18 @@ export default function TeamPage() {
       case "orgRole": return (
         <>
           {m.isOwner || m.orgRole === "OWNER" ? "OWNER" : m.dirOnly ? m.orgRole : (
-            <select className="input" style={{ fontSize: 12.5, padding: "3px 6px" }} value={m.orgRoleEffective || m.orgRole} onChange={(e) => changeOrgRole(m, e.target.value)}
-              disabled={!canAssignAdmin && (m.orgRoleEffective || m.orgRole) === "ADMIN"}>
-              {ORGANIZATION_ROLES.filter((r) => r !== "OWNER").map((r) => (<option key={r} value={r} disabled={r === "ADMIN" && !canAssignAdmin}>{r}</option>))}
-            </select>
+            <>
+              <select className="input" style={{ fontSize: 12.5, padding: "3px 6px" }} aria-label={"Organization role for " + personName(m)} value={rolePick[m.id] ?? (m.orgRoleEffective || m.orgRole)}
+                onChange={(e) => pickRole(m, e.target.value)} disabled={busyId === m.id || (!canAssignAdmin && (m.orgRoleEffective || m.orgRole) === "ADMIN")}>
+                {ORGANIZATION_ROLES.filter((r) => r !== "OWNER").map((r) => (<option key={r} value={r} disabled={r === "ADMIN" && !canAssignAdmin}>{r}</option>))}
+              </select>
+              {rolePick[m.id] !== undefined && (
+                <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                  <button type="button" className="btn-primary-sm" style={{ fontSize: 11.5, padding: "2px 10px" }} disabled={busyId === m.id} onClick={() => onPage(() => saveRolePick(m))}>{busyId === m.id ? "Saving…" : "Save"}</button>
+                  <button type="button" className="adm-cmdbtn" style={{ fontSize: 11.5, padding: "2px 10px" }} disabled={busyId === m.id} onClick={() => pickRole(m, null)}>Cancel</button>
+                </div>
+              )}
+            </>
           )}
           <div className="muted" style={{ fontSize: 11 }}>{ORG_SOURCE[m.orgRoleSource] || ""}</div>
         </>
@@ -441,14 +452,27 @@ export default function TeamPage() {
     await api("/api/team", "POST", { action: "setOrgRole", id: m.id, role });
   }
 
-  // The inline role picker in the Users table still saves as soon as it is changed (as before).
-  async function changeOrgRole(m, role) {
-    setMembers((cur) => cur.map((x) => (x.id === m.id ? { ...x, orgRole: role } : x)));
+  // The role picker in the Users table only STAGES a choice (Save / Cancel appear under it), like the details drawer. Picking the current role, or null, clears it.
+  function pickRole(m, role) {
+    const cur = m.orgRoleEffective || m.orgRole;
+    setRolePick((p) => stageValue(p, m.id, role, cur));
+  }
+  // Save the staged role: Admin-level changes are confirmed first (same dialog as the drawer). Returns the success message, null when cancelled; throws on failure.
+  async function saveRolePick(m) {
+    const cur = m.orgRoleEffective || m.orgRole;
+    const role = rolePick[m.id];
+    if (!role || role === cur) return null;
+    const who = personName(m);
+    const ask = adminChangeDialog({ person: who, curRole: cur, nextRole: role });
+    if (ask && !(await askConfirm(ask))) return null;
+    setBusyId(m.id);
     try {
       await setOrgRoleFor(m, role);
-    } catch (e) {
-      setErr(e.message);
-      load();
+      setRolePick((p) => { const n = { ...p }; delete n[m.id]; return n; });
+      await load();
+      return "Organization role for " + who + " changed from " + (ROLE_LABEL[cur] || cur) + " to " + (ROLE_LABEL[role] || role) + ".";
+    } finally {
+      setBusyId(null);
     }
   }
 
