@@ -3,7 +3,7 @@ import { requirePlatformAdmin, requirePlatformOwner, requireRecentAuth, adminAut
 import { logAuditEvent } from "@/lib/audit";
 import { FieldValue } from "firebase-admin/firestore";
 import {
-  createInvitation, revokeInvitation, changeRole, setAccess, listAdministrators, adminHistory,
+  createInvitation, revokeInvitation, changeRole, setAccess, removeAdmin, listAdministrators, adminHistory,
   assertAssignableRole, normalizeEmail,
 } from "@/lib/platformAdminAccess";
 import { ASSIGNABLE_ROLES, ROLE_LABELS, ROLE_SUMMARIES } from "@/lib/platformRoles";
@@ -79,6 +79,11 @@ export async function POST(req) {
 
     if (body.action === "disable" || body.action === "reactivate") {
       await setAccess({ actor: c, uid: body.uid, enable: body.action === "reactivate" });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "remove") {
+      await removeAdmin({ actor: c, uid: body.uid });
       return NextResponse.json({ ok: true });
     }
 

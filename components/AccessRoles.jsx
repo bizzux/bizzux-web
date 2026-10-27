@@ -45,6 +45,7 @@ export default function AccessRoles({ isOwner }) {
 
   async function act(key, body, success) {
     setBusy(key); setErr(null); setNote("");
+    window.scrollTo({ top: 0, behavior: "smooth" }); // an error or a "sign in again" prompt shows at the top; make sure it is seen
     try {
       await api("POST", body);
       if (success) setNote(success);
@@ -177,6 +178,14 @@ export default function AccessRoles({ isOwner }) {
                             }
                           }}>
                           {a.status === "disabled" ? "Reactivate" : "Disable access"}
+                        </button>{" "}
+                        <button className="link-btn danger" disabled={!!busy}
+                          onClick={() => {
+                            if (confirm(`Remove ${a.email} from the platform team? They lose all platform access. You can invite them again later.`)) {
+                              act("r" + a.uid, { action: "remove", uid: a.uid }, "Removed. You can invite them again.");
+                            }
+                          }}>
+                          Remove
                         </button>
                       </>
                     )}
