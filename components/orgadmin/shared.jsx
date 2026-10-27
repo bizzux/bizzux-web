@@ -17,7 +17,7 @@ export async function api(path, method, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Request failed");
+  if (!res.ok) throw Object.assign(new Error(data.error || "Request failed"), { code: data.code, blockers: data.blockers });
   return data;
 }
 

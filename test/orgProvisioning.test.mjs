@@ -128,7 +128,7 @@ test("platform admin vs owner permissions", async () => {
   await db.doc("platformAdmins/" + admin.uid).set({ permissions: null }, { merge: true });
   const name = (await db.doc("organizations/" + r.organizationId).get()).data().organizationName;
   await assert.rejects(lib.deleteOrganizationPermanently({ actor: owner, organizationId: r.organizationId, confirmName: "wrong" }), (e) => e.status === 400);
-  await lib.deleteOrganizationPermanently({ actor: owner, organizationId: r.organizationId, confirmName: name });
+  await lib.deleteOrganizationPermanently({ actor: owner, organizationId: r.organizationId, confirmName: name, reasonCode: "duplicate" });
   assert.equal((await db.doc("organizations/" + r.organizationId).get()).exists, false);
 });
 

@@ -508,17 +508,76 @@ function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
     setErr("");
     try { await orgCall(o.id, action, { ...extra, reason }); await reload(); await loadAudit(); } catch (e) { setErr(e.message); }
   }
-  async function removeForever() {
-    const extra = d.row.isTest ? " This is a TEST organization: its users and all their data are deleted too." : "";
-    const typed = prompt(`Permanently delete "${o.name}"?${extra} This cannot be undone. Type the organization name to confirm:`);
-    if (typed === null) return;
-    setErr("");
-    try { await orgCall(o.id, "deletePermanently", { confirmName: typed }); onBack(); } catch (e) { setErr(e.message); }
+  const [lcModal, setLcModal] = useState(null); // "archive" | "delete"
+  const [pv, setPv] = useState(null);
+  const [code, setCode] = useState("no_longer_required");
+  const [text, setText] = useState("");
+  const [typed, setTyped] = useState("");
+  const [early, setEarly] = useState(false);
+  const [busy, setBusy] = useState(false);
+  async function openLifecycle(kind) {
+    setErr(""); setPv(null); setTyped(""); setText(""); setEarly(false);
+    setCode(kind === "delete" && d.row.isTest ? "testing_recreate" : "no_longer_required");
+    setLcModal(kind);
+    if (kind === "delete") { try { setPv(await orgCall(o.id, "previewDeletion", {})); } catch (e) { setErr(e.message); } }
   }
+  async function submitLifecycle() {
+    setBusy(true); setErr("");
+    try {
+      if (lcModal === "archive") {
+        await orgCall(o.id, "archive", { reasonCode: code, reason: text });
+        setLcModal(null); await reload(); await loadAudit();
+      } else {
+        const r = await orgCall(o.id, "deletePermanently", { confirmName: typed, reasonCode: code, reason: text, earlyPurge: early });
+        if (r.ok === false) { setErr("Cleanup is NOT complete: " + (r.failed || []).join("; ") + ". The organization is blocked and nothing was reported as deleted. Retry to resume."); await reload(); await loadAudit(); }
+        else { setLcModal(null); onBack(); }
+      }
+    } catch (e) { setErr(e.message + (e.blockers ? " — " + e.blockers.join("; ") : "")); if (e.code === "reauth_required") setErr(e.message + " (use Sign out, sign back in, then retry)"); }
+    setBusy(false);
+  }
+  const REASONS = [["testing_recreate", "Testing / recreate"], ["no_longer_required", "No longer required"], ["duplicate", "Duplicate"], ["other", "Other"]];
+  const lifecycleModal = lcModal && (
+    <div className="modal-overlay" style={{ zIndex: 1200 }} onClick={() => !busy && setLcModal(null)}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, width: "100%" }}>
+        <h3 style={{ marginTop: 0 }}>{lcModal === "archive" ? "Archive " : "Permanently delete "}{o.name}</h3>
+        {lcModal === "archive" && <p className="muted" style={{ fontSize: 13 }}>It is suspended and hidden. You can restore it for 30 days; after that it is removed automatically unless billing, legal hold or retention rules block it.</p>}
+        {lcModal === "delete" && !pv && !err && <p className="muted">Checking impact…</p>}
+        {lcModal === "delete" && pv && (
+          <div style={{ fontSize: 13, marginBottom: 10 }}>
+            <div><strong>{pv.environmentLabel}</strong> organization · status {pv.status}</div>
+            <div>People removed with their logins: <strong>{pv.users.removed}</strong> · kept (belong to another organization or are staff): <strong>{pv.users.keptElsewhere}</strong></div>
+            <div className="muted">Records: {Object.entries(pv.records).map(([k, v]) => `${v} ${k}`).join(", ")}{pv.hasBusinessData ? ", plus all app data for this business" : ""}</div>
+            {pv.blockers.length > 0 && <p className="error">Blocked: {pv.blockers.join("; ")}</p>}
+            {!pv.canDeleteNow && pv.blockers.length === 0 && pv.reasonIfNot && <p className="error">{pv.reasonIfNot}</p>}
+            {pv.previousAttempt && <p className="error">An earlier attempt did not finish ({pv.previousAttempt.failed.join("; ") || "interrupted"}). Retrying resumes it.</p>}
+            <p style={{ color: "var(--red)" }}>This cannot be undone.</p>
+          </div>
+        )}
+        <label className="label">Reason *</label>
+        <select className="input" value={code} onChange={(e) => setCode(e.target.value)}>{REASONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+        {code === "other" && <input className="input" style={{ marginTop: 8 }} placeholder="Describe the reason" value={text} onChange={(e) => setText(e.target.value)} />}
+        {lcModal === "delete" && (
+          <>
+            <label className="label" style={{ marginTop: 10 }}>Type the organization name to confirm</label>
+            <input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={o.name} />
+            {isOwner && !d.row.isTest && <label style={{ display: "block", fontSize: 12, marginTop: 8 }}><input type="checkbox" checked={early} onChange={(e) => setEarly(e.target.checked)} /> Owner only: skip the 30-day recovery window</label>}
+          </>
+        )}
+        {err && <p className="error" role="alert">{err}</p>}
+        <div className="row" style={{ justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+          <button type="button" className="btn-outline-dark" disabled={busy} onClick={() => setLcModal(null)}>Cancel</button>
+          <button type="button" className="btn-primary" style={lcModal === "delete" ? { background: "var(--red)", borderColor: "var(--red)" } : undefined}
+            disabled={busy || (code === "other" && text.trim().length < 3) || (lcModal === "delete" && (!pv || pv.blockers.length > 0 || typed.trim() !== o.name))}
+            onClick={submitLifecycle}>{busy ? "Working…" : lcModal === "archive" ? "Archive" : "Delete permanently"}</button>
+        </div>
+      </div>
+    </div>
+  );
   return (
     <div>
       {reasonModal}
-      {err && <p className="error">{err}</p>}
+      {lifecycleModal}
+      {err && !lcModal && <p className="error">{err}</p>}
       <div style={{ padding: 14, border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 12, marginBottom: 16 }}>
         <div className="label" style={{ marginBottom: 4, color: "var(--red)" }}>Lifecycle</div>
         <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>Suspend blocks every app right away and can be undone. Archive hides it from the directory (data kept). Deleting removes it for good.</p>
@@ -529,10 +588,10 @@ function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
               : can("organizations.suspend") && <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={() => act("suspend", {}, `Suspend ${o.name}`, "Its users are signed out and blocked until reactivated.")}>Suspend</button>
           )}
           {!d.row.internal && acct !== "archived" && d.row.kind !== "placeholder" && can("organizations.archive") &&
-            <button className="btn-small" onClick={() => act("archive", {}, `Archive ${o.name}`, "It is suspended and hidden from the directory; data is kept.")}>Archive</button>}
+            <button className="btn-small" onClick={() => openLifecycle("archive")}>Archive</button>}
           {isOwner && cust && <button className="btn-small" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => setShowDelete(true)}>Delete user…</button>}
-          {(d.row.isTest ? can("organizations.delete_test") : isOwner) && (d.row.isTest || ["archived", "pending", "pending_admin"].includes(d.row.status)) &&
-            <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={removeForever}>Delete permanently</button>}
+          {(d.row.isTest ? can("organizations.delete_test") : isOwner) && (d.row.isTest || ["archived", "pending", "pending_admin", "deleting"].includes(d.row.status)) &&
+            <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={() => openLifecycle("delete")}>{d.row.status === "deleting" ? "Retry delete" : "Delete permanently"}</button>}
         </div>
         <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Closing or recovering a customer account (60-day recovery) stays under Delete &amp; Recover.</p>
       </div>

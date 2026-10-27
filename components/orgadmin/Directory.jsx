@@ -141,7 +141,7 @@ export default function Directory({ onOpen, onCreate, canCreate, canReindex, isO
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid var(--line)" }}>
-                <th>Organization</th><th>Owner / administrator</th><th>Plan</th><th>Payment</th><th>Account</th><th>Onboarding</th><th>Location</th><th>Signed up</th>
+                <th>Organization</th><th>Owner / administrator</th><th>Plan</th><th>Payment</th><th>Account</th><th>Onboarding</th><th>Location</th><th>Signed up</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -162,6 +162,17 @@ export default function Directory({ onOpen, onCreate, canCreate, canReindex, isO
                   <td>{ONBOARD[r.onboarding] || r.onboarding}</td>
                   <td>{[r.city, r.region].filter(Boolean).join(", ")}<div className="muted" style={{ fontSize: 12 }}>{r.country}</div></td>
                   <td>{r.createdAtMs ? new Date(r.createdAtMs).toLocaleDateString() : "—"}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {/* Archive and Delete open the lifecycle tab, where the server-checked reason, impact preview and confirmation live. */}
+                    <select className="input" aria-label={"Actions for " + r.name} value="" style={{ padding: "2px 6px", fontSize: 12 }}
+                      onChange={(e) => { const v = e.target.value; if (v === "view") onOpen(r.id); else if (v === "edit") onOpen(r.id, "overview"); else if (v) onOpen(r.id, "audit"); }}>
+                      <option value="">Actions…</option>
+                      <option value="view">View</option>
+                      <option value="edit">Edit</option>
+                      <option value="archive">Archive…</option>
+                      <option value="delete">Delete…</option>
+                    </select>
+                  </td>
                 </tr>
               ))}
             </tbody>
