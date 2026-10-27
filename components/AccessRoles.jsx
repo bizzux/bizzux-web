@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
@@ -20,6 +20,68 @@ async function api(method, body, query = "") {
 }
 
 const when = (v) => (v ? new Date(v).toLocaleString() : "—");
+
+// Per-row "⋯" actions menu. Fixed-positioned from the button's rect so the table's
+// overflow container can't clip it; closes on outside click, Escape, scroll or resize.
+function RowMenu({ label, items }) {
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const close = (refocus) => { setPos(null); if (refocus) btnRef.current?.focus(); };
+
+  function toggle() {
+    if (pos) return close(false);
+    const r = btnRef.current.getBoundingClientRect();
+    const up = window.innerHeight - r.bottom < 40 * items.length + 24; // not enough room below: open upwards
+    setPos({ right: window.innerWidth - r.right, ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+  }
+
+  useEffect(() => {
+    if (!pos) return undefined;
+    menuRef.current?.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
+    const away = (e) => { if (!menuRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) close(false); };
+    const key = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); close(true); return; }
+      if (e.key === "Tab") { close(false); return; }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      const list = [...(menuRef.current?.querySelectorAll('[role="menuitem"]:not(:disabled)') || [])];
+      if (!list.length) return;
+      e.preventDefault();
+      const i = list.indexOf(document.activeElement);
+      const next = e.key === "Home" ? 0 : e.key === "End" ? list.length - 1
+        : e.key === "ArrowDown" ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
+      list[next].focus();
+    };
+    const dismiss = () => close(false);
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", key);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", key);
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [pos]);
+
+  return (
+    <>
+      <button ref={btnRef} type="button" className="row-menu-btn" aria-haspopup="menu" aria-expanded={!!pos} aria-label={label} title="Actions" onClick={toggle}>⋯</button>
+      {pos && (
+        <div ref={menuRef} className="row-menu" role="menu" aria-label={label} style={pos}>
+          {items.map((it) => (
+            <div key={it.label} role="none">
+              {it.divider && <div className="row-menu-sep" role="separator" />}
+              <button type="button" role="menuitem" className={"row-menu-item" + (it.danger ? " danger" : "")} disabled={it.disabled}
+                onClick={() => { close(true); it.onClick(); }}>{it.label}</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function AccessRoles({ isOwner }) {
   const [data, setData] = useState(null);
@@ -167,28 +229,28 @@ export default function AccessRoles({ isOwner }) {
                   <td>{a.invitedBy || "—"}</td>
                   <td>{when(a.invitedAt)}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="link-btn" onClick={() => openHistory(a)}>History</button>
-                    {isOwner && a.role !== "OWNER" && (
-                      <>{" "}
-                        <button className={"link-btn" + (a.status === "disabled" ? "" : " danger")} disabled={!!busy}
-                          onClick={() => {
+                    <RowMenu label={`Actions for ${a.email}`} items={[
+                      { label: "History", onClick: () => openHistory(a) },
+                      ...(isOwner && a.role !== "OWNER" ? [
+                        {
+                          label: a.status === "disabled" ? "Enable access" : "Disable access", disabled: !!busy,
+                          onClick: () => {
                             const enable = a.status === "disabled";
                             if (enable || confirm(`Disable platform access for ${a.email}? They lose access immediately.`)) {
                               act("d" + a.uid, { action: enable ? "reactivate" : "disable", uid: a.uid }, enable ? "Access restored." : "Access disabled.");
                             }
-                          }}>
-                          {a.status === "disabled" ? "Reactivate" : "Disable access"}
-                        </button>{" "}
-                        <button className="link-btn danger" disabled={!!busy}
-                          onClick={() => {
+                          },
+                        },
+                        {
+                          label: "Remove", danger: true, divider: true, disabled: !!busy,
+                          onClick: () => {
                             if (confirm(`Remove ${a.email} from the platform team? They lose all platform access. You can invite them again later.`)) {
                               act("r" + a.uid, { action: "remove", uid: a.uid }, "Removed. You can invite them again.");
                             }
-                          }}>
-                          Remove
-                        </button>
-                      </>
-                    )}
+                          },
+                        },
+                      ] : []),
+                    ]} />
                   </td>
                 </tr>
               ))}

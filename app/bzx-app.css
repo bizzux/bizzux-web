@@ -414,6 +414,15 @@
 .bzx-app .link-btn { background: none; border: none; padding: 0; color: var(--blue); font-weight: 700; font-size: 12.5px; }
 .bzx-app .link-btn:hover { text-decoration: underline; }
 .bzx-app .link-btn.danger { color: var(--red); }
+.bzx-app .row-menu-btn { width: 30px; height: 28px; border: 1px solid transparent; border-radius: 6px; background: none; color: #334155; font-size: 18px; line-height: 1; cursor: pointer; }
+.bzx-app .row-menu-btn:hover, .bzx-app .row-menu-btn[aria-expanded="true"] { background: #f1f5f9; border-color: var(--line); }
+.bzx-app .row-menu-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.bzx-app .row-menu { position: fixed; z-index: 200; min-width: 180px; padding: 4px 0; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,0.16); }
+.bzx-app .row-menu-item { display: block; width: 100%; padding: 8px 14px; border: 0; background: none; font: inherit; font-size: 13px; color: #1e293b; text-align: left; white-space: nowrap; cursor: pointer; }
+.bzx-app .row-menu-item:hover:not(:disabled), .bzx-app .row-menu-item:focus-visible { background: #f1f5f9; outline: none; }
+.bzx-app .row-menu-item:disabled { opacity: 0.5; cursor: default; }
+.bzx-app .row-menu-item.danger { color: var(--red); }
+.bzx-app .row-menu-sep { height: 1px; margin: 4px 0; background: var(--line); }
 .bzx-app .modal-overlay {
   position: fixed; inset: 0; z-index: 100;
   background: rgba(11, 18, 32, 0.55);
