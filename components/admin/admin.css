@@ -66,7 +66,14 @@ div:has(> .bzx-app .adm-shell) > footer { display:none; }
 .adm-btn-outline:disabled { opacity:.5; cursor:not-allowed; background:#fff; }
 .adm-drawer .btn-primary-sm:disabled { opacity:.5; cursor:not-allowed; }
 /* In-app confirmation dialog (components/admin/ConfirmDialog.jsx): centered over everything, including drawers. */
-.adm-modal-wrap { position:fixed; inset:0; z-index:90; display:grid; place-items:center; padding:16px; background:rgba(15,23,42,.5); }
+/* The dialog is portaled to <body>, outside .adm-shell where these are normally defined, so it carries its own copies. */
+.adm-modal-wrap { --adm-accent:#2159d4; --adm-text:#1f2937; --adm-muted:#6b7280; --adm-line:#e5e7eb; position:fixed; inset:0; z-index:90; display:grid; place-items:center; padding:16px; background:rgba(15,23,42,.5); font-family:inherit; }
+.adm-modal-field { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:12px; }
+.adm-modal-field > label:first-child { flex:1 0 100%; font-size:13px; font-weight:600; }
+.adm-modal-input { flex:1; min-width:0; height:36px; padding:0 10px; border:1px solid #cbd5e1; border-radius:4px; font:inherit; font-size:14px; color:var(--adm-text); background:#fff; }
+.adm-modal-input:focus { outline:2px solid var(--adm-accent); outline-offset:0; border-color:transparent; }
+.adm-modal-show { display:inline-flex; align-items:center; gap:5px; font-size:13px; color:var(--adm-muted); cursor:pointer; }
+.adm-modal-hint { flex:1 0 100%; font-size:12.5px; color:var(--adm-muted); }
 .adm-modal { width:min(460px,100%); max-height:calc(100vh - 32px); overflow-y:auto; background:#fff; border-radius:10px; border-top:4px solid var(--adm-accent); box-shadow:0 20px 50px rgba(15,23,42,.35); padding:18px 22px 20px; color:var(--adm-text); }
 .adm-modal.danger { border-top-color:#b3261e; } .adm-modal.warning { border-top-color:#d97706; }
 .adm-modal-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }

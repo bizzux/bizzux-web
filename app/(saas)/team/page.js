@@ -416,13 +416,19 @@ export default function TeamPage() {
   }
 
   async function setPassword(m) {
-    const entered = prompt(`New password for ${m.email} (leave blank to auto-generate):`);
+    const who = personName(m);
+    const entered = await askConfirm({
+      title: "Set a new password", confirmLabel: "Set password",
+      body: <p>Set a new password for <b>{who}</b>{m.email ? <> ({m.email})</> : null}. Their current password stops working.</p>,
+      input: { label: "New password", secret: true, hint: "Leave blank to generate a strong password automatically." },
+    });
     if (entered === null) return;
     setBusyId(m.id);
-    setErr("");
+    setErr(""); setNote("");
     try {
       const d = await api("/api/team", "POST", { action: "setPassword", id: m.id, password: entered.trim() });
       setCredentials({ email: m.email, password: d.password });
+      setNote("New password set for " + who + ". Save it from the box on this page; it is shown only once.");
     } catch (e) {
       setErr(e.message);
     } finally {
