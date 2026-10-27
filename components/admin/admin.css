@@ -70,20 +70,22 @@ th.adm-sortable button:focus-visible { outline:2px solid var(--adm-accent); outl
 /* Drawer (slide-over) and check lists */
 .adm-drawer-wrap { position:fixed; inset:0; z-index:60; }
 .adm-drawer-backdrop { position:absolute; inset:0; background:rgba(15,23,42,.35); }
-.adm-drawer { position:absolute; top:0; right:0; bottom:0; width:380px; max-width:100%; background:#fff; display:flex; flex-direction:column; box-shadow:-6px 0 24px rgba(15,23,42,.2); outline:none; }
+.adm-drawer { --adm-drawer-pad:20px; --adm-wiz-rail:190px; --adm-wiz-gap:24px; position:absolute; top:0; right:0; bottom:0; width:380px; max-width:100%; background:#fff; display:flex; flex-direction:column; box-shadow:-6px 0 24px rgba(15,23,42,.2); outline:none; }
 .adm-drawer.wide { width:min(860px,100%); }
 .adm-drawer-head { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #e5e7eb; }
 .adm-drawer-head h2 { margin:0; font-size:18px; font-weight:600; }
 .adm-drawer-x { border:0; background:none; font-size:24px; line-height:1; cursor:pointer; color:#4b5563; padding:0 6px; border-radius:4px; }
 .adm-drawer-x:hover, .adm-drawer-x:focus-visible { background:var(--adm-tint2); outline:none; }
-.adm-drawer-body { flex:1; overflow-y:auto; padding:16px 20px; }
-.adm-drawer-foot { display:flex; gap:8px; padding:12px 20px; border-top:1px solid #e5e7eb; background:#fff; }
+.adm-drawer-body { flex:1; overflow-y:auto; padding:16px var(--adm-drawer-pad); }
+.adm-drawer-foot { display:flex; gap:8px; padding:12px var(--adm-drawer-pad); border-top:1px solid #e5e7eb; background:#fff; }
+/* Add a user: Back / Next start at the left edge of the form column (body padding + step rail + grid gap), like Microsoft 365. */
+.adm-drawer-foot.adm-wiz-foot { padding-left:calc(var(--adm-drawer-pad) + var(--adm-wiz-rail) + var(--adm-wiz-gap)); }
 .adm-checklist { list-style:none; margin:0; padding:0; }
 .adm-checklist li { padding:6px 0; }
 .adm-checklist label { display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13.5px; }
 .adm-checklist input:disabled + span { color:#6b7280; }
 /* Add user wizard */
-.adm-wiz { display:grid; grid-template-columns:190px 1fr; gap:24px; min-height:100%; }
+.adm-wiz { display:grid; grid-template-columns:var(--adm-wiz-rail) 1fr; gap:var(--adm-wiz-gap); min-height:100%; }
 .adm-stepper { list-style:none; margin:0; padding:4px 0; position:relative; }
 .adm-stepper li { position:relative; padding-bottom:26px; }
 .adm-stepper li:not(:last-child)::before { content:""; position:absolute; left:9px; top:20px; bottom:0; width:2px; background:#d1d5db; }
@@ -131,7 +133,7 @@ th.adm-sortable button:focus-visible { outline:2px solid var(--adm-accent); outl
 .adm-rv dt { color:#6b7280; } .adm-rv dd { margin:0; }
 .adm-problems { color:#b91c1c; font-size:13px; padding-left:18px; }
 .adm-cred { background:#f0f9ff; border:1px solid #bae6fd; border-radius:6px; padding:12px 14px; margin:12px 0; font-size:13.5px; } .adm-cred code { background:#fff; padding:1px 6px; border-radius:4px; font-size:14px; }
-@media (max-width: 767px) { .adm-wiz { grid-template-columns:1fr; } .adm-stepper { display:flex; gap:6px; flex-wrap:wrap; } .adm-stepper li { padding-bottom:0; } .adm-stepper li::before { display:none; } .adm-grid { grid-template-columns:1fr; } .adm-drawer.wide { width:100%; } }
+@media (max-width: 767px) { .adm-wiz { grid-template-columns:1fr; } .adm-drawer-foot.adm-wiz-foot { padding-left:var(--adm-drawer-pad); } .adm-stepper { display:flex; gap:6px; flex-wrap:wrap; } .adm-stepper li { padding-bottom:0; } .adm-stepper li::before { display:none; } .adm-grid { grid-template-columns:1fr; } .adm-drawer.wide { width:100%; } }
 
 /* Details drawer */
 .adm-namebtn { all:unset; color:var(--adm-accent); cursor:pointer; font-weight:600; }

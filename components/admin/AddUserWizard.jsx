@@ -365,7 +365,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
       <button type="button" className="btn-outline-dark" style={{ marginLeft: "auto" }} onClick={onClose} disabled={busy}>Cancel</button>
     </>
   );
-  return <Drawer open={open} title={result ? "User added" : "Add a user"} size="wide" onClose={onClose} footer={footer} label="Add a user">{body}</Drawer>;
+  return <Drawer open={open} title={result ? "User added" : "Add a user"} size="wide" onClose={onClose} footer={footer} footerClassName="adm-wiz-foot" label="Add a user">{body}</Drawer>;
 }
 
 // Defined at module level so inputs keep focus while typing (a component created inside another component remounts on every render).

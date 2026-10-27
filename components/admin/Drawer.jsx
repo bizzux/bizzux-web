@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export default function Drawer({ open, title, onClose, children, footer, size = "narrow", dismissible = true, label }) {
+export default function Drawer({ open, title, onClose, children, footer, footerClassName = "", size = "narrow", dismissible = true, label }) {
   const panel = useRef(null);
   const opener = useRef(null);
   useEffect(() => {
@@ -35,7 +35,7 @@ export default function Drawer({ open, title, onClose, children, footer, size = 
           {dismissible && <button type="button" className="adm-drawer-x" aria-label="Close" onClick={onClose}>×</button>}
         </header>
         <div className="adm-drawer-body">{children}</div>
-        {footer && <footer className="adm-drawer-foot">{footer}</footer>}
+        {footer && <footer className={"adm-drawer-foot" + (footerClassName ? " " + footerClassName : "")}>{footer}</footer>}
       </aside>
     </div>
   );
