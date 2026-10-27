@@ -42,7 +42,9 @@ const blank = (method) => ({
 const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
 const appName = (id) => APPS.find((a) => a.id === id)?.name || id;
 
-export default function AddUserWizard({ open, method: initialMethod = "username", context = null, api, uploadPhoto, directory, canAssignAdmin, onClose, onCreated, onManage }) {
+export default function AddUserWizard({ open, method: initialMethod = "username", context = null, organizationId = "", api: rawApi, uploadPhoto, directory, canAssignAdmin, onClose, onCreated, onManage }) {
+  // A Platform Admin adds people to a CHOSEN company: every shared-IAM call then carries that company id (the server still checks the caller's right to it).
+  const api = (path, method, body) => (!organizationId ? rawApi(path, method, body) : method === "GET" ? rawApi(path + (path.includes("?") ? "&" : "?") + "organizationId=" + encodeURIComponent(organizationId), method) : rawApi(path, method, { ...body, organizationId }));
   const [f, setF] = useState(() => blank(initialMethod));
   const [step, setStep] = useState(0);
   const [tried, setTried] = useState(false);
@@ -187,7 +189,7 @@ export default function AddUserWizard({ open, method: initialMethod = "username"
             <h3 id="w0">Set up the basics</h3>
             <p className="muted">To get started, fill out some basic information about who you are adding.</p>
             <fieldset className="adm-methods"><legend className="adm-lab">How will they sign in?</legend>
-              {METHODS.map((m) => (
+              {METHODS.filter((m) => !(organizationId && m.id === "invite")).map((m) => (
                 <label key={m.id} className={"adm-radio" + (f.method === m.id ? " on" : "")}>
                   <input type="radio" name="method" checked={f.method === m.id} onChange={() => set({ method: m.id, usernameTouched: false })} />
                   <span><b>{m.title}</b><span className="adm-hint">{m.hint}</span></span>

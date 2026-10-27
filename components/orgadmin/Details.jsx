@@ -10,6 +10,9 @@ import { useEffect, useState } from "react";
 import { APPS } from "@/lib/appCatalog";
 import { api, orgCall, UsersTab, DetailsTab, plusDays, Field, useReason } from "./shared";
 import OrgTickets from "../support/OrgTickets";
+import AddUserWizard from "../admin/AddUserWizard";
+import "../admin/admin.css";
+import { auth } from "@/lib/firebase";
 import AssignAdmin from "./AssignAdmin";
 import Overview, { ACCOUNT, PAYMENT, PLAN, Fact } from "./Overview";
 import { ONBOARDING_STATUS_LABEL } from "@/lib/orgContacts";
@@ -85,7 +88,19 @@ function UsersAccess({ d, o, cust, legacy, reload, isOwner, canManage }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(null);
   const [showSetPw, setShowSetPw] = useState(false);
-  const { AddTeamMemberForm, SetPasswordModal, timeAgo } = legacy;
+  const { SetPasswordModal, timeAgo } = legacy;
+  // Platform Admin adds people through the SAME wizard the company Admin Center uses, scoped to this company (one creation path, one ID standard).
+  const [wizard, setWizard] = useState(false);
+  const [directory, setDirectory] = useState(null);
+  const openWizard = () => { setWizard(true); api("/api/iam/directory?organizationId=" + encodeURIComponent(o.id), "GET").then(setDirectory).catch(() => setDirectory({ users: [], enabledApps: [], unavailable: true })); };
+  const uploadPhoto = async (uid, blob) => {
+    const token = await auth.currentUser.getIdToken();
+    const f = new FormData(); f.set("uid", uid); f.set("organizationId", o.id); f.set("photo", blob, "photo.jpg");
+    const res = await fetch("/api/iam/photo", { method: "POST", headers: { Authorization: "Bearer " + token }, body: f });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || "The photo could not be saved.");
+    return d;
+  };
 
   async function loadAdmins() {
     try { setAdmins((await api("/api/admin/customers?id=" + o.id, "GET")).admins || []); setErr(""); }
@@ -150,7 +165,10 @@ function UsersAccess({ d, o, cust, legacy, reload, isOwner, canManage }) {
           )}
           {canManage && (
             <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-              <AddTeamMemberForm accountId={o.id} onDone={() => { loadAdmins(); reload(); }} />
+              <button type="button" className="btn-small" onClick={openWizard}>+ Add a user</button>
+              <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>Same form as the company's Admin Center.</span>
+              <AddUserWizard open={wizard} organizationId={o.id} api={api} uploadPhoto={uploadPhoto} directory={directory} canAssignAdmin
+                onClose={() => setWizard(false)} onCreated={() => { loadAdmins(); reload(); }} />
             </div>
           )}
           {showSetPw && cust && <SetPasswordModal customer={cust} onClose={() => setShowSetPw(false)} />}

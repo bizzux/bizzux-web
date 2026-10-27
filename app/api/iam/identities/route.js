@@ -13,7 +13,7 @@ export async function GET(req) {
   try {
     const c = await requireOrgManager(req);
     const q = new URL(req.url).searchParams;
-    return NextResponse.json(await usernameAvailability(q.get("checkUsername"), { organizationId: c.accountId, idempotencyKey: q.get("idempotencyKey") || "", lastName: q.get("last") || "" }));
+    return NextResponse.json(await usernameAvailability(q.get("checkUsername"), { organizationId: resolveOrganizationId(c, q.get("organizationId")), idempotencyKey: q.get("idempotencyKey") || "", lastName: q.get("last") || "" }));
   } catch (e) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
   }
