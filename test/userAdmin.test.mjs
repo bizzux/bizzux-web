@@ -226,3 +226,58 @@ test("organization role and app access are changeable after creation through the
   assert.equal((await (await details(A, pat.uid)).json()).apps.find((x) => x.appId === "bizzux-crm").access, true);
   for (const action of ["org.set_role", "user.set_apps"]) assert.ok(await lastAudit(action, pat.uid), action + " audited");
 });
+
+// ---- Apps & licences tab: access and app role per app ----
+const appsFor = async (w, uid) => (await (await details(w, uid)).json()).apps.find((a) => a.appId === "bizzux-crm");
+const setApp = (w, uid, apps) => iam(w, { kind: "appAccess", uid, apps });
+
+test("app access: only administrators of this company; never the Owner or yourself; unknown, not-held and Admin-without-access apps are refused", async () => {
+  const crm = (granted, admin = false) => [{ appId: "bizzux-crm", granted, admin }];
+  assert.equal((await setApp(mem, pat.uid, crm(false))).status, 403, "a member can't");
+  assert.equal((await setApp(null, pat.uid, crm(false))).status, 401, "anonymous can't");
+  assert.equal((await setApp(B, mem.uid, crm(false))).status, 404, "another company can't reach a person who isn't in theirs");
+  assert.equal((await setApp(B, pat.uid, crm(false))).status, 200, "pat is also a member of company B, so B manages pat's access in B's own company");
+  assert.equal((await appsFor(A, pat.uid)).access, true, "and that never touches company A's assignment");
+  assert.equal((await setApp(adm, A.uid, crm(false))).status, 400, "the Owner always has every app");
+  assert.equal((await setApp(adm, adm.uid, crm(false))).status, 403, "nobody changes their own app access");
+  assert.equal((await setApp(A, pat.uid, [])).status, 400, "an empty list is not a change");
+  assert.equal((await setApp(A, pat.uid, [{ appId: "nope", granted: true }])).status, 400, "unknown app");
+  assert.equal((await setApp(A, pat.uid, [{ appId: "bizzux-projects", granted: true }])).status, 400, "the company does not hold this app");
+  assert.equal((await setApp(A, pat.uid, crm(false, true))).status, 400, "an app Admin must have access");
+  assert.equal((await setApp(A, pat.uid, [...crm(true), ...crm(true)])).status, 400, "the same app twice");
+  assert.equal((await appsFor(A, pat.uid)).access, true, "every refusal left the access as it was");
+});
+
+test("app access: change access and role per app, only changed apps are written, no-ops are quiet, audited with old and new", async () => {
+  const before = (await db.collection("auditLogs").where("action", "==", "user.set_app_access").where("targetId", "==", pat.uid).get()).size;
+  const noop = await setApp(A, pat.uid, [{ appId: "bizzux-crm", granted: true, admin: false }]);
+  assert.equal(noop.status, 200); assert.deepEqual((await noop.json()).changed, []);
+  assert.equal((await db.collection("auditLogs").where("action", "==", "user.set_app_access").where("targetId", "==", pat.uid).get()).size, before, "nothing changed, nothing audited");
+
+  const up = await setApp(A, pat.uid, [{ appId: "bizzux-crm", granted: true, admin: true }]);
+  assert.equal(up.status, 200); assert.deepEqual((await up.json()).changed, ["bizzux-crm"]);
+  const row = await appsFor(A, pat.uid); assert.deepEqual([row.access, row.appRole], [true, "ADMIN"]);
+  const aud = await lastAudit("user.set_app_access", pat.uid);
+  assert.deepEqual(aud.details.changes, [{ appId: "bizzux-crm", from: { granted: true, admin: false }, to: { granted: true, admin: true } }]);
+
+  const down = await setApp(A, pat.uid, [{ appId: "bizzux-crm", granted: true, admin: false }]);
+  assert.equal(down.status, 200);
+  const r2 = await appsFor(A, pat.uid); assert.deepEqual([r2.access, r2.appRole], [true, "MEMBER"]);
+  const off = await setApp(A, pat.uid, [{ appId: "bizzux-crm", granted: false, admin: false }]);
+  assert.equal(off.status, 200); assert.equal((await appsFor(A, pat.uid)).access, false);
+  const back = await setApp(A, pat.uid, [{ appId: "bizzux-crm", granted: true, admin: false }]);
+  assert.equal(back.status, 200); assert.equal((await appsFor(A, pat.uid)).access, true);
+});
+
+test("app access: an Admin can grant and revoke apps, but only the Owner can make or remove an app Admin", async () => {
+  assert.equal((await setApp(A, pat.uid, [{ appId: "bizzux-crm", granted: true, admin: true }])).status, 200);
+  const denied = await setApp(adm, pat.uid, [{ appId: "bizzux-crm", granted: true, admin: false }]);
+  assert.equal(denied.status, 403); assert.match((await denied.json()).error, /Only the Owner/);
+  assert.equal((await appsFor(A, pat.uid)).appRole, "ADMIN", "the refused change was not applied");
+  assert.equal((await setApp(A, pat.uid, [{ appId: "bizzux-crm", granted: true, admin: false }])).status, 200);
+  assert.equal((await setApp(adm, pat.uid, [{ appId: "bizzux-crm", granted: true, admin: true }])).status, 403, "an Admin can't make an app Admin");
+  assert.equal((await setApp(adm, pat.uid, [{ appId: "bizzux-crm", granted: false, admin: false }])).status, 200, "an Admin can revoke access");
+  assert.equal((await appsFor(A, pat.uid)).access, false);
+  assert.equal((await setApp(adm, pat.uid, [{ appId: "bizzux-crm", granted: true, admin: false }])).status, 200, "and grant it back");
+  assert.equal((await appsFor(A, pat.uid)).access, true);
+});

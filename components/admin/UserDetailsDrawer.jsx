@@ -8,14 +8,14 @@ import { PROFILES } from "@/lib/roles";
 import Notice from "./Notice";
 import { useConfirm } from "./ConfirmDialog";
 import { ADMIN_PROFILES, ROLE_LABEL, adminChangeDialog } from "./roleChange";
-import { discard, effective, hasChanges, isPastExpiry, stageValue } from "@/lib/adminStaging";
+import { appAdminChanged, appChanges, discard, effective, hasChanges, isPastExpiry, savedApp, stageApp, stageValue } from "@/lib/adminStaging";
 
 const TABS = ["Overview", "Account", "Organizations", "Apps & licences", "Roles", "Activity"];
 const LOGIN = { google: "Google", email: "Email and password", username: "Bizzux username", "attendance-username": "Attendance username", unknown: "Unknown" };
 const ORG_SOURCE = { owner: "Company owner", explicit: "Set by an administrator", "legacy-profile": "Derived from the business profile" };
 const ACTION = {
   "user.create_username": "Account created", "user.create_username_retry": "Account creation retried", "user.reset_password": "Password reset", "user.reissue_temp_password": "Password re-issued",
-  "user.set_apps": "App access changed", "org.set_role": "Organization role changed", "team.remove": "Removed from the company", "team.restore": "Restored to the company", "user.link_company": "Joined the company",
+  "user.set_apps": "App access changed", "user.set_app_access": "App access changed", "org.set_role": "Organization role changed", "team.remove": "Removed from the company", "team.restore": "Restored to the company", "user.link_company": "Joined the company",
   "user.bind_employee": "Linked to an Attendance record", "user.reset_username_password": "Password reset", "user.regenerate_recovery_codes": "New recovery codes issued", "user.link_request": "Invited to join the company", "contact.create": "Contact added", "user.suspend": "Suspended", "user.activate": "Re-activated", "user.set_expiry": "Account expiry changed", "user.update_profile": "Profile updated", "user.set_profile": "Business profile changed", "user.unlock_username": "Sign-in unlocked",
 };
 const EMPLOYMENT_TYPES = ["Full-time", "Part-time", "Contractor", "Intern"];
@@ -82,10 +82,12 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
   const [orgEditing, setOrgEditing] = useState(false); // the Organizations tab's role editor is open (the Roles tab always shows it)
   const [exp, setExp] = useState(null); // Account tab: the expiry date being edited in place ("" = no expiry), null = not editing
   const [savingExp, setSavingExp] = useState(false);
+  const [appStage, setAppStage] = useState(null); // Apps & licences tab: { [appId]: { granted, admin } } while editing, null = not editing
+  const [savingApps, setSavingApps] = useState(false);
   const [askConfirm, confirmDialog] = useConfirm();
   useEffect(() => {
     if (!open || !uid) return undefined;
-    let live = true; setTab(0); setD(null); setErr(""); setMsg(""); setEdit(null); setStage({}); setOrgEditing(false); setExp(null);
+    let live = true; setTab(0); setD(null); setErr(""); setMsg(""); setEdit(null); setStage({}); setOrgEditing(false); setExp(null); setAppStage(null);
     api("/api/iam/users/" + encodeURIComponent(uid), "GET").then((x) => live && setD(x)).catch((e) => live && setErr(e.message));
     return () => { live = false; };
   }, [open, uid]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -187,6 +189,32 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
       setMsg(exp ? "Account expiry for " + person + " is now " + exp + (curExpiry ? " (was " + curExpiry + ")." : ".") : "Account expiry removed for " + person + (curExpiry ? " (was " + curExpiry + ")." : "."));
       onChanged?.();
     } catch (x) { setErr((x?.message || "Could not save the expiry.") + " Nothing was changed."); } finally { setSavingExp(false); }
+  };
+  // Apps & licences tab: access and the app role are edited per app in place; nothing is saved until "Save changes". Only the apps that changed are sent.
+  const appsEditable = canEdit && d?.organization?.role !== "OWNER";
+  const appsWhy = !canEdit ? NO_RECORD : "The company Owner always has every app, so it can't be changed here.";
+  const appState = (x) => (!x.granted ? "No access" : x.admin ? "Admin" : "Member");
+  const startApps = () => { setErr(""); setMsg(""); setTab(3); setAppStage({}); };
+  const appChangeList = d && appStage ? appChanges(d.apps, appStage) : [];
+  const saveApps = async () => {
+    const changes = appChangeList;
+    if (!changes.length) return;
+    const person = title;
+    // Making someone an app Admin, or taking that away, is confirmed first, naming the person, each app and the old and new role.
+    if (appAdminChanged(changes) && !(await askConfirm({
+      title: "Confirm app Admin change", tone: "warning", confirmLabel: "Confirm change",
+      body: (<><p>You are about to change app access for <b>{person}</b>:</p>
+        <ul>{changes.map((c) => <li key={c.appId}>{appName(c.appId)}: <b>{appState(c.from)}</b> → <b>{appState(c.to)}</b></li>)}</ul>
+        <p>An app Admin can manage that app's settings and data.</p></>),
+    }))) return;
+    setSavingApps(true); setErr(""); setMsg("");
+    try {
+      await api("/api/iam/identities", "POST", { kind: "appAccess", uid, apps: changes.map((c) => ({ appId: c.appId, granted: c.to.granted, admin: c.to.admin })) });
+      setAppStage(null);
+      await refresh();
+      setMsg("Saved for " + person + ": " + changes.map((c) => appName(c.appId) + " " + appState(c.from) + " → " + appState(c.to)).join("; ") + ".");
+      onChanged?.();
+    } catch (x) { setErr((x?.message || "Could not save app access.") + " Nothing was changed."); } finally { setSavingApps(false); }
   };
   return (
     <>
@@ -324,10 +352,47 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
               </>
             )}
             {tab === 3 && (
-              <table className="table"><thead><tr><th>Application</th><th>Access</th><th>App role</th><th>Source</th></tr></thead>
-                <tbody>{d.apps.map((a) => (
-                  <tr key={a.appId}><td>{appName(a.appId)}</td><td>{a.access ? "Yes" : "No"}{!a.access && a.reason ? <span className="muted"> ({a.reason.replace(/_/g, " ")})</span> : null}</td><td>{a.access ? (a.appRole === "ADMIN" ? "Admin" : "Member") : "—"}</td><td>{a.access ? (a.source === "owner" ? "Company owner" : "Assigned") : "—"}</td></tr>
-                ))}</tbody></table>
+              <div>
+                <GroupHead title="Application access" label={"Edit application access for " + title} onEdit={appsEditable && !appStage ? startApps : undefined} why={appsEditable ? "" : appsWhy} />
+                <table className="table"><thead><tr><th>Application</th><th>Access</th><th>App role</th><th>Source</th></tr></thead>
+                  <tbody>{d.apps.map((a) => {
+                    const base = savedApp(a);
+                    const cur = appStage ? (appStage[a.appId] || base) : base;
+                    const notHeld = ["app_not_enabled", "app_not_licensed"].includes(a.reason);
+                    const fixed = a.source === "owner" || savingApps;
+                    return (
+                      <tr key={a.appId}>
+                        <td>{appName(a.appId)}</td>
+                        {appStage ? (
+                          <>
+                            <td><label><input type="checkbox" checked={cur.granted} disabled={fixed || (notHeld && !cur.granted)} aria-label={"Access to " + appName(a.appId)}
+                              onChange={(e) => setAppStage((st) => stageApp(st, d.apps, a.appId, { granted: e.target.checked }))} /> {cur.granted ? "Yes" : "No"}</label>
+                              {notHeld && !cur.granted && <span className="muted"> (not enabled for this company)</span>}</td>
+                            <td><select className="input" style={{ maxWidth: 130 }} value={cur.admin ? "ADMIN" : "MEMBER"} disabled={fixed || !cur.granted || !canAssignAdmin}
+                              aria-label={"Role in " + appName(a.appId)} onChange={(e) => setAppStage((st) => stageApp(st, d.apps, a.appId, { admin: e.target.value === "ADMIN" }))}>
+                              <option value="MEMBER">Member</option><option value="ADMIN">Admin</option></select></td>
+                            <td>{a.source === "owner" ? "Company owner" : cur.granted ? "Assigned" : "—"}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{a.access ? "Yes" : "No"}{!a.access && a.reason ? <span className="muted"> ({a.reason.replace(/_/g, " ")})</span> : null}</td>
+                            <td>{a.access ? (a.appRole === "ADMIN" ? "Admin" : "Member") : "—"}</td>
+                            <td>{a.access ? (a.source === "owner" ? "Company owner" : "Assigned") : "—"}</td>
+                          </>
+                        )}
+                      </tr>
+                    );
+                  })}</tbody></table>
+                {appStage && !canAssignAdmin && <span className="adm-hint">Only the Owner can make or remove an app Admin.</span>}
+                {appStage && <span className="adm-hint">An app can only be granted if your company has it enabled. Licences and plans are managed in the company's billing, not here.</span>}
+                {appStage && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 16 }}>
+                    <button type="button" className="btn-primary-sm" disabled={!appChangeList.length || savingApps} onClick={saveApps}>{savingApps ? "Saving…" : "Save changes"}</button>
+                    <button type="button" className="adm-btn-outline" disabled={savingApps} onClick={() => setAppStage(null)}>Cancel</button>
+                    {appChangeList.length > 0 && !savingApps && <span className="adm-hint" style={{ margin: 0 }}>Not saved yet</span>}
+                  </div>
+                )}
+              </div>
             )}
             {tab === 4 && (
               <div>
