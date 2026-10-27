@@ -1116,7 +1116,7 @@ function UserDetailModal({ user: u, isOwner, onClose, onOpenBusiness, onDeleted 
         )}
         <div className="row" style={{ justifyContent: "space-between", marginTop: 16, gap: 8 }}>
           {isOwner && !showDelete ? (
-            <button className="btn-small" style={{ color: "var(--red)", borderColor: "#fca5a5" }} onClick={() => setShowDelete(true)}>Delete user…</button>
+            <button className="btn-small" style={{ color: "var(--red)", borderColor: "#fca5a5" }} onClick={() => setShowDelete(true)}>Close customer account…</button>
           ) : (
             <span />
           )}

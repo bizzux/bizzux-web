@@ -591,7 +591,7 @@ function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
           <button type="button" className="btn-outline-dark" disabled={busy} onClick={() => setLcModal(null)}>Cancel</button>
           <button type="button" className="btn-primary" style={lcModal === "delete" ? { background: "var(--red)", borderColor: "var(--red)" } : undefined}
             disabled={busy || (code === "other" && text.trim().length < 3) || (lcModal === "delete" && (!pv || pv.blockers.length > 0 || typed.trim() !== o.name))}
-            onClick={submitLifecycle}>{busy ? "Working…" : lcModal === "archive" ? "Archive" : "Delete permanently"}</button>
+            onClick={submitLifecycle}>{busy ? "Working…" : lcModal === "archive" ? "Archive" : "Delete organization"}</button>
         </div>
       </div>
     </div>
@@ -603,7 +603,7 @@ function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
       {err && !lcModal && <p className="error">{err}</p>}
       <div style={{ padding: 14, border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 12, marginBottom: 16 }}>
         <div className="label" style={{ marginBottom: 4, color: "var(--red)" }}>Lifecycle</div>
-        <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>Suspend blocks every app right away and can be undone. Archive hides it from the directory (data kept). Deleting removes it for good.</p>
+        <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>Suspend blocks every app right away and can be undone. Archive hides it from the directory (data kept). Delete organization removes it for good (archive it first, unless it is a test organization).</p>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           {!d.row.internal && (
             ["suspended", "archived"].includes(acct)
@@ -612,9 +612,9 @@ function AuditLifecycle({ d, o, cust, legacy, isOwner, can, reload, onBack }) {
           )}
           {!d.row.internal && acct !== "archived" && d.row.kind !== "placeholder" && can("organizations.archive") &&
             <button className="btn-small" onClick={() => openLifecycle("archive")}>Archive</button>}
-          {isOwner && cust && <button className="btn-small" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => setShowDelete(true)}>Delete user…</button>}
+          {isOwner && cust && <button className="btn-small" style={{ background: "var(--red)", borderColor: "var(--red)", color: "#fff" }} onClick={() => setShowDelete(true)}>Close customer account…</button>}
           {(d.row.isTest ? can("organizations.delete_test") : isOwner) && (d.row.isTest || ["archived", "pending", "pending_admin", "deleting"].includes(d.row.status)) &&
-            <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={() => openLifecycle("delete")}>{d.row.status === "deleting" ? "Retry delete" : "Delete permanently"}</button>}
+            <button className="btn-small" style={{ borderColor: "#fca5a5", color: "var(--red)" }} onClick={() => openLifecycle("delete")}>{d.row.status === "deleting" ? "Retry delete" : "Delete organization"}</button>}
         </div>
         <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Closing or recovering a customer account (60-day recovery) stays under Delete &amp; Recover.</p>
       </div>
