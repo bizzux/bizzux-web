@@ -145,7 +145,7 @@ export async function POST(req) {
           createdByAdmin: true, createdByAdminEmail: c.email, mustChangePassword: owner.mustChangePassword !== false,
           createdAt: FieldValue.serverTimestamp(),
         });
-        await createOrganization({ id: uid, name, type: "CUSTOMER", createdBy: c.uid });
+        await createOrganization({ id: uid, name, type: "CUSTOMER", createdBy: c.uid, registeredVia: "admin", registeredByEmail: c.email || null });
         await upsertOrganizationMembership({ organizationId: uid, userId: uid, role: "OWNER", status: "active" });
         await applyEntitlements(uid, apps, planType === "PAID" ? "PAID" : "TRIAL");
         await Promise.all(apps.map((appId) => upsertAppAssignment({ organizationId: uid, userId: uid, appId, role: "OWNER", status: "ACTIVE" })));

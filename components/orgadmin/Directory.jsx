@@ -10,7 +10,7 @@ const ACCOUNT = { active: "Active", suspended: "Suspended", expired: "Expired", 
 const PAYMENT = { paid: "Paid", complimentary: "Free / complimentary", unpaid: "Not paid", not_recorded: "Payment not recorded", past_due: "Past due", cancelled: "Cancelled", none: "—" };
 const TRIAL = { active: "Trial running", expired: "Trial ended", not_started: "Trial not started", none: "" };
 const ONBOARD = { onboarded: "Onboarded", not_onboarded: "Not onboarded", awaiting_first_login: "Awaiting first login", trial_not_started: "Trial not started", pending_verification: "Verifying", not_applicable: "—" };
-const KIND = { "self-service": "Self-service", "admin-provisioned": "Admin-provisioned", placeholder: "Placeholder" };
+const KIND = { "admin-provisioned": "Admin-Registered", "self-service": "Self-Registered", placeholder: "Unknown" };
 const PLAN = { TRIAL: "Trial", PAID: "Paid", FREE: "Free licence", TEST: "Test", INTERNAL: "Internal", NONE: "—" };
 const PAGE = 25;
 
@@ -113,8 +113,8 @@ export default function Directory({ onOpen, onCreate, canCreate, canReindex, isO
           <option value="">All account status</option>
           {Object.entries(ACCOUNT).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <select className="input" style={{ width: 160 }} value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="">All sources</option>
+        <select className="input" style={{ width: 200 }} value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="">All registration methods</option>
           {Object.entries(KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <select className="input" style={{ width: 150 }} value={planType} onChange={(e) => setPlanType(e.target.value)}>

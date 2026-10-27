@@ -50,6 +50,11 @@ export default function Details({ id, onBack, onChanged, legacy, initialTab }) {
       </div>
       <h2 style={{ margin: "6px 0 4px" }}>{row.name}</h2>
       <p className="muted" style={{ margin: "0 0 8px", fontSize: 13 }}>{[row.industry, row.country].filter(Boolean).join(" · ")}</p>
+      <p className="muted" style={{ margin: "0 0 8px", fontSize: 13 }}>
+        Registration method: <strong>{{ "admin-provisioned": "Admin-Registered", "self-service": "Self-Registered" }[row.kind] || "Unknown"}</strong>
+        {" · "}Registered by: <strong>{row.registeredBy || (row.kind === "admin-provisioned" ? "Bizzux Platform Admin" : "Unknown")}</strong>
+        {" · "}Registration date: <strong>{row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "Unknown"}</strong>
+      </p>
       <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
         <span className="status-pill">Organization: {ACCOUNT[status.account] || status.account}</span>
         <span className="status-pill">Onboarding: {ONBOARDING_STATUS_LABEL[d.ownership.onboardingStatus]}</span>
