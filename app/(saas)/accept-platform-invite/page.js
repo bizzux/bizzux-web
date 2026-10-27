@@ -61,7 +61,7 @@ function Inner() {
         You were invited as <strong>{info.roleLabel}</strong> using <strong>{info.email}</strong>.
       </p>
       {!user && (
-        <Link href="/sign-in" className="btn-primary" style={{ display: "inline-flex" }}>
+        <Link href={"/sign-in?next=" + encodeURIComponent("/accept-platform-invite?token=" + token)} className="btn-primary" style={{ display: "inline-flex" }}>
           Sign in as {info.email}
         </Link>
       )}
