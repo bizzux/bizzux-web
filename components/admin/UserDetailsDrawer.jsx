@@ -5,6 +5,8 @@ import Drawer from "./Drawer";
 import { APPS } from "@/lib/appCatalog";
 import { toLoginId } from "@/lib/loginId";
 import { PROFILES } from "@/lib/roles";
+import Notice from "./Notice";
+import { useConfirm } from "./ConfirmDialog";
 
 const TABS = ["Overview", "Account", "Organizations", "Apps & licences", "Roles", "Activity"];
 const LOGIN = { google: "Google", email: "Email and password", username: "Bizzux username", "attendance-username": "Attendance username", unknown: "Unknown" };
@@ -21,6 +23,7 @@ const FIELD_LABEL = {
   employmentType: "employment type", employeeId: "employee ID", branch: "branch", office: "office", officePhone: "office phone", mobilePhone: "mobile number",
   streetAddress: "street address", city: "city", state: "state or province", zip: "postal code", country: "country or region", faxNumber: "fax number",
 };
+const ROLE_LABEL = { OWNER: "Owner", ADMIN: "Admin", MEMBER: "Member", VIEWER: "Viewer" };
 const ADMIN_PROFILES = ["Global Admin", "Admin"]; // moving someone to or from these needs the same right as making an Admin
 const Pencil = () => (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>);
 // A heading for one group in the Overview with its own "Edit" control (hidden when the person can't be edited).
@@ -38,9 +41,12 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
   const [edit, setEdit] = useState(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [stage, setStage] = useState({}); // Roles tab: the changes picked but not saved yet ({ orgRole?, profile? })
+  const [savingRoles, setSavingRoles] = useState(false);
+  const [askConfirm, confirmDialog] = useConfirm();
   useEffect(() => {
     if (!open || !uid) return undefined;
-    let live = true; setTab(0); setD(null); setErr(""); setMsg(""); setEdit(null);
+    let live = true; setTab(0); setD(null); setErr(""); setMsg(""); setEdit(null); setStage({});
     api("/api/iam/users/" + encodeURIComponent(uid), "GET").then((x) => live && setD(x)).catch((e) => live && setErr(e.message));
     return () => { live = false; };
   }, [open, uid]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -75,31 +81,79 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
       onChanged?.();
     } catch (x) { setErr(x.message); } finally { setSaving(false); }
   };
-  const changeProfile = async (profile) => {
+  const title = d?.name || row?.firstName || row?.username || "User details";
+  const refresh = async () => setD(await api("/api/iam/users/" + encodeURIComponent(uid), "GET"));
+  // Runs one of the page's actions (block, unlock, delete...): a returned string is shown as the success message at the top of this panel, a thrown
+  // error as the error message, and the details are re-read afterwards so the panel never shows stale values.
+  const run = async (fn) => {
     setErr(""); setMsg("");
     try {
-      const r = await api("/api/iam/identities", "POST", { kind: "profile", uid, profile });
-      setD(await api("/api/iam/users/" + encodeURIComponent(uid), "GET"));
-      setMsg(r?.unchanged ? "Business profile is already " + profile + "." : "Business profile changed to " + profile + ".");
-      onChanged?.();
-    } catch (x) { setErr(x.message); }
+      const done = await fn();
+      if (typeof done === "string" && done) { setMsg(done); await refresh().catch(() => {}); }
+    } catch (x) { setErr(x?.message || "Something went wrong."); }
   };
-  const title = d?.name || row?.firstName || row?.username || "User details";
+
+  // Roles tab: picking a value only STAGES it; nothing is saved until "Save changes".
+  const curRole = d?.organization?.role || "";
+  const curProfile = d?.organization?.profile || "";
+  const nextRole = stage.orgRole ?? curRole;
+  const nextProfile = stage.profile ?? curProfile;
+  const rolesDirty = !!d && (nextRole !== curRole || nextProfile !== curProfile);
+  const profileLabel = (v) => PROFILES.find((p) => p.value === v)?.label || v || "Not set";
+  const saveRoles = async () => {
+    const roleChanged = nextRole !== curRole;
+    const profChanged = nextProfile !== curProfile;
+    const person = title;
+    // Anything that makes someone an Admin, or takes Admin away, is confirmed first, naming the person and the old and new values.
+    const toAdmin = (roleChanged && nextRole === "ADMIN") || (profChanged && ADMIN_PROFILES.includes(nextProfile));
+    const fromAdmin = (roleChanged && curRole === "ADMIN") || (profChanged && ADMIN_PROFILES.includes(curProfile));
+    if (toAdmin || fromAdmin) {
+      const ok = await askConfirm({
+        title: "Confirm Admin-level change", tone: "warning", confirmLabel: "Confirm change",
+        body: (
+          <>
+            <p>You are about to change access for <b>{person}</b>:</p>
+            <ul>
+              {roleChanged && <li>Organization role: <b>{ROLE_LABEL[curRole] || curRole}</b> → <b>{ROLE_LABEL[nextRole] || nextRole}</b></li>}
+              {profChanged && <li>Business profile: <b>{profileLabel(curProfile)}</b> → <b>{profileLabel(nextProfile)}</b></li>}
+            </ul>
+            <p>{toAdmin ? "Admins can manage users and app access in this company." : "This takes away their ability to manage users and app access."}</p>
+          </>
+        ),
+      });
+      if (!ok) return;
+    }
+    setSavingRoles(true); setErr(""); setMsg("");
+    const saved = [];
+    try {
+      if (roleChanged) { await onRoleChange(row, nextRole); saved.push("organization role " + (ROLE_LABEL[curRole] || curRole) + " → " + (ROLE_LABEL[nextRole] || nextRole)); }
+      if (profChanged) { await api("/api/iam/identities", "POST", { kind: "profile", uid, profile: nextProfile }); saved.push("business profile " + profileLabel(curProfile) + " → " + profileLabel(nextProfile)); }
+      setStage({});
+      await refresh();
+      setMsg("Saved for " + person + ": " + saved.join(" and ") + ". The Organizations tab shows the new values.");
+      onChanged?.();
+    } catch (x) {
+      // Keep what was picked but not saved; show what did save so nothing is misleading.
+      if (saved.length) { setStage((s) => ({ ...s, orgRole: undefined })); await refresh().catch(() => {}); onChanged?.(); }
+      setErr((x?.message || "Could not save the change.") + (saved.length ? " Already saved: " + saved.join(" and ") + "." : " Nothing was changed."));
+    } finally { setSavingRoles(false); }
+  };
   return (
+    <>
     <Drawer open={open} title={title} onClose={onClose} size="wide" label={"Details for " + title}>
-      {err && <p className="error" role="alert">{err}</p>}
-      {msg && <p className="muted" role="status" style={{ color: "#0f5f58" }}>{msg}</p>}
+      {err && <Notice kind="error" onDismiss={() => setErr("")}>{err}</Notice>}
+      {msg && <Notice kind="ok" onDismiss={() => setMsg("")}>{msg}</Notice>}
       {!d && !err && <p className="muted" role="status">Loading…</p>}
       {d && (
         <>
           <div className="adm-actions" role="toolbar" aria-label="Actions for this user">
             {canEdit && <button type="button" className="adm-editbtn" aria-label={"Edit details for " + title} disabled={!!edit} onClick={() => startEdit()}><Pencil />Edit</button>}
             {d.account.canResetPassword && <button type="button" className="adm-cmdbtn" onClick={() => onResetPassword(row)}>Reset password</button>}
-            <button type="button" className="adm-cmdbtn" onClick={() => onManageAccess(row)}>Manage roles &amp; app access</button>
-            {d.account.locked && <button type="button" className="adm-cmdbtn" onClick={() => onUnlock(row)}>Unlock sign-in</button>}
-            {!row?.dirOnly && onDisable && <button type="button" className="adm-cmdbtn" onClick={() => onDisable(row)}>{row?.status === "disabled" ? "Unblock sign-in" : "Block sign-in"}</button>}
-            {!row?.dirOnly && onDelete && <button type="button" className="adm-cmdbtn" style={{ color: "#b3261e" }} onClick={() => onDelete(row)}>Delete user</button>}
-            {d.loginKind === "username" && d.account.homeCompany && <button type="button" className="adm-cmdbtn" onClick={() => onRecoveryCodes(row)}>New recovery codes</button>}
+            <button type="button" className="adm-cmdbtn" onClick={() => run(() => onManageAccess(row))}>Manage roles &amp; app access</button>
+            {d.account.locked && <button type="button" className="adm-cmdbtn" onClick={() => run(() => onUnlock(row))}>Unlock sign-in</button>}
+            {!row?.dirOnly && onDisable && <button type="button" className="adm-cmdbtn" onClick={() => run(() => onDisable(row))}>{row?.status === "disabled" ? "Unblock sign-in" : "Block sign-in"}</button>}
+            {!row?.dirOnly && onDelete && <button type="button" className="adm-cmdbtn" style={{ color: "#b3261e" }} onClick={() => run(() => onDelete(row))}>Delete user</button>}
+            {d.loginKind === "username" && d.account.homeCompany && <button type="button" className="adm-cmdbtn" onClick={() => run(() => onRecoveryCodes(row))}>New recovery codes</button>}
           </div>
           <div role="tablist" aria-label="User details" className="adm-tabs">
             {TABS.map((t, i) => (<button key={t} role="tab" type="button" aria-selected={tab === i} className={tab === i ? "on" : ""} onClick={() => setTab(i)}>{t}</button>))}
@@ -200,8 +254,8 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
                 <p><b>Current:</b> {d.organization.role} <span className="muted">({ORG_SOURCE[d.organization.roleSource] || d.organization.roleSource})</span></p>
                 {d.organization.role !== "OWNER" && (
                   <label className="adm-field">Change organization role
-                    <select className="input" style={{ maxWidth: 220 }} value={d.organization.role} onChange={(e) => onRoleChange(row, e.target.value).then?.(() => api("/api/iam/users/" + encodeURIComponent(uid), "GET").then(setD))}
-                      disabled={!canAssignAdmin && d.organization.role === "ADMIN"}>
+                    <select className="input" style={{ maxWidth: 220 }} value={nextRole} onChange={(e) => setStage((s) => ({ ...s, orgRole: e.target.value === curRole ? undefined : e.target.value }))}
+                      disabled={savingRoles || (!canAssignAdmin && curRole === "ADMIN")}>
                       <option value="ADMIN" disabled={!canAssignAdmin}>Admin</option><option value="MEMBER">Member</option><option value="VIEWER">Viewer</option>
                     </select>
                     {!canAssignAdmin && <span className="adm-hint">Only the Owner can make or remove an Admin.</span>}
@@ -209,15 +263,22 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
                 )}
                 {d.organization.role !== "OWNER" && canEdit && (
                   <label className="adm-field" style={{ marginTop: 12 }}>Business profile
-                    <select className="input" style={{ maxWidth: 260 }} value={d.organization.profile || ""} onChange={(e) => changeProfile(e.target.value)}
-                      disabled={!canAssignAdmin && ADMIN_PROFILES.includes(d.organization.profile)}>
-                      {!PROFILES.some((p) => p.value === d.organization.profile) && <option value={d.organization.profile || ""} disabled>{d.organization.profile || "Not set"}</option>}
-                      {PROFILES.filter((p) => p.value !== "Global Admin" || p.value === d.organization.profile).map((p) => (
-                        <option key={p.value} value={p.value} disabled={p.value !== d.organization.profile && ADMIN_PROFILES.includes(p.value) && !canAssignAdmin}>{p.label}</option>
+                    <select className="input" style={{ maxWidth: 260 }} value={nextProfile} onChange={(e) => setStage((s) => ({ ...s, profile: e.target.value === curProfile ? undefined : e.target.value }))}
+                      disabled={savingRoles || (!canAssignAdmin && ADMIN_PROFILES.includes(curProfile))}>
+                      {!PROFILES.some((p) => p.value === curProfile) && <option value={curProfile} disabled>{curProfile || "Not set"}</option>}
+                      {PROFILES.filter((p) => p.value !== "Global Admin" || p.value === curProfile).map((p) => (
+                        <option key={p.value} value={p.value} disabled={p.value !== curProfile && ADMIN_PROFILES.includes(p.value) && !canAssignAdmin}>{p.label}</option>
                       ))}
                     </select>
                     <span className="adm-hint">Describes the job in the business apps. Separate from the organization role. App access is changed under Manage roles &amp; app access.</span>
                   </label>
+                )}
+                {d.organization.role !== "OWNER" && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 16 }}>
+                    <button type="button" className="btn-primary-sm" disabled={!rolesDirty || savingRoles} onClick={saveRoles}>{savingRoles ? "Saving…" : "Save changes"}</button>
+                    <button type="button" className="adm-btn-outline" disabled={!rolesDirty || savingRoles} onClick={() => setStage({})}>Cancel</button>
+                    {rolesDirty && !savingRoles && <span className="adm-hint" style={{ margin: 0 }}>Not saved yet</span>}
+                  </div>
                 )}
               </div>
             )}
@@ -228,5 +289,7 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
         </>
       )}
     </Drawer>
+    {confirmDialog}
+    </>
   );
 }

@@ -20,6 +20,8 @@ import ColumnChooser from "@/components/admin/ColumnChooser";
 import AddUserWizard from "@/components/admin/AddUserWizard";
 import ResetPasswordDrawer from "@/components/admin/ResetPasswordDrawer";
 import UserDetailsDrawer from "@/components/admin/UserDetailsDrawer";
+import Notice from "@/components/admin/Notice";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { roleLabel } from "@/lib/roleLabel";
 import { toLoginId } from "@/lib/loginId";
 
@@ -49,6 +51,10 @@ async function api(path, method, body) {
   if (!res.ok) throw new Error(data.error || "Request failed");
   return data;
 }
+
+// How a person is named in dialogs and messages. A username login has no email, so fall back to the name, then the username.
+const personName = (r) => [r?.firstName, r?.lastName].filter(Boolean).join(" ") || r?.username || r?.email || "this person";
+const namesOf = (list) => (list.length <= 3 ? list.map(personName).join(", ") : list.slice(0, 3).map(personName).join(", ") + " and " + (list.length - 3) + " more");
 
 const ORG_SOURCE = { owner: "company owner", explicit: "set by an administrator", "legacy-profile": "from business profile" };
 const LOGIN_LABEL = { google: "Google", email: "Email & password", username: "Bizzux username", "attendance-username": "Attendance username" };
@@ -144,6 +150,8 @@ export default function TeamPage() {
   const [showUsernameAdd, setShowUsernameAdd] = useState(false);
   const [showLink, setShowLink] = useState(false);
   const [err, setErr] = useState("");
+  const [note, setNote] = useState(""); // a success message for the page (shown at the top, like err)
+  const [askConfirm, confirmDialog] = useConfirm(); // the in-app dialog that replaces the browser's confirm()
   const [busyId, setBusyId] = useState(null);
   const [credentials, setCredentials] = useState(null); // { email, password } shown once after a credentials-based add or a password reset
   const [managingMember, setManagingMember] = useState(null); // the member row for "Manage roles & app access", or null
@@ -172,6 +180,16 @@ export default function TeamPage() {
   }, [user, me]);
 
   const rows = mergeRows(members, directory, filters);
+  // The open details drawer follows the freshest copy of its row, so after Block / Unblock its button and status are never stale.
+  useEffect(() => {
+    setDetail((cur) => (cur ? mergeRows(members, directory, { q: "", login: "", status: "", app: "", role: "" }).find((r) => r.id === cur.id) || cur : cur));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members, directory]);
+  // A page-level message is shown at the top; bring the page back up to it (when no drawer is covering the page).
+  useEffect(() => {
+    if ((err || note) && !detail) window.scrollTo({ top: 0, behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [err, note]);
   const sorted = sortRows(rows, sort);
   const pg = paginate(sorted, pageNo, pageSize);
   const sortTh = (key, label, title) => (
@@ -241,11 +259,15 @@ export default function TeamPage() {
   async function removeSelected() {
     const list = chosen.filter((r) => !r.dirOnly);
     if (!list.length) { setErr("Nothing removable is selected."); return; }
-    if (!window.confirm("Remove " + list.length + " " + (list.length === 1 ? "person" : "people") + " from your company? They keep their Bizzux login and any other companies, and you can restore them for 60 days.")) return;
-    setErr(""); setBulkMsg("Working…");
+    if (!(await askConfirm({
+      title: "Remove from company", tone: "danger", confirmLabel: list.length === 1 ? "Remove" : "Remove " + list.length + " people",
+      body: <p>Remove <b>{namesOf(list)}</b> from your company? They keep their Bizzux login and any other companies, and you can restore them for 60 days.</p>,
+    }))) return;
+    setErr(""); setNote(""); setBulkMsg("Working…");
     let ok = 0; const failed = [];
-    for (const r of list) { try { await api("/api/team", "POST", { action: "remove", id: r.id }); ok++; } catch (e) { failed.push((r.firstName || r.username || r.email) + ": " + e.message); } }
-    setBulkMsg(ok + " removed" + (failed.length ? ", " + failed.length + " failed (" + failed.slice(0, 3).join("; ") + ")" : ""));
+    for (const r of list) { try { await api("/api/team", "POST", { action: "remove", id: r.id }); ok++; } catch (e) { failed.push(personName(r) + ": " + e.message); } }
+    setBulkMsg("");
+    reportBulk(ok + " removed", failed);
     setSelected(new Set());
     await load();
   }
@@ -253,12 +275,20 @@ export default function TeamPage() {
   async function purgeRows(list) {
     const rowsToPurge = list.filter((r) => r.dirOnly);
     if (!rowsToPurge.length) { setErr("Select leftover records only."); return; }
-    const names = rowsToPurge.slice(0, 5).map((r) => r.firstName || r.username || r.email || r.uid).join(", ");
-    if (!window.confirm("Permanently delete " + rowsToPurge.length + " leftover " + (rowsToPurge.length === 1 ? "record" : "records") + " (" + names + (rowsToPurge.length > 5 ? ", …" : "") + ")?\n\nThese people have no company record. Only this company's membership and app access records are deleted. Their Bizzux login, other companies and any Attendance records are not touched. This cannot be undone.")) return;
-    setErr(""); setBulkMsg("Working…");
+    if (!(await askConfirm({
+      title: "Permanently delete leftover records", tone: "danger", confirmLabel: "Delete permanently",
+      body: (
+        <>
+          <p>Permanently delete the leftover {rowsToPurge.length === 1 ? "record" : rowsToPurge.length + " records"} for <b>{namesOf(rowsToPurge)}</b>?</p>
+          <p>These people have no company record. Only this company&apos;s membership and app access records are deleted. Their Bizzux login, other companies and any Attendance records are not touched. <b>This cannot be undone.</b></p>
+        </>
+      ),
+    }))) return;
+    setErr(""); setNote(""); setBulkMsg("Working…");
     let ok = 0; const failed = [];
-    for (const r of rowsToPurge) { try { await api("/api/iam/identities", "POST", { kind: "purgeLeftover", uid: r.uid }); ok++; } catch (e) { failed.push((r.firstName || r.username || r.email || r.uid) + ": " + e.message); } }
-    setBulkMsg(ok + " deleted" + (failed.length ? ", " + failed.length + " failed (" + failed.slice(0, 3).join("; ") + ")" : ""));
+    for (const r of rowsToPurge) { try { await api("/api/iam/identities", "POST", { kind: "purgeLeftover", uid: r.uid }); ok++; } catch (e) { failed.push(personName(r) + ": " + e.message); } }
+    setBulkMsg("");
+    reportBulk(ok + " deleted", failed);
     setSelected(new Set());
     await load();
   }
@@ -270,9 +300,14 @@ export default function TeamPage() {
   }
   async function bulk(kind) {
     if (!chosen.length) return;
-    const label = kind === "disable" ? "disable" : kind === "grant" ? "give " + appName(bulkApp) + " to" : "remove " + appName(bulkApp) + " from";
-    if ((kind !== "disable" && !bulkApp) || !window.confirm("Really " + label + " " + chosen.length + " user" + (chosen.length === 1 ? "" : "s") + "?")) return;
-    setErr(""); setBulkMsg("Working…");
+    if (kind !== "disable" && !bulkApp) return;
+    const verb = kind === "disable" ? "Disable" : kind === "grant" ? "Give " + appName(bulkApp) + " to" : "Remove " + appName(bulkApp) + " from";
+    if (!(await askConfirm({
+      title: kind === "disable" ? "Disable sign-in" : kind === "grant" ? "Give app access" : "Remove app access",
+      tone: kind === "grant" ? "default" : "danger", confirmLabel: kind === "disable" ? "Disable" : kind === "grant" ? "Give access" : "Remove access",
+      body: <p>{verb} <b>{namesOf(chosen)}</b>?{kind === "disable" ? " They lose access immediately." : ""}</p>,
+    }))) return;
+    setErr(""); setNote(""); setBulkMsg("Working…");
     let ok = 0; const failed = [];
     for (const r of chosen) {
       try {
@@ -285,11 +320,17 @@ export default function TeamPage() {
           await api("/api/iam/identities", "POST", { kind: "apps", uid: r.uid, apps: next });
         }
         ok++;
-      } catch (e) { failed.push((r.firstName || r.username || r.email || r.uid) + ": " + e.message); }
+      } catch (e) { failed.push(personName(r) + ": " + e.message); }
     }
-    setBulkMsg(ok + " done" + (failed.length ? ", " + failed.length + " failed (" + failed.slice(0, 3).join("; ") + ")" : ""));
+    setBulkMsg("");
+    reportBulk(ok + " done", failed);
     setSelected(new Set());
     await load();
+  }
+  // A bulk result goes to the top of the page: green when everything worked, red (with the first few reasons) when something failed.
+  function reportBulk(doneText, failed) {
+    if (failed.length) setErr(doneText + ", " + failed.length + " failed: " + failed.slice(0, 3).join("; ") + (failed.length > 3 ? "; …" : ""));
+    else setNote(doneText + ".");
   }
 
   if (!user || isAdmin === null) {
@@ -314,19 +355,30 @@ export default function TeamPage() {
     );
   }
 
-  async function remove(id) {
-    if (!confirm("Remove this person from your company? They keep their Bizzux login and any other companies, and you can restore them for 60 days.")) return;
-    try {
-      await api("/api/team", "POST", { action: "remove", id });
-      setErr("");
-      await load();
-    } catch (e) {
-      setErr(e.message);
-    }
+  // The actions below take the person's row, ask in the in-app dialog where it matters, and then RETURN a success message (or null when cancelled) or THROW
+  // the error. The caller decides where it shows: onPage() puts it at the top of the page, the details drawer puts it at the top of the drawer.
+  async function onPage(fn) {
+    setErr(""); setNote("");
+    try { const m = await fn(); if (m) setNote(m); } catch (e) { setErr(e?.message || "Something went wrong."); }
+  }
+
+  async function remove(m) {
+    const who = personName(m);
+    if (!(await askConfirm({
+      title: "Remove from company", tone: "danger", confirmLabel: "Remove",
+      body: <p>Remove <b>{who}</b> from your company? They keep their Bizzux login and any other companies, and you can restore them for 60 days.</p>,
+    }))) return null;
+    await api("/api/team", "POST", { action: "remove", id: m.id });
+    await load();
+    return who + " was removed from your company. You can restore them for 60 days.";
   }
 
   async function usernameAction(m, action) {
-    if (action !== "unlock" && !window.confirm("Continue? This signs " + m.username + " out and issues new credentials.")) return;
+    const who = personName(m);
+    if (action !== "unlock" && !(await askConfirm({
+      title: action === "regenerateRecoveryCodes" ? "Issue new recovery codes" : "Issue new credentials", tone: "warning", confirmLabel: "Continue",
+      body: <p>This signs <b>{who}</b> out and issues new credentials. The old ones stop working.</p>,
+    }))) return null;
     setBusyId(m.id);
     try {
       // A pending account is re-issued through the shared IAM service (organization-role authorization, home-company rule, audit); everything else keeps its action.
@@ -336,30 +388,28 @@ export default function TeamPage() {
       if (d.password) setCredentials({ email: m.username, password: d.password });
       if (d.recoveryCodes) setCredentials({ email: m.username, password: "(unchanged) — recovery codes: " + d.recoveryCodes.join("  ") });
       await load();
-    } catch (e) {
-      setErr(e.message);
+      if (action === "unlock") return "Sign-in unlocked for " + who + ".";
+      return d.recoveryCodes ? "New recovery codes issued for " + who + ". Save them from the box on this page; they are shown only once." : "New credentials issued for " + who + ". Save them from the box on this page; they are shown only once.";
+    } finally {
+      setBusyId(null);
     }
-    setBusyId(null);
   }
 
-  async function resend(id) {
-    try {
-      await api("/api/team", "POST", { action: "resend", id });
-      setErr("");
-    } catch (e) {
-      setErr(e.message);
-    }
+  async function resend(m) {
+    await api("/api/team", "POST", { action: "resend", id: m.id });
+    return "Invitation email sent again to " + (m.email || personName(m)) + ".";
   }
 
   async function resetPasswordEmail(m) {
-    if (!confirm(`Send a password-reset email to ${m.email}?`)) return;
+    const who = personName(m);
+    if (!(await askConfirm({
+      title: "Send password-reset email", confirmLabel: "Send email",
+      body: <p>Send a password-reset email to <b>{who}</b>{m.email ? <> at {m.email}</> : null}?</p>,
+    }))) return null;
     setBusyId(m.id);
-    setErr("");
     try {
       await api("/api/team", "POST", { action: "resetPasswordEmail", id: m.id });
-      alert(`Password-reset email sent to ${m.email}.`);
-    } catch (e) {
-      setErr(e.message);
+      return "Password-reset email sent to " + (m.email || who) + ".";
     } finally {
       setBusyId(null);
     }
@@ -380,10 +430,16 @@ export default function TeamPage() {
     }
   }
 
+  // Throws on failure. The details drawer stages the choice and calls this from "Save changes".
+  async function setOrgRoleFor(m, role) {
+    await api("/api/team", "POST", { action: "setOrgRole", id: m.id, role });
+  }
+
+  // The inline role picker in the Users table still saves as soon as it is changed (as before).
   async function changeOrgRole(m, role) {
     setMembers((cur) => cur.map((x) => (x.id === m.id ? { ...x, orgRole: role } : x)));
     try {
-      await api("/api/team", "POST", { action: "setOrgRole", id: m.id, role });
+      await setOrgRoleFor(m, role);
     } catch (e) {
       setErr(e.message);
       load();
@@ -392,14 +448,16 @@ export default function TeamPage() {
 
   async function toggleDisabled(m) {
     const disabling = m.status !== "disabled";
-    if (!confirm(disabling ? `Disable ${m.email}? They'll immediately lose access.` : `Re-enable ${m.email}?`)) return;
+    const who = personName(m);
+    if (!(await askConfirm({
+      title: disabling ? "Block sign-in" : "Unblock sign-in", tone: disabling ? "danger" : "default", confirmLabel: disabling ? "Block sign-in" : "Unblock",
+      body: disabling ? <p>Block sign-in for <b>{who}</b>? They lose access immediately.</p> : <p>Unblock sign-in for <b>{who}</b>? They can sign in again.</p>,
+    }))) return null;
     setBusyId(m.id);
-    setErr("");
     try {
       await api("/api/team", "POST", { action: disabling ? "disable" : "enable", id: m.id });
       await load();
-    } catch (e) {
-      setErr(e.message);
+      return disabling ? "Sign-in blocked for " + who + "." : "Sign-in unblocked for " + who + ".";
     } finally {
       setBusyId(null);
     }
@@ -411,6 +469,8 @@ export default function TeamPage() {
       <AccountTabs active="team" isAccountAdmin={!!isAdmin} isSuper={isSuper} roleLabel={myRoleLabel} />
 
       <div className="admin-shell">
+        {err && <Notice kind="error" onDismiss={() => setErr("")}>{err}</Notice>}
+        {note && <Notice kind="ok" onDismiss={() => setNote("")}>{note}</Notice>}
         <JoinRequestsPanel />
         <h1 className="dash-heading" style={{ fontSize: 22, margin: "4px 0 0" }}>Active users</h1>
         {organizationName && <p className="muted" style={{ margin: "2px 0 0", fontSize: 12.5 }}>{organizationName}</p>}
@@ -431,8 +491,6 @@ export default function TeamPage() {
           <Cmd icon="refresh" onClick={() => { setBulkMsg(""); load(); }}>Refresh</Cmd>
           <Cmd icon="columns" onClick={() => { setColErr(""); setShowCols(true); }}>Choose columns</Cmd>
         </CommandBar>
-
-        {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
 
         {credentials && (
           <div className="card" style={{ marginBottom: 16, background: "var(--line, #f1f5f9)" }}>
@@ -505,20 +563,20 @@ export default function TeamPage() {
                         <TeamRowMenu
                           items={[
                             { label: "Manage roles & app access", onClick: () => setManagingMember(m) },
-                            ...(m.status === "invited" ? [{ label: "Resend invite email", onClick: () => resend(m.id) }] : []),
-                            ...(m.status !== "invited" ? [{ label: "Send password-reset email", onClick: () => resetPasswordEmail(m) }] : []),
+                            ...(m.status === "invited" ? [{ label: "Resend invite email", onClick: () => onPage(() => resend(m)) }] : []),
+                            ...(m.status !== "invited" ? [{ label: "Send password-reset email", onClick: () => onPage(() => resetPasswordEmail(m)) }] : []),
                             ...(m.username ? [
                               { label: "Reset password", onClick: () => setResetFor(m) },
-                              { label: "Unlock sign-in", onClick: () => usernameAction(m, "unlock") },
-                              { label: "New recovery codes", onClick: () => usernameAction(m, "regenerateRecoveryCodes") },
+                              { label: "Unlock sign-in", onClick: () => onPage(() => usernameAction(m, "unlock")) },
+                              { label: "New recovery codes", onClick: () => onPage(() => usernameAction(m, "regenerateRecoveryCodes")) },
                             ] : [
                               { label: busyId === m.id ? "Working…" : "Set new password directly", onClick: () => setPassword(m) },
                             ]),
                             {
                               label: m.status === "disabled" ? "Re-enable" : "Disable",
-                              onClick: () => toggleDisabled(m),
+                              onClick: () => onPage(() => toggleDisabled(m)),
                             },
-                            { label: "Remove", danger: true, onClick: () => remove(m.id) },
+                            { label: "Remove", danger: true, onClick: () => onPage(() => remove(m)) },
                           ]}
                         />
                       )}
@@ -534,10 +592,13 @@ export default function TeamPage() {
 
       <UserDetailsDrawer open={!!detail} uid={detail?.uid} row={detail} api={api} canAssignAdmin={canAssignAdmin} onChanged={() => load()} onClose={() => setDetail(null)}
         onResetPassword={(r) => { setDetail(null); setResetFor(r); }}
-        onManageAccess={(r) => { if (r.dirOnly) { setErr("This person has no team record here, so roles and app access are changed from the Add or Link flows."); return; } setDetail(null); setManagingMember(r); }}
-        onDisable={(r) => { setDetail(null); toggleDisabled(r); }} onDelete={(r) => { setDetail(null); remove(r.id); }}
-        onRoleChange={(r, role) => changeOrgRole(r, role)} onUnlock={(r) => usernameAction(r, "unlock")} onRecoveryCodes={(r) => usernameAction(r, "regenerateRecoveryCodes")} />
-      <ResetPasswordDrawer open={!!resetFor} user={resetFor} api={api} onClose={() => setResetFor(null)} onDone={() => load()} onSendEmail={(r) => resetPasswordEmail(r)} />
+        onManageAccess={(r) => { if (r.dirOnly) throw new Error("This person has no team record here, so roles and app access are changed from the Add or Link flows."); setDetail(null); setManagingMember(r); }}
+        onDisable={(r) => toggleDisabled(r)}
+        onDelete={async (r) => { const m = await remove(r); if (m) { setDetail(null); setNote(m); } }}
+        onRoleChange={(r, role) => setOrgRoleFor(r, role)} onUnlock={(r) => usernameAction(r, "unlock")}
+        onRecoveryCodes={async (r) => { const m = await usernameAction(r, "regenerateRecoveryCodes"); if (m) { setDetail(null); setNote(m); } }} />
+      <ResetPasswordDrawer open={!!resetFor} user={resetFor} api={api} onClose={() => setResetFor(null)} onDone={() => load()} onSendEmail={(r) => onPage(() => resetPasswordEmail(r))} />
+      {confirmDialog}
 
       <ColumnChooser open={showCols} columns={colKeys} onClose={() => setShowCols(false)} onSave={saveCols} saving={savingCols} error={colErr} />
 
