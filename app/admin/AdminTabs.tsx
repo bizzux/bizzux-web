@@ -159,7 +159,7 @@ export default function AdminTabs() {
       <div className="max-w-6xl mx-auto px-6">
         <div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold">Super Admin</h1>
+            <h1 className="text-xl font-bold">Platform Admin</h1>
             <p className="text-sm text-slate-500">
               {tab === "saas" ? "Bizzux SaaS platform" :
                tab === "career" ? `${apps.length} career application${apps.length === 1 ? "" : "s"}` :
@@ -180,7 +180,7 @@ export default function AdminTabs() {
             className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "saas" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}
             onClick={() => setTab("saas")}
           >
-            Super Admin (SaaS)
+            Platform Admin (SaaS)
           </button>
           <button
             className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === "career" ? "bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-white shadow-sm" : "text-slate-800"}`}

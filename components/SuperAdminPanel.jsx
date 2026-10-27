@@ -119,7 +119,7 @@ export default function SuperAdminPanel() {
   if (!user) {
     return (
       <div className="card" style={{ maxWidth: 460 }}>
-        <p style={{ marginBottom: 12 }}>Sign in with your Bizzux Super Admin account to manage plans and organizations.</p>
+        <p style={{ marginBottom: 12 }}>Sign in with your Bizzux Platform Admin account to manage plans and organizations.</p>
         <Link href="/sign-in" className="btn-primary-sm">Sign in</Link>
       </div>
     );
@@ -168,7 +168,7 @@ export default function SuperAdminPanel() {
     );
   }
   if (!isSuper) {
-    return <p>{user.email} doesn&apos;t have Super Admin access.</p>;
+    return <p>{user.email} doesn&apos;t have Platform Admin access.</p>;
   }
 
   return (

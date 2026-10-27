@@ -257,7 +257,7 @@ export default function Nav() {
               className="inline-flex h-10 items-center justify-center rounded-full bg-gradient-to-r from-brand-tealDark to-brand-blueDark text-sm font-semibold px-5 hover:opacity-90 transition-opacity whitespace-nowrap"
               style={{ color: "#ffffff" }}
             >
-              Super Admin
+              Platform Admin
             </Link>
           )}
           {signedIn && (
@@ -339,7 +339,7 @@ export default function Nav() {
             {signedIn ? (
               <>
                 <Link href="/dashboard" onClick={closeMenu} className="py-1 text-sm font-medium text-ink">Profile</Link>
-                {isSuper && <Link href="/admin" onClick={closeMenu} className="py-1 text-sm font-medium text-ink">Super Admin</Link>}
+                {isSuper && <Link href="/admin" onClick={closeMenu} className="py-1 text-sm font-medium text-ink">Platform Admin</Link>}
                 {!isSuper && (
                   <Link
                     href="/contact"
