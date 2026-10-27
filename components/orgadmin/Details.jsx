@@ -37,7 +37,7 @@ export default function Details({ id, onBack, onChanged, legacy, initialTab }) {
 
   const reload = async () => { await load(); onChanged && onChanged(); };
 
-  if (!d) return <div className="card"><button className="link-btn" onClick={onBack}>← Directory</button><p className={err ? "error" : "muted"}>{err || "Loading…"}</p></div>;
+  if (!d) return <div className="card"><button className="btn-outline-dark" style={{ fontWeight: 600, padding: "8px 16px" }} onClick={onBack}>← Back to organizations</button><p className={err ? "error" : "muted"}>{err || "Loading…"}</p></div>;
 
   const { row, status } = d;
   const can = (p) => d.permissions.includes(p);
@@ -48,7 +48,7 @@ export default function Details({ id, onBack, onChanged, legacy, initialTab }) {
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <button type="button" className="link-btn" onClick={onBack}>← Directory</button>
+        <button type="button" className="btn-outline-dark" style={{ fontWeight: 600, padding: "8px 16px" }} onClick={onBack}>← Back to organizations</button>
         <span className="muted" style={{ fontSize: 12 }}>ID: <code>{id}</code></span>
       </div>
       <h2 style={{ margin: "6px 0 4px" }}>{row.name}</h2>
