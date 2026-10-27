@@ -1,6 +1,6 @@
 "use client";
 // User details drawer: one panel per person with Overview, Account, Organizations, Apps & licences, Roles and Activity, opened from the list.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Drawer from "./Drawer";
 import { APPS } from "@/lib/appCatalog";
 import { toLoginId } from "@/lib/loginId";
@@ -22,6 +22,11 @@ const FIELD_LABEL = {
   streetAddress: "street address", city: "city", state: "state or province", zip: "postal code", country: "country or region", faxNumber: "fax number",
 };
 const ADMIN_PROFILES = ["Global Admin", "Admin"]; // moving someone to or from these needs the same right as making an Admin
+const Pencil = () => (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>);
+// A heading for one group in the Overview with its own "Edit" control (hidden when the person can't be edited).
+const GroupHead = ({ title, onEdit, label }) => (
+  <div className="adm-grouphead"><h3>{title}</h3>{onEdit && <button type="button" className="adm-editlink" aria-label={label} onClick={onEdit}><Pencil />Edit</button>}</div>
+);
 const appName = (id) => APPS.find((a) => a.id === id)?.name || id;
 const when = (ms) => (ms ? new Date(ms).toLocaleString() : "");
 const day = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
@@ -41,11 +46,23 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
   }, [open, uid]); // eslint-disable-line react-hooks/exhaustive-deps
   const canEdit = !row?.dirOnly;
   const canEditIdentity = !!d?.account?.canEditIdentity; // name and expiry belong to a Bizzux username login homed in this company
-  const startEdit = () => {
+  const panel = useRef(null);
+  const section = useRef(null); // which group's "Edit" opened the form, so it can scroll there
+  // Opens the one edit form from any "Edit" control: "identity" (name), "job" (job and profile) or "expiry"; none = from the top.
+  const startEdit = (where) => {
     const p = d.profileInfo || {}; const ci = p.contactInfo || {};
-    setErr(""); setMsg("");
+    setErr(""); setMsg(""); setTab(0); section.current = typeof where === "string" ? where : null;
     setEdit({ ...(canEditIdentity ? { firstName: d.nameInfo?.firstName || "", lastName: d.nameInfo?.lastName || "", displayName: d.name || "", accountExpiresAt: d.account.accountExpiresAt || "" } : {}), jobTitle: p.jobTitle || "", department: p.department || "", employmentType: ci.employmentType || "", employeeId: p.employeeId || "", branch: p.branch || "", office: ci.office || "", officePhone: ci.officePhone || "", mobilePhone: ci.mobilePhone || "", streetAddress: ci.streetAddress || "", city: ci.city || "", state: ci.state || "", zip: ci.zip || "", country: ci.country || "" });
   };
+  // After the form appears: scroll to the group that was clicked and put the cursor in its first field (the top of the form otherwise).
+  useEffect(() => {
+    if (!edit) return;
+    const target = section.current ? panel.current?.querySelector(`[data-edit-section="${section.current}"]`) : null;
+    const first = target?.matches("input,select") ? target : target?.querySelector("input,select") || panel.current?.querySelector("form input,form select");
+    (target || first)?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    first?.focus({ preventScroll: true });
+    section.current = null;
+  }, [!!edit]); // eslint-disable-line react-hooks/exhaustive-deps
   const saveProfile = async (e) => {
     e.preventDefault(); setErr(""); setMsg("");
     if (canEditIdentity && !edit.displayName.trim()) { setErr("Display name is required."); return; }
@@ -76,6 +93,7 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
       {d && (
         <>
           <div className="adm-actions" role="toolbar" aria-label="Actions for this user">
+            {canEdit && <button type="button" className="adm-editbtn" aria-label={"Edit details for " + title} disabled={!!edit} onClick={() => startEdit()}><Pencil />Edit</button>}
             {d.account.canResetPassword && <button type="button" className="adm-cmdbtn" onClick={() => onResetPassword(row)}>Reset password</button>}
             <button type="button" className="adm-cmdbtn" onClick={() => onManageAccess(row)}>Manage roles &amp; app access</button>
             {d.account.locked && <button type="button" className="adm-cmdbtn" onClick={() => onUnlock(row)}>Unlock sign-in</button>}
@@ -86,12 +104,12 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
           <div role="tablist" aria-label="User details" className="adm-tabs">
             {TABS.map((t, i) => (<button key={t} role="tab" type="button" aria-selected={tab === i} className={tab === i ? "on" : ""} onClick={() => setTab(i)}>{t}</button>))}
           </div>
-          <div role="tabpanel" className="adm-tabpanel">
+          <div role="tabpanel" className="adm-tabpanel" ref={panel}>
             {tab === 0 && edit && (
               <form onSubmit={saveProfile} className="adm-grid2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 {canEditIdentity ? (
                   <>
-                    <label className="adm-field">First name<input className="input" maxLength={60} value={edit.firstName} onChange={(e) => setEdit({ ...edit, firstName: e.target.value })} /></label>
+                    <label className="adm-field">First name<input className="input" data-edit-section="identity" maxLength={60} value={edit.firstName} onChange={(e) => setEdit({ ...edit, firstName: e.target.value })} /></label>
                     <label className="adm-field">Last name<input className="input" maxLength={60} value={edit.lastName} onChange={(e) => setEdit({ ...edit, lastName: e.target.value })} /></label>
                     <label className="adm-field" style={{ gridColumn: "1 / -1" }}>Display name (required)
                       <input className="input" maxLength={80} required value={edit.displayName} onChange={(e) => setEdit({ ...edit, displayName: e.target.value })} />
@@ -99,7 +117,7 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
                     </label>
                     <label className="adm-field" style={{ gridColumn: "1 / -1" }}>Account expires on
                       <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input className="input" type="date" style={{ maxWidth: 220 }} value={edit.accountExpiresAt} onChange={(e) => setEdit({ ...edit, accountExpiresAt: e.target.value })} />
+                        <input className="input" type="date" data-edit-section="expiry" style={{ maxWidth: 220 }} value={edit.accountExpiresAt} onChange={(e) => setEdit({ ...edit, accountExpiresAt: e.target.value })} />
                         {edit.accountExpiresAt && <button type="button" className="adm-link" onClick={() => setEdit({ ...edit, accountExpiresAt: "" })}>Clear</button>}
                       </span>
                       <span className="adm-hint">Optional, for temporary staff. They can sign in until the end of that day.</span>
@@ -112,7 +130,7 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
                   <label key={k} className="adm-field" style={wide ? { gridColumn: "1 / -1" } : undefined}>{label}
                     {k === "employmentType"
                       ? <select className="input" value={edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })}><option value="">Not set</option>{EMPLOYMENT_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
-                      : <input className="input" value={edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />}
+                      : <input className="input" data-edit-section={k === "jobTitle" ? "job" : undefined} value={edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />}
                   </label>
                 ))}
                 <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
@@ -122,6 +140,8 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
               </form>
             )}
             {tab === 0 && !edit && (
+              <>
+              <GroupHead title="Name and sign-in" onEdit={canEdit && canEditIdentity ? () => startEdit("identity") : null} label="Edit name" />
               <dl className="adm-rv" style={{ gridTemplateColumns: "170px 1fr" }}>
                 <dt>Display name</dt><dd>{d.name || "—"}</dd>
                 <dt>Bizzux ID</dt><dd>{d.username ? toLoginId(d.username) : "—"}</dd>
@@ -130,6 +150,15 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
                 <dt>Status</dt><dd>{d.disabled ? "Disabled" : d.account.pendingActivation ? "Waiting for first sign-in" : "Active"}</dd>
                 <dt>Created</dt><dd>{day(d.created)}</dd>
                 <dt>Last sign-in</dt><dd>{day(d.lastSignIn)}</dd>
+              </dl>
+              {canEditIdentity && (
+                <>
+                  <GroupHead title="Account expiry" onEdit={canEdit ? () => startEdit("expiry") : null} label="Edit account expiry" />
+                  <dl className="adm-rv" style={{ gridTemplateColumns: "170px 1fr" }}><dt>Account expires on</dt><dd>{d.account.accountExpiresAt || "No expiry"}</dd></dl>
+                </>
+              )}
+              <GroupHead title="Job and profile" onEdit={canEdit ? () => startEdit("job") : null} label="Edit job and profile" />
+              <dl className="adm-rv" style={{ gridTemplateColumns: "170px 1fr" }}>
                 <dt>Job title</dt><dd>{d.profileInfo.jobTitle || "—"}</dd>
                 <dt>Department</dt><dd>{d.profileInfo.department || "—"}</dd>
                 <dt>Branch</dt><dd>{d.profileInfo.branch || "—"}</dd>
@@ -137,9 +166,9 @@ export default function UserDetailsDrawer({ open, uid, api, onClose, onResetPass
                 <dt>Employment type</dt><dd>{d.profileInfo.employmentType || "—"}</dd>
                 {["officePhone", "mobilePhone", "office"].map((k, i) => d.profileInfo.contactInfo?.[k] ? <span key={k} style={{ display: "contents" }}><dt>{["Office phone", "Mobile number", "Office"][i]}</dt><dd>{d.profileInfo.contactInfo[k]}</dd></span> : null)}
                 {[d.profileInfo.contactInfo?.streetAddress, d.profileInfo.contactInfo?.city, d.profileInfo.contactInfo?.state, d.profileInfo.contactInfo?.zip, d.profileInfo.contactInfo?.country].filter(Boolean).length > 0 && <><dt>Address</dt><dd>{[d.profileInfo.contactInfo.streetAddress, d.profileInfo.contactInfo.city, d.profileInfo.contactInfo.state, d.profileInfo.contactInfo.zip, d.profileInfo.contactInfo.country].filter(Boolean).join(", ")}</dd></>}
-                {canEdit && <><dt></dt><dd><button type="button" className="adm-cmdbtn" onClick={startEdit}>Edit profile</button></dd></>}
-                {d.account.canEditIdentity && d.account.accountExpiresAt && <><dt>Account expires on</dt><dd>{d.account.accountExpiresAt}</dd></>}
               </dl>
+              {canEdit && <p style={{ margin: "14px 0 0" }}><button type="button" className="adm-btn-outline" onClick={() => startEdit()}><Pencil />Edit profile</button></p>}
+              </>
             )}
             {tab === 1 && (
               <dl className="adm-rv" style={{ gridTemplateColumns: "190px 1fr" }}>
