@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { discard, effective, hasChanges, isAdminLevelChange, isPastExpiry, localDay, stageValue } from "../lib/adminStaging.js";
+import { appAdminChanged, appChanges, discard, effective, hasChanges, isAdminLevelChange, isPastExpiry, localDay, savedApp, stageApp, stageValue } from "../lib/adminStaging.js";
 
 const saved = { orgRole: "MEMBER", profile: "Manager" };
 
@@ -56,4 +56,41 @@ test("Admin-level changes need confirmation (to or from Admin, by role or by pro
   assert.equal(c({ nextProfile: "Viewer/Auditor" }).any, false, "Manager -> Viewer/Auditor is not Admin-level");
   assert.equal(c({ curRole: "ADMIN", nextRole: "ADMIN", curProfile: "Admin", nextProfile: "Admin" }).any, false, "an unchanged Admin needs no confirmation");
   assert.equal(isAdminLevelChange({ curRole: "MEMBER", nextRole: "ADMIN" }).any, true, "role-only call (Users table) works without profile arguments");
+});
+
+const apps = [
+  { appId: "bizzux-crm", access: true, appRole: "MEMBER", source: "assignment", reason: "" },
+  { appId: "bizzux-chat", access: false, appRole: null, source: "denied", reason: "app_not_assigned" },
+  { appId: "bizzux-files", access: true, appRole: "ADMIN", source: "assignment", reason: "" },
+];
+
+test("apps: the saved state of an app is access plus Admin; an app without access is never Admin", () => {
+  assert.deepEqual(savedApp(apps[0]), { granted: true, admin: false });
+  assert.deepEqual(savedApp(apps[1]), { granted: false, admin: false });
+  assert.deepEqual(savedApp(apps[2]), { granted: true, admin: true });
+  assert.deepEqual(savedApp({ access: false, appRole: "ADMIN" }), { granted: false, admin: false });
+});
+
+test("apps: ticking Admin also gives access, clearing access also clears Admin, and the saved value un-stages the app", () => {
+  let s = stageApp({}, apps, "bizzux-chat", { admin: true });
+  assert.deepEqual(s, { "bizzux-chat": { granted: true, admin: true } }, "Admin implies access");
+  s = stageApp(s, apps, "bizzux-chat", { granted: false });
+  assert.deepEqual(s, {}, "clearing access clears Admin and returns to the saved state, so nothing is staged");
+  s = stageApp({}, apps, "bizzux-files", { granted: false });
+  assert.deepEqual(s, { "bizzux-files": { granted: false, admin: false } });
+  s = stageApp(s, apps, "bizzux-files", { granted: true, admin: true });
+  assert.deepEqual(s, {}, "back to the saved Admin access: un-staged");
+});
+
+test("apps: Save is only for apps that really differ, and only an Admin change needs the by-name confirmation", () => {
+  assert.deepEqual(appChanges(apps, {}), []);
+  assert.deepEqual(appChanges(apps, { "bizzux-crm": { granted: true, admin: false } }), [], "a stale staged value equal to the saved one is not a change");
+  const grant = appChanges(apps, { "bizzux-chat": { granted: true, admin: false } });
+  assert.deepEqual(grant, [{ appId: "bizzux-chat", from: { granted: false, admin: false }, to: { granted: true, admin: false } }]);
+  assert.equal(appAdminChanged(grant), false, "a plain grant needs no confirmation");
+  const toAdmin = appChanges(apps, { "bizzux-crm": { granted: true, admin: true } });
+  assert.equal(appAdminChanged(toAdmin), true, "making an app Admin is confirmed");
+  const fromAdmin = appChanges(apps, { "bizzux-files": { granted: false, admin: false } });
+  assert.equal(appAdminChanged(fromAdmin), true, "removing an app Admin is confirmed");
+  assert.equal(appChanges(apps, {}).length === 0, true, "Cancel is simply an empty stage");
 });

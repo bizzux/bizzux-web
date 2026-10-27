@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOrgManager } from "@/lib/firebaseAdmin";
-import { createUsernameIdentity, requestLinkToOrganization, setUserApps, usernameAvailability, bindExistingMemberToEmployee, setOrganizationRole, setBusinessProfile, reissueTemporaryPassword, resolveOrganizationId, validateNewUsernameIdentity }
+import { createUsernameIdentity, requestLinkToOrganization, setUserApps, setUserAppAccess, usernameAvailability, bindExistingMemberToEmployee, setOrganizationRole, setBusinessProfile, reissueTemporaryPassword, resolveOrganizationId, validateNewUsernameIdentity }
  from "@/lib/iam/identityService";
 import { restoreMember, removeMember, purgeLeftover } from "@/lib/iam/membershipLifecycle";
 import { resetUsernamePassword } from "@/lib/iam/userAdmin";
@@ -23,6 +23,7 @@ export async function GET(req) {
 //   POST { kind: "username", fullName, username, password?, profile?, apps?, ... }  -> new username login (temporary password returned ONCE)
 //   POST { kind: "link", username, profile?, apps? }                                -> ask an existing login to join; the person accepts
 //   POST { kind: "apps", uid, apps }                                                 -> replace the person's application access
+//   POST { kind: "appAccess", uid, apps: [{ appId, granted, admin }] }               -> change access and app role for the listed apps only
 // The caller identity always comes from the verified token, never from the body; a company admin can only act on their own company.
 export async function POST(req) {
   try {
@@ -32,6 +33,7 @@ export async function POST(req) {
     if (b.kind === "username") return NextResponse.json({ ok: true, ...(await createUsernameIdentity({ ...b, organizationId, actor: c })) });
     if (b.kind === "link") return NextResponse.json(await requestLinkToOrganization({ actor: c, organizationId, username: b.username, profile: b.profile, apps: b.apps, bindEmployeeId: b.bindEmployeeId }));
     if (b.kind === "apps") return NextResponse.json(await setUserApps({ actor: c, organizationId, uid: String(b.uid || ""), apps: b.apps }));
+    if (b.kind === "appAccess") return NextResponse.json(await setUserAppAccess({ actor: c, organizationId, uid: String(b.uid || ""), apps: b.apps }));
     if (b.kind === "orgRole") return NextResponse.json(await setOrganizationRole({ actor: c, organizationId, uid: String(b.uid || ""), role: b.role }));
     if (b.kind === "profile") return NextResponse.json(await setBusinessProfile({ actor: c, organizationId, uid: String(b.uid || ""), profile: b.profile }));
     if (b.kind === "reissue") return NextResponse.json(await reissueTemporaryPassword({ actor: c, organizationId, uid: String(b.uid || "") }));
