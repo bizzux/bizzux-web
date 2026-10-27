@@ -206,6 +206,12 @@ export default function AccessRoles({ isOwner }) {
           <input className="input" aria-label="Search administrators" placeholder="Search name, email or role" value={q}
             onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 260 }} />
         </div>
+        {data.admins.some((a) => a.signInDeleted) && (
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }} role="note">
+            Records marked <strong>Sign-in deleted</strong> belong to a Bizzux sign-in that no longer exists, so that person has no
+            platform access. {isOwner ? "Invite them again: when they accept with their current sign-in, the old record is replaced." : ""}
+          </p>
+        )}
         <div style={{ overflowX: "auto" }}>
           <table className="table">
             <thead>
@@ -223,7 +229,11 @@ export default function AccessRoles({ isOwner }) {
                       </select>
                     ) : a.roleLabel}
                   </td>
-                  <td><span className={"status-pill " + (a.status === "disabled" ? "expired" : "active")}>{a.status}</span></td>
+                  <td>
+                    {a.signInDeleted
+                      ? <span className="status-pill expired" title="The Bizzux sign-in this record belongs to no longer exists, so nobody can use it.">Sign-in deleted</span>
+                      : <span className={"status-pill " + (a.status === "disabled" ? "expired" : "active")}>{a.status}</span>}
+                  </td>
                   <td>{a.mfaEnabled ? "On" : <span className="muted">Not enrolled</span>}</td>
                   <td>{when(a.lastSignIn)}</td>
                   <td>{a.invitedBy || "—"}</td>

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import { useMe } from "@/lib/useMe";
+import { currentNext, withNext } from "@/lib/safeNext";
 import TwoFactorSettings from "@/components/TwoFactorSettings";
 
 // Forced setup — reached only when a Super Admin has marked this account
@@ -16,16 +17,16 @@ export default function Setup2faPage() {
   const { user, me } = useMe();
 
   useEffect(() => {
-    if (user === null) router.push("/sign-in");
+    if (user === null) router.push(withNext("/sign-in"));
   }, [user, router]);
 
   useEffect(() => {
-    if (me && !(me.twoFactorRequired && !me.twoFactorEnabled)) router.replace("/dashboard");
+    if (me && !(me.twoFactorRequired && !me.twoFactorEnabled)) router.replace(currentNext() || "/dashboard");
   }, [me, router]);
 
   function onEnabled() {
     sessionStorage.setItem("2fa_verified", "true"); // just set it up — no need to immediately re-verify
-    router.push("/dashboard");
+    router.push(currentNext() || "/dashboard");
   }
 
   if (!user || !me) {

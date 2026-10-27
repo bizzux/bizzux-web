@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import Nav from "@/components/Nav";
 import { useMe } from "@/lib/useMe";
+import { currentNext, withNext } from "@/lib/safeNext";
 
 // Second-factor check after a normal email+password (or Google) sign-in
 // already succeeded — see app/(saas)/sign-in/page.js's afterAuth and
@@ -24,11 +25,11 @@ export default function Verify2faPage() {
   const [sent, setSent] = useState(false);
 
   useEffect(() => {
-    if (user === null) router.push("/sign-in");
+    if (user === null) router.push(withNext("/sign-in"));
   }, [user, router]);
 
   useEffect(() => {
-    if (me && !me.twoFactorEnabled) router.replace("/dashboard");
+    if (me && !me.twoFactorEnabled) router.replace(currentNext() || "/dashboard");
   }, [me, router]);
 
   // Email method: send a code automatically on arrival so there's nothing
@@ -70,7 +71,7 @@ export default function Verify2faPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       sessionStorage.setItem("2fa_verified", "true");
-      router.push("/dashboard");
+      router.push(currentNext() || "/dashboard");
     } catch (err) {
       setError(err.message || "Couldn't verify that code.");
       setBusy(false);

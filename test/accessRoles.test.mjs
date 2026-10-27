@@ -157,6 +157,40 @@ test("roster shows MFA status, inviter and pending invitations (Owner only)", as
   assert.equal(r.roles.length, roles.ASSIGNABLE_ROLES.length);
 });
 
+test("a record whose sign-in was deleted is flagged, doesn't block a re-invite, and is replaced on accept", async () => {
+  const email = "orphan-" + rnd() + "@bizzux.test";
+  const old = await signIn(email);
+  await db.doc("platformAdmins/" + old.uid).set({ email, role: "ADMIN", status: "active", permissions: null, createdAt: Timestamp.now() });
+  const o = asActor(owner, "OWNER");
+  // While that sign-in exists, the person is a live administrator.
+  await assert.rejects(acc.createInvitation({ actor: o, email, role: "ADMIN", origin: "http://x", send }), (e) => e.status === 409);
+  await fa.adminAuth().deleteUser(old.uid); // deleted outside the app; the person signs up again with a new uid
+  let r = await (await get(route, owner)).json();
+  assert.equal(r.admins.find((a) => a.uid === old.uid).signInDeleted, true);
+  assert.ok(r.admins.filter((a) => a.uid !== old.uid).every((a) => a.signInDeleted === false));
+
+  const inv = await acc.createInvitation({ actor: o, email, role: "ADMIN", origin: "http://x", send });
+  const now = await signIn(email);
+  await db.doc("twoFactor/" + now.uid).set({ enabled: true, method: "email" });
+  await acc.acceptInvitation({ c: caller(now), token: inv.token });
+  assert.equal((await db.doc("platformAdmins/" + old.uid).get()).exists, false);
+  assert.equal((await fa.resolvePlatformRole(now.uid, email)), "ADMIN");
+  const logs = await db.collection("auditLogs").where("action", "==", "platform_admin.orphan_replaced").where("targetId", "==", old.uid).get();
+  assert.equal(logs.size, 1);
+  assert.equal(logs.docs[0].data().details.replacedByUid, now.uid);
+  r = await (await get(route, owner)).json();
+  assert.ok(!r.admins.some((a) => a.uid === old.uid));
+});
+
+test("sign-in keeps an invitation 'next' through password change and two-step verification", async () => {
+  const { safeNext, withNext } = await import("../lib/safeNext.js");
+  const next = "/accept-platform-invite?token=" + "a".repeat(43);
+  assert.equal(withNext("/verify-2fa", next), "/verify-2fa?next=" + encodeURIComponent(next));
+  assert.equal(safeNext(new URLSearchParams(withNext("/verify-2fa", next).split("?")[1]).get("next")), next);
+  assert.equal(withNext("/verify-2fa", null), "/verify-2fa");
+  assert.equal(safeNext("https://evil.test"), null);
+});
+
 test("recent sign-in is required for privileged changes", () => {
   assert.throws(() => fa.requireRecentAuth({ authTime: Math.floor(Date.now() / 1000) - 3600 }), (e) => e.code === "reauth_required");
   assert.doesNotThrow(() => fa.requireRecentAuth({ authTime: Math.floor(Date.now() / 1000) - 30 }));

@@ -6,6 +6,7 @@ import { updatePassword, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Nav from "@/components/Nav";
 import { useMe } from "@/lib/useMe";
+import { currentNext, withNext } from "@/lib/safeNext";
 
 // Forced first-login password change for admin-created logins (Create
 // Business Login, or an admin-created team member — see
@@ -23,7 +24,7 @@ export default function ChangePasswordPage() {
   const [codes, setCodes] = useState(null);
 
   useEffect(() => {
-    if (user === null) router.push("/sign-in");
+    if (user === null) router.push(withNext("/sign-in"));
   }, [user, router]);
 
   useEffect(() => {
@@ -60,12 +61,18 @@ export default function ChangePasswordPage() {
           return;
         }
         await signOut(auth);
-        router.push("/sign-in");
+        router.push(withNext("/sign-in"));
         return;
       }
       await updatePassword(auth.currentUser, password);
       await fetch("/api/change-password", { method: "POST", headers: { Authorization: "Bearer " + token } });
-      router.push("/dashboard");
+      // With a "next" (e.g. an invitation), take the same two-step steps sign-in would before going there;
+      // without one, /dashboard's own guard handles them as before.
+      const next = currentNext();
+      router.push(!next ? "/dashboard"
+        : me?.twoFactorRequired && !me?.twoFactorEnabled ? withNext("/setup-2fa", next)
+        : me?.twoFactorEnabled && sessionStorage.getItem("2fa_verified") !== "true" ? withNext("/verify-2fa", next)
+        : next);
     } catch (err) {
       // A password change this sensitive can ask Firebase to re-verify a
       // very recent sign-in — happens if this page is reached a while
