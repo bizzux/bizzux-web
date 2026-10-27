@@ -118,7 +118,7 @@ export async function POST(req) {
         ...(u.verifyMobileRequired ? { phoneVerified: !!u.phoneVerified } : {}),
       });
       await adminDb().doc("users/" + c.uid).set({ businessRole, businessRoleUpdatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      await createOrganization({ id: c.uid, name, type: orgType, createdBy: c.uid });
+      await createOrganization({ id: c.uid, name, type: orgType, createdBy: c.uid, registeredVia: "self", registeredByEmail: c.email || null });
       await upsertOrganizationMembership({ organizationId: c.uid, userId: c.uid, role: "OWNER", status: "active" });
       await Promise.all(
         APP_IDS.map((appId) =>

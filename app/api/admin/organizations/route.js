@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireOrgManager, adminAuth, adminDb, generateTempPassword } from "@/lib/firebaseAdmin";
+import { previewOrgDeletion } from "@/lib/orgLifecycle";
+import { requireRecentAuth, requireOrgManager, adminAuth, adminDb, generateTempPassword } from "@/lib/firebaseAdmin";
 import { COUNTRIES } from "@/lib/countries";
 import { PROFILE_VALUES, DEFAULT_PROFILE } from "@/lib/roles";
 import { FieldValue } from "firebase-admin/firestore";
@@ -84,7 +85,7 @@ export async function GET(req) {
       .map((o) => ({ ...o, createdAt: toIso(o.createdAt) }));
     return NextResponse.json({ organizations });
   } catch (e) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+    return NextResponse.json({ error: e.message || "Failed", ...(e.code ? { code: e.code } : {}), ...(e.blockers ? { blockers: e.blockers } : {}) }, { status: e.status || 500 });
   }
 }
 
@@ -106,7 +107,11 @@ export async function POST(req) {
     }
     if (["suspend", "archive", "reactivate"].includes(body.action)) {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
-      return NextResponse.json(await changeOrganizationStatus({ actor: c, organizationId: body.id, action: body.action, reason: body.reason }));
+      return NextResponse.json(await changeOrganizationStatus({ actor: c, organizationId: body.id, action: body.action, reason: body.reason, reasonCode: body.reasonCode }));
+    }
+    if (body.action === "previewDeletion") {
+      if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
+      return NextResponse.json(await previewOrgDeletion({ actor: c, organizationId: body.id }), { headers: { "Cache-Control": "no-store" } });
     }
     if (body.action === "updateEntitlements") {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
@@ -159,7 +164,13 @@ export async function POST(req) {
     }
     if (body.action === "deletePermanently") {
       if (!c.isSuper) throw { status: 403, message: "Platform admin access required" };
-      return NextResponse.json(await deleteOrganizationPermanently({ actor: c, organizationId: body.id, confirmName: body.confirmName, reason: body.reason }));
+      requireRecentAuth(c); // sign-in within the last 10 minutes
+      const r = await deleteOrganizationPermanently({
+        actor: c, organizationId: body.id, confirmName: body.confirmName, reason: body.reason,
+        reasonCode: body.reasonCode, earlyPurge: body.earlyPurge === true,
+      });
+      // Never report a half-finished cleanup as done.
+      return NextResponse.json(r, { status: r.ok === false ? 207 : 200, headers: { "Cache-Control": "no-store" } });
     }
 
     // ---- Legacy: a customer Admin removes a placeholder THEY created ------
@@ -287,6 +298,6 @@ export async function POST(req) {
     await logAuditEvent({ action: "organization.placeholder_create", actor: c, targetType: "organization", targetId: ref.id, details: { organizationName } });
     return NextResponse.json({ ok: true, id: ref.id });
   } catch (e) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: e.status || 500 });
+    return NextResponse.json({ error: e.message || "Failed", ...(e.code ? { code: e.code } : {}), ...(e.blockers ? { blockers: e.blockers } : {}) }, { status: e.status || 500 });
   }
 }
