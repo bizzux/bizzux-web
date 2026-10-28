@@ -1,5 +1,5 @@
 import { Container, Eyebrow, CTAButton } from "@/components/Section";
-import HeroShowcase from "@/components/HeroShowcase";
+import StaticHero from "@/components/StaticHero";
 import FeaturedAppsGrid from "@/components/FeaturedAppsGrid";
 import SuperAdminHomeRedirect from "@/components/SuperAdminHomeRedirect";
 import {
@@ -57,8 +57,8 @@ export default async function Home() {
   return (
     <>
       <SuperAdminHomeRedirect />
-      {/* Hero — animated showcase (rotating app orbit around the photo) */}
-      <HeroShowcase />
+      {/* Hero — static image + pricing (no animations) */}
+      <StaticHero />
 
       {/* Featured apps — right under the hero, no scroll needed to reach it */}
       <div className="px-6 relative z-10">
