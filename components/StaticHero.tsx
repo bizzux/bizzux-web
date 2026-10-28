@@ -24,17 +24,20 @@ export default function StaticHero() {
         <a href="/contact" aria-label="Book a Demo" className="absolute rounded-full" style={box(358, 610, 559, 672)} />
       </div>
 
-      <div className="mx-auto max-w-3xl px-6 py-8 grid gap-4 sm:grid-cols-2">
-        <div className="relative rounded-2xl border border-teal-300/70 bg-teal-50/60 p-5 pt-6">
-          <span className="absolute -top-3 left-4 rounded-full bg-amber-400 px-3 py-0.5 text-xs font-bold text-white shadow">♛ Best Value</span>
-          <div className="text-3xl font-extrabold" style={{ color: "#0b2545" }}>₹599<span className="text-base font-semibold"> / month</span></div>
-          <div className="mt-1 font-semibold text-slate-800">All Apps Included</div>
-          <div className="mt-2 border-t border-teal-200 pt-2 text-xs text-slate-500">One Platform. Unlimited Possibilities.</div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 pt-6">
-          <div className="text-3xl font-extrabold" style={{ color: "#0b2545" }}>₹299<span className="text-base font-semibold"> / month</span></div>
-          <div className="mt-1 text-slate-500">Single App Plan</div>
-          <div className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-500">Choose the app you need</div>
+      {/* pricing: left-aligned with the hero copy, each card links to /pricing */}
+      <div className="mx-auto max-w-[1672px] px-6 sm:px-0 sm:pl-[4.67%] py-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+          <a href="/pricing" className="group relative block rounded-2xl border border-teal-300/70 bg-teal-50/60 p-5 pt-6 transition hover:-translate-y-1 hover:shadow-lg hover:shadow-teal-500/20">
+            <span className="absolute -top-3 left-4 rounded-full bg-amber-400 px-3 py-0.5 text-xs font-bold text-white shadow">♛ Best Value</span>
+            <div className="text-3xl font-extrabold" style={{ color: "#0b2545" }}>₹599<span className="text-base font-semibold"> / month</span></div>
+            <div className="mt-1 font-semibold text-slate-800">All Apps Included</div>
+            <div className="mt-2 border-t border-teal-200 pt-2 text-xs text-slate-500">One Platform. Unlimited Possibilities.</div>
+          </a>
+          <a href="/pricing" className="group block rounded-2xl border border-slate-200 bg-white p-5 pt-6 transition hover:-translate-y-1 hover:border-brand-blue hover:shadow-lg">
+            <div className="text-3xl font-extrabold" style={{ color: "#0b2545" }}>₹299<span className="text-base font-semibold"> / month</span></div>
+            <div className="mt-1 text-slate-500">Single App Plan</div>
+            <div className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-500">Choose the app you need</div>
+          </a>
         </div>
       </div>
     </section>
